@@ -1,0 +1,79 @@
+package org.knowtiphy.babbage.storage;
+
+/**
+ *
+ * @author graham
+ */
+public interface Vocabulary
+{
+    String RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+
+    String BASE = "http://www.knowtiphy.org/";
+    String TBASE = BASE + "Terminology/";
+    String NBASE = BASE + "name/";
+
+    String ACCOUNT = TBASE + "Account";
+
+    String OUTBOX = TBASE + "OutBox";
+    String OUTBOX_MESSAGE = TBASE + "IMAPOutBoxMessage";
+
+    String HAS_SERVER_NAME = TBASE + "hasServerName";
+    String HAS_EMAIL_ADDRESS = TBASE + "hasEmailAddress";
+    String HAS_PASSWORD = TBASE + "hasPassword";
+
+    String HAS_TRUSTED_CONTENT_PROVIDER = TBASE + "hasTrustedContentProvider";
+	String HAS_TRUSTED_SENDER = TBASE + "hasTrustedSender";
+    //
+    String DRAFT_MESSAGE = TBASE + "DraftMessage";
+
+    String IMAP_ACCOUNT = TBASE + "IMAPAccount";
+    String IMAP_FOLDER = TBASE + "IMAPFolder";
+    String IMAP_MESSAGE = TBASE + "IMAPMessage";
+    String IMAP_MESSAGE_PART = TBASE + "IMAPMessagePart";
+    String IMAP_MESSAGE_CID_PART = TBASE + "IMAPMessageCIDPart";
+    String IMAP_MESSAGE_ATTACHMENT = TBASE + "Attachment";
+
+    String HAS_NAME = TBASE + "hasName";
+    String HAS_UID_VALIDITY = TBASE + "hasUIDValidity";
+    String HAS_MESSAGE_COUNT = TBASE + "hasMessageCount";
+    String HAS_UNREAD_MESSAGE_COUNT = TBASE + "hasUnreadMessageCount";
+
+    String CONTAINS = TBASE + "contains";
+
+    String IS_READ = TBASE + "isRead";
+    String IS_JUNK = TBASE + "isJunk";
+    String IS_ANSWERED = TBASE + "isAnswered";
+
+    String HAS_SUBJECT = TBASE + "hasSubject";
+    String TO = TBASE + "to";
+    String FROM = TBASE + "from";
+    String HAS_CC = TBASE + "hasCC";
+    String HAS_BCC = TBASE + "hasBCC";
+    String RECEIVED_ON = TBASE + "receivedOn";
+    String SENT_ON = TBASE + "sentOn";
+
+    String HAS_ATTACHMENT = TBASE + "hasAttachment";
+    String HAS_CID_PART = TBASE + "hasCIDPart";
+    String HAS_CONTENT = TBASE + "hasContent";
+    String HAS_FILE_NAME = TBASE + "hasFileName";
+    String HAS_MIME_TYPE = TBASE + "hasMimeType";
+    String HAS_LOCAL_CID = TBASE + "hasLocalCID";
+
+    // Vocabulary for CalDav
+    String CALDAV_ACCOUNT = TBASE + "CALDAVAccount";
+
+
+    // Vocabulary for CardDav
+    String CARDDAV_ACCOUNT = TBASE + "CARDDAVAccount";
+
+    static String E(Object... parts)
+    {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < parts.length - 1; i++)
+        {
+            builder.append(parts[i].toString()).append("/");
+        }
+        builder.append(parts[parts.length - 1].toString());
+        return builder.toString();
+    }
+}
