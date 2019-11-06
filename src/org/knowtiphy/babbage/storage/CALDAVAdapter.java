@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Model;
+import org.knowtiphy.utils.JenaUtils;
 
 import javax.mail.Folder;
 import javax.mail.MessagingException;
@@ -14,10 +15,10 @@ public class CALDAVAdapter extends BaseAdapter
 	private static final Runnable POISON_PILL = () -> {
 	};
 
-	/*private final String serverName;
+	private final String serverName;
 	private final String emailAddress;
-	private final String password;*/
-	private final String name;
+	private final String password;
+	private final String id;
 
 	private final BlockingQueue<Runnable> workQ;
 	//private final BlockingQueue<Runnable> contentQ;
@@ -34,14 +35,22 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		System.out.println("CALDAVAdapter INSTANTIATED");
 
-		this.name = name;
 		this.messageDatabase = messageDatabase;
 		this.listenerManager = listenerManager;
 		this.notificationQ = notificationQ;
 		this.model = model;
 
 		// Query for serverName, emailAdress, and password
+		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
+		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
+		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_PASSWORD));
 
+		// Query for these with the passed in model
+		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
+		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
+		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
+
+		this.id = Vocabulary.E(Vocabulary.CALDAV_ACCOUNT, emailAddress);
 
 		accountLock = new Mutex();
 		accountLock.lock();
@@ -54,17 +63,17 @@ public class CALDAVAdapter extends BaseAdapter
 
 	@Override public String getId()
 	{
-		return null;
-	}
-
-	@Override public String encode(Folder folder) throws MessagingException
-	{
-		return null;
+		return id;
 	}
 
 	@Override public void close()
 	{
 
+	}
+
+	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	{
+		return super.getSynchTask();
 	}
 
 	// Factor this out to its own class eventually, since all Adapters will use

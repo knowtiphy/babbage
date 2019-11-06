@@ -95,11 +95,11 @@ public class LocalStorageSandBox implements IStorage
 			Resource name = soln.getResource("id");
 			Resource type = soln.getResource("type");
 
-			Class<?> cls = m_Class.get(type.toString());
-			cls.getConstructor(String.class, Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
-					.newInstance(name.toString(), messageDatabase, listenerManager, notificationQ, accountsModel);
+			Class<IAdapter> cls = (Class<IAdapter>) m_Class.get(type.toString());
 
-			//m_account
+
+			m_adapter.put(name.toString(), cls.getConstructor(String.class, Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
+					.newInstance(name.toString(), messageDatabase, listenerManager, notificationQ, accountsModel));
 
 			System.out.println("NAME :: " + name + " TYPE:: " + type);
 		}
@@ -173,117 +173,45 @@ public class LocalStorageSandBox implements IStorage
 		Model accountTriples = ModelFactory.createDefaultModel();
 		for (IAdapter adapter : m_adapter.values())
 		{
-			// TODO: Add triples to each various adapter by giving them the adapter, and have them pass back the model
+			// TODO: Add triples to each various adapter by giving them the model, and have them pass back the model
 			//	     and then that model will notify
 
-//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.RDF_TYPE),
-//					P(accountTriples, Vocabulary.IMAP_ACCOUNT));
-//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_SERVER_NAME),
-//					IMAPAdapter.getServerName());
-//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS),
-//					IMAPAdapter.getEmailAddress());
-//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_PASSWORD),
-//					IMAPAdapter.getPassword());
-//			IMAPAdapter.getTrustedSenders().forEach(x -> accountTriples
-//					.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
-//			IMAPAdapter.getTrustedContentProviders().forEach(x -> accountTriples
-//					.add(R(accountTriples, IMAPAdapter.getId()),
-//							P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
+			//		But can't I just notify the listeners inside the adapter instead?
+
+			adapter.addListener(accountTriples);
 		}
-
-		// Notify the client of the account triples
-		TransactionRecorder accountRec = new TransactionRecorder();
-		accountRec.addedStatements(accountTriples);
-		listenerManager.notifyChangeListeners(accountRec);
-
-		IReadContext context = getReadContext();
-		context.start();
-
-		// So when this added, query the DB and feed those into client the client via notifying the listener
-		String constructQueryFD = String
-				.format("CONSTRUCT { ?%s <%s> <%s> . " + "?%s <%s> ?%s . " + "?%s <%s> ?%s . " + "?%s <%s> ?%s . "
-								+ "?%s <%s> ?%s}\n" + "WHERE \n" + "{\n" + "      ?%s <%s> <%s>.\n" + "      ?%s <%s> ?%s.\n"
-								+ "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "}",
-						// START OF CONSTRUCT
-						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER, Vars.VAR_ACCOUNT_ID,
-						Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID, Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME,
-						Vars.VAR_FOLDER_NAME, Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
-						// START OF WHERE
-						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER, Vars.VAR_ACCOUNT_ID,
-						Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID, Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME,
-						Vars.VAR_FOLDER_NAME, Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT);
-
-		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
-
-		ByteArrayOutputStream stream = new ByteArrayOutputStream();
-		RDFDataMgr.write(stream, mFD, Lang.RDFJSON);
-
-		byte[] data = stream.toByteArray();
-
-		String str = new String(data, StandardCharsets.UTF_8);
-		StringReader reader = new StringReader(str);
-		//System.out.println(string);
-
-		Model modelTest = ModelFactory.createDefaultModel();
-		modelTest.read(reader, null, "RDF/JSON");
-
-		//JenaUtils.printModel(modelTest, "TEST FROM JSON");
-
-		TransactionRecorder rec = new TransactionRecorder();
-		rec.addedStatements(mFD);
-		listenerManager.notifyChangeListeners(rec);
-
-		String constructQueryMH = String
-				.format("CONSTRUCT { ?%s <%s> ?%s . ?%s <%s> <%s> . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . "
-								+ "?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s }\n"
-								+ "WHERE \n" + "{\n" + "      ?%s <%s> ?%s.\n" + "      ?%s  <%s> <%s>.\n"
-								+ "      ?%s  <%s> ?%s.\n" + "      ?%s  <%s> ?%s.\n" + "      ?%s  <%s> ?%s.\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
-						// START OF CONSTRUCT
-						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID, Vars.VAR_MESSAGE_ID,
-						Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE, Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ,
-						Vars.VAR_IS_READ, Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT, Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON,
-						Vars.VAR_RECEIVED_ON, Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO, Vars.VAR_MESSAGE_ID, Vocabulary.FROM,
-						Vars.VAR_FROM, Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_BCC, Vars.VAR_BCC,
-						// START OF WHERE
-						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID, Vars.VAR_MESSAGE_ID,
-						Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE, Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ,
-						Vars.VAR_IS_READ, Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT, Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON,
-						Vars.VAR_RECEIVED_ON, Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO, Vars.VAR_MESSAGE_ID, Vocabulary.FROM,
-						Vars.VAR_FROM, Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_BCC, Vars.VAR_BCC);
-
-		Model mMH = QueryExecutionFactory.create(constructQueryMH, context.getModel()).execConstruct();
-		TransactionRecorder recMH = new TransactionRecorder();
-		recMH.addedStatements(mMH);
-		context.end();
-
-		listenerManager.notifyChangeListeners(recMH);
 
 		// Start the synching of the IMAP org.knowtiphy.pinkpigmail.server, adds its work to the front of the Queue
 		// but need to put these account of the Queue
 		Map<String, FutureTask<?>> accountToFuture = new ConcurrentHashMap<>(100);
 		for (IAdapter adapter : m_adapter.values())
 		{
+			System.out.println("ADAPTER ID :: " + adapter.getId());
 			FutureTask<?> futureTask = adapter.getSynchTask();
+			System.out.println("FUTURE TASK :: " + futureTask);
+
 			accountToFuture.put(adapter.getId(), futureTask);
 			// For each account, spin up a thread that does a sync for it
 			new Thread(futureTask).start();
 		}
 
 		return accountToFuture;
+
+		//TODO: Snippet of JSON testing for conversion
+		/*ByteArrayOutputStream stream = new ByteArrayOutputStream();
+		RDFDataMgr.write(stream, mFD, Lang.RDFJSON);
+
+		byte[] data = stream.toByteArray();
+
+		String str = new String(data, StandardCharsets.UTF_8);
+		StringReader reader = new StringReader(str);
+		System.out.println(str);
+
+		Model modelTest = ModelFactory.createDefaultModel();
+		modelTest.read(reader, null, "RDF/JSON");
+
+		JenaUtils.printModel(modelTest, "TEST FROM JSON");*/
+
 	}
 
 	//	//@Override

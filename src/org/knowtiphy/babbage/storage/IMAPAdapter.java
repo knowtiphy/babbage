@@ -32,6 +32,9 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import static org.knowtiphy.babbage.storage.DStore.P;
+import static org.knowtiphy.babbage.storage.DStore.R;
+
 /**
  * @author graham
  */
@@ -203,6 +206,92 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
 			return null;
 		});
+	}
+
+	@Override public void addListener(Model accountTriples) throws UnsupportedOperationException
+	{
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE),
+				P(accountTriples, Vocabulary.IMAP_ACCOUNT));
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME),
+				serverName);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS),
+				serverName);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD),
+				serverName);
+		trustedSenders.forEach(x -> accountTriples
+				.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
+		trustedContentProviders.forEach(x -> accountTriples
+				.add(R(accountTriples, id),
+						P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
+
+
+		// Notify the client of the account triples
+		TransactionRecorder accountRec = new TransactionRecorder();
+		accountRec.addedStatements(accountTriples);
+		notifyListeners(accountRec);
+
+		IReadContext context = getReadContext();
+		context.start();
+
+		// So when this added, query the DB and feed those into client the client via notifying the listener
+		String constructQueryFD = String
+				.format("CONSTRUCT { ?%s <%s> <%s> . " + "?%s <%s> ?%s . " + "?%s <%s> ?%s . " + "?%s <%s> ?%s . "
+								+ "?%s <%s> ?%s}\n" + "WHERE \n" + "{\n" + "      ?%s <%s> <%s>.\n" + "      ?%s <%s> ?%s.\n"
+								+ "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "}",
+						// START OF CONSTRUCT
+						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER, Vars.VAR_ACCOUNT_ID,
+						Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID, Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME,
+						Vars.VAR_FOLDER_NAME, Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
+						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
+						// START OF WHERE
+						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER, Vars.VAR_ACCOUNT_ID,
+						Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID, Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME,
+						Vars.VAR_FOLDER_NAME, Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
+						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT);
+
+		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
+
+		TransactionRecorder rec = new TransactionRecorder();
+		rec.addedStatements(mFD);
+		notifyListeners(rec);
+
+		String constructQueryMH = String
+				.format("CONSTRUCT { ?%s <%s> ?%s . ?%s <%s> <%s> . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . "
+								+ "?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s }\n"
+								+ "WHERE \n" + "{\n" + "      ?%s <%s> ?%s.\n" + "      ?%s  <%s> <%s>.\n"
+								+ "      ?%s  <%s> ?%s.\n" + "      ?%s  <%s> ?%s.\n" + "      ?%s  <%s> ?%s.\n"
+								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
+								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
+								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
+								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
+						// START OF CONSTRUCT
+						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID, Vars.VAR_MESSAGE_ID,
+						Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE, Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ,
+						Vars.VAR_IS_READ, Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED, Vars.VAR_MESSAGE_ID,
+						Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT, Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON,
+						Vars.VAR_RECEIVED_ON, Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
+						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO, Vars.VAR_MESSAGE_ID, Vocabulary.FROM,
+						Vars.VAR_FROM, Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC, Vars.VAR_MESSAGE_ID,
+						Vocabulary.HAS_BCC, Vars.VAR_BCC,
+						// START OF WHERE
+						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID, Vars.VAR_MESSAGE_ID,
+						Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE, Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ,
+						Vars.VAR_IS_READ, Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED, Vars.VAR_MESSAGE_ID,
+						Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT, Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON,
+						Vars.VAR_RECEIVED_ON, Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
+						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO, Vars.VAR_MESSAGE_ID, Vocabulary.FROM,
+						Vars.VAR_FROM, Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC, Vars.VAR_MESSAGE_ID,
+						Vocabulary.HAS_BCC, Vars.VAR_BCC);
+
+		Model mMH = QueryExecutionFactory.create(constructQueryMH, context.getModel()).execConstruct();
+		TransactionRecorder recMH = new TransactionRecorder();
+		recMH.addedStatements(mMH);
+		context.end();
+
+		notifyListeners(recMH);
+
 	}
 
 	public void close()

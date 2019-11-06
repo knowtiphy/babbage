@@ -5,6 +5,9 @@
  */
 package org.knowtiphy.babbage.storage;
 
+import org.apache.jena.assembler.Mode;
+import org.apache.jena.rdf.model.Model;
+
 import javax.mail.Folder;
 import javax.mail.Message;
 import javax.mail.MessagingException;
@@ -27,6 +30,8 @@ public interface IAdapter
 	String encode(Folder folder) throws MessagingException;
 
 	void close();
+
+	void addListener(Model accountTriples);
 
 	Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag);
 
