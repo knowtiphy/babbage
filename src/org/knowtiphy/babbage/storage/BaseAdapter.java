@@ -14,73 +14,70 @@ import java.util.concurrent.FutureTask;
 
 public abstract class BaseAdapter implements IAdapter
 {
-	public void close() throws UnsupportedOperationException
+	public void close()
 	{
-
+		throw new UnsupportedOperationException();
 	}
 
-	public void addListener(Model accountTriples) throws UnsupportedOperationException
+	public void addListener(Model accountTriples)
 	{
+		throw new UnsupportedOperationException();
 	}
 
-	public String encode(Folder folder) throws MessagingException, UnsupportedOperationException
+	public String encode(Folder folder) throws MessagingException
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
-			throws UnsupportedOperationException
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public Future<?> markMessagesAsRead(Collection<String> messageIds, String folderId, boolean flag)
-			throws UnsupportedOperationException
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag)
-			throws UnsupportedOperationException
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-			boolean delete) throws UnsupportedOperationException
+			boolean delete)
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
 	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-			boolean delete) throws UnsupportedOperationException
+			boolean delete)
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
-	public Future<?> deleteMessages(String folderId, Collection<String> messageIds) throws UnsupportedOperationException
+	public Future<?> deleteMessages(String folderId, Collection<String> messageIds)
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
-	public Future<?> appendMessages(String folderId, Message[] messages) throws UnsupportedOperationException
+	public Future<?> appendMessages(String folderId, Message[] messages)
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
-	public Message createMessage(MessageModel model)
-			throws MessagingException, IOException, UnsupportedOperationException
+	public Message createMessage(MessageModel model) throws MessagingException, IOException
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
-	public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	public FutureTask<?> getSynchTask()
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 
-	public Future<?> ensureMessageContentLoaded(String messageId, String folderId) throws UnsupportedOperationException
+	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
 	{
-		return null;
+		throw new UnsupportedOperationException();
 	}
 }

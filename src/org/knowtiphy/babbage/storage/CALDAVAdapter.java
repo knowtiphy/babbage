@@ -5,8 +5,11 @@ import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.utils.JenaUtils;
 
 import javax.mail.Folder;
-import javax.mail.MessagingException;
+import javax.mail.Message;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class CALDAVAdapter extends BaseAdapter
@@ -19,6 +22,10 @@ public class CALDAVAdapter extends BaseAdapter
 	private final String emailAddress;
 	private final String password;
 	private final String id;
+
+	//	RDF ids to Java folder and message objects
+	private final Map<String, Folder> m_Calendar = new HashMap<>(100);
+	private final Map<Folder, Map<String, Message>> m_PerCalendarEvent = new HashMap<>(1000);
 
 	private final BlockingQueue<Runnable> workQ;
 	//private final BlockingQueue<Runnable> contentQ;
@@ -71,9 +78,37 @@ public class CALDAVAdapter extends BaseAdapter
 
 	}
 
+	private void notifyListeners(TransactionRecorder recorder)
+	{
+		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
+	}
+
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
-		return super.getSynchTask();
+		return new FutureTask<Void>(() ->
+		{
+			//startFolderWatchers();
+			// == To start a watcher that polls calendar c tag changes
+
+			TransactionRecorder recorder = new TransactionRecorder();
+			//synchronizeFolders(recorder);
+			// == To beginning the process of grabbing the calendars
+
+			notifyListeners(recorder);
+
+			for (Folder folder : m_Calendar.values())
+			{
+				TransactionRecorder recorder1 = new TransactionRecorder();
+				//synchMessageIdsAndHeaders(folder, recorder1);
+				// == to Synching the Event IDs?
+				notifyListeners(recorder);
+			}
+
+
+			accountLock.unlock();
+			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
+			return null;
+		});
 	}
 
 	// Factor this out to its own class eventually, since all Adapters will use
