@@ -69,6 +69,8 @@ public class LocalStorageSandBox implements IStorage
 		Model model = ModelFactory.createDefaultModel();
 		RDFDataMgr.read(model, Files.newInputStream(accountsFile), Lang.TURTLE);
 
+		System.out.println(accountsFile);
+
 		// Theoretically I want add all various subclass of accounts here
 		JenaUtils.addSubClasses(model, Vocabulary.IMAP_ACCOUNT, Vocabulary.ACCOUNT);
 		JenaUtils.addSubClasses(model, Vocabulary.CALDAV_ACCOUNT, Vocabulary.ACCOUNT);
@@ -97,9 +99,10 @@ public class LocalStorageSandBox implements IStorage
 
 			Class<IAdapter> cls = (Class<IAdapter>) m_Class.get(type.toString());
 
+			IAdapter adapter = cls.getConstructor(String.class, Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
+					.newInstance(name.toString(), messageDatabase, listenerManager, notificationQ, accountsModel);
 
-			m_adapter.put(name.toString(), cls.getConstructor(String.class, Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
-					.newInstance(name.toString(), messageDatabase, listenerManager, notificationQ, accountsModel));
+			m_adapter.put(adapter.getId(), adapter);
 
 			System.out.println("NAME :: " + name + " TYPE:: " + type);
 		}

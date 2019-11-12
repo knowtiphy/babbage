@@ -108,6 +108,8 @@ public class PinkPigMailServer
 		Files.createDirectories(dir);
 		IStorage storage = StorageFactory.getLocal(dir, OS.getAppFile(ClientStorage.class, ACCOUNTS_FILE));
 
+		System.out.println("PINK PIG MAIL SERVER");
+
 		//	add a single listener on the storage that takes changes and sends them to connected clients
 		storage.addListener(PinkPigMailServer::notifyListeners);
 

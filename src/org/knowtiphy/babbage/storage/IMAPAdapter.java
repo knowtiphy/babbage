@@ -79,11 +79,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Folder inbox;
 
 	public IMAPAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-				   BlockingDeque<Runnable> notificationQ, Model model
-				   /*String serverName, String emailAddress, String password,
-				   Set<String> trustedSenders, Set<String> trustedContentProviders*/) throws InterruptedException, MessagingException, IOException
+				   BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException, MessagingException, IOException
 	{
-		System.out.println("CALDAVAdapter INSTANTIATED");
+		System.out.println("IMAPAdapter INSTANTIATED");
 
 		this.messageDatabase = messageDatabase;
 		this.listenerManager = listenerManager;
@@ -98,6 +96,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
+
+		System.out.println("SERVER NAME :: " + serverName);
+		System.out.println("EMAIL ADDRESS :: " + emailAddress);
+		System.out.println("PASSWORD :: " + password);
 
 		this.trustedSenders = new HashSet<>(100);
 		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_SENDER)
@@ -138,6 +140,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		Session session = Session.getInstance(props, null);
 		//session.setDebug(true);
 		store = session.getStore("imaps");
+
+		System.out.println("SERVER NAME :: " + serverName);
+		System.out.println("EMAIL ADDRESS :: " + emailAddress);
+		System.out.println("PASSWORD :: " + password);
+
 		store.connect(serverName, emailAddress, password);
 		//	we can in fact have one idle manager for all accounts ..
 		ExecutorService es = Executors.newCachedThreadPool();
@@ -215,9 +222,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME),
 				serverName);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS),
-				serverName);
+				emailAddress);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD),
-				serverName);
+				password);
 		trustedSenders.forEach(x -> accountTriples
 				.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
 		trustedContentProviders.forEach(x -> accountTriples
