@@ -16,6 +16,15 @@ public interface DFetch
             + "      }";
     }
 
+    static String eventURIs(String calURI)
+    {
+        return "SELECT ?message "
+                + "WHERE {"
+                + "      ?message <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+                + "      <" + calURI + "> <" + Vocabulary.CONTAINS + "> ?message.\n"
+                + "      }";
+    }
+
     static String messageUIDsWithHeaders(String accountId, String folderId)
     {
         return "SELECT ?message\n"
