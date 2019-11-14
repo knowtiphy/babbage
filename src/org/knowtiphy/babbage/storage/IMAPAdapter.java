@@ -886,7 +886,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		// Will make this pretty later and make it into a method of its own
 		for (Folder folder : m_folder.values())
 		{
 			LOGGER.log(Level.INFO, "Starting watcher for {0}", folder.getName());
@@ -914,6 +913,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			for (Folder folder : m_folder.values())
 			{
 				String folderName = encode(folder);
+				System.out.println(folderName);
 
 				Model model = context.getModel();
 

@@ -176,11 +176,7 @@ public class LocalStorageSandBox implements IStorage
 		Model accountTriples = ModelFactory.createDefaultModel();
 		for (IAdapter adapter : m_adapter.values())
 		{
-			// TODO: Add triples to each various adapter by giving them the model, and have them pass back the model
-			//	     and then that model will notify
-
-			//		But can't I just notify the listeners inside the adapter instead?
-
+			// Add relevant triples to the model
 			adapter.addListener(accountTriples);
 		}
 

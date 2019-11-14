@@ -20,6 +20,7 @@ public interface Vocabulary
     String HAS_SERVER_NAME = TBASE + "hasServerName";
     String HAS_EMAIL_ADDRESS = TBASE + "hasEmailAddress";
     String HAS_PASSWORD = TBASE + "hasPassword";
+    String HAS_SERVER_HEADER = TBASE + "hasServerHeader";
 
     String HAS_TRUSTED_CONTENT_PROVIDER = TBASE + "hasTrustedContentProvider";
 	String HAS_TRUSTED_SENDER = TBASE + "hasTrustedSender";
@@ -61,6 +62,8 @@ public interface Vocabulary
 
     // Vocabulary for CalDav
     String CALDAV_ACCOUNT = TBASE + "CALDAVAccount";
+    String CALDAV_CALENDAR = TBASE + "CALDAVCalendar";
+    String CALDAV_EVENT = TBASE + "CALDAVEvent";
 
 
     // Vocabulary for CardDav
