@@ -18,10 +18,10 @@ public interface DFetch
 
     static String eventURIs(String calURI)
     {
-        return "SELECT ?message "
+        return "SELECT ?event "
                 + "WHERE {"
-                + "      ?message <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
-                + "      <" + calURI + "> <" + Vocabulary.CONTAINS + "> ?message.\n"
+                + "      ?event <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+                + "      <" + calURI + "> <" + Vocabulary.CONTAINS + "> ?event.\n"
                 + "      }";
     }
 

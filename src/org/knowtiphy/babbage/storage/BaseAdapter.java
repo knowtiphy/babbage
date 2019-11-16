@@ -1,5 +1,6 @@
 package org.knowtiphy.babbage.storage;
 
+import com.github.sardine.DavResource;
 import org.apache.jena.rdf.model.Model;
 
 import javax.mail.Folder;
@@ -28,6 +29,11 @@ public abstract class BaseAdapter implements IAdapter
 	{
 		throw new UnsupportedOperationException();
 	}
+
+//	public String encode(DavResource res)
+//	{
+//		throw new UnsupportedOperationException();
+//	}
 
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
 	{

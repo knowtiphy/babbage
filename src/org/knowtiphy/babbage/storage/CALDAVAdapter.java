@@ -1,9 +1,7 @@
 package org.knowtiphy.babbage.storage;
 
 import biweekly.Biweekly;
-import biweekly.ICalendar;
 import biweekly.component.VEvent;
-import biweekly.property.LastModified;
 import com.github.sardine.DavResource;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
@@ -16,19 +14,15 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.utils.JenaUtils;
 
-import javax.mail.Folder;
-import javax.mail.Message;
 import javax.mail.MessagingException;
-import javax.sound.midi.SysexMessage;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.DStore.*;
+import static org.knowtiphy.babbage.storage.DStore.P;
+import static org.knowtiphy.babbage.storage.DStore.R;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -119,14 +113,10 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE),
 				P(accountTriples, Vocabulary.CALDAV_ACCOUNT));
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME),
-				serverName);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS),
-				emailAddress);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD),
-				password);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER),
-				serverHeader);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME), serverName);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 
 	}
 
@@ -135,16 +125,21 @@ public class CALDAVAdapter extends BaseAdapter
 		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
 	}
 
-	public String encode(DavResource calendar)
+	protected String encodeCalendar(DavResource calendar)
 	{
 		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
 	}
+
+	//	protected String encodeEvent(DavResource event) throws MessagingException
+	//	{
+	//		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, getEmailAddress(),
+	//				m, event.getHref().toString());
+	//	}
 
 	public String getEmailAddress()
 	{
 		return emailAddress;
 	}
-
 
 	private void startCalendarWatchers() throws MessagingException, IOException
 	{
@@ -158,7 +153,7 @@ public class CALDAVAdapter extends BaseAdapter
 		// 1st iteration is not a calendar, just the enclosing directory
 		calDavResources.next();
 
-		while(calDavResources.hasNext())
+		while (calDavResources.hasNext())
 		{
 			DavResource calRes = calDavResources.next();
 			System.out.println(calRes.getDisplayName());
@@ -176,13 +171,13 @@ public class CALDAVAdapter extends BaseAdapter
 		WriteContext context = getWriteContext();
 		context.startTransaction(recorder);
 
-		for(DavResource calRes : m_Calendar.values())
+		for (DavResource calRes : m_Calendar.values())
 		{
-			String calName = encode(calRes);
+			String calName = encodeCalendar(calRes);
 			Model model = context.getModel();
-			StmtIterator it = model.listStatements(model.createResource(calName),
-					model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
-
+			StmtIterator it = model
+					.listStatements(model.createResource(calName), model.createProperty(Vocabulary.RDF_TYPE),
+							model.createResource(Vocabulary.CALDAV_CALENDAR));
 
 			if (it.hasNext())
 			{
@@ -202,18 +197,18 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void syncEvents(DavResource calRes, TransactionRecorder recorder) throws Exception
 	{
-		System.out.println("SYNC EVENTS CALLED");
+		System.out.println("SYNC EVENTS CALLED FOR CALENDAR :: " + calRes.getDisplayName());
 		// get the stored event URIs
-		Set<String> stored = getStoredEvents(DFetch.eventURIs(encode(calRes)));
+		Set<String> stored = getStoredEvents(DFetch.eventURIs(encodeCalendar(calRes)));
 
+		System.out.println("STORED EVENTS SIZE :: " + stored.size());
 		Iterator<DavResource> davEvents = sardine.list(serverHeader + calRes).iterator();
-		// 1st iteration might be the calendar url
-		//davEvents.next();
+		// 1st iteration might be the calendar uri, so skip
+		davEvents.next();
 
-		// Map from VEvent URI -> Etag
 		Map<String, DavResource> eventURIToRes = new HashMap<>();
 		Collection<String> addURI = new HashSet<>(1000);
-		while(davEvents.hasNext())
+		while (davEvents.hasNext())
 		{
 			DavResource event = davEvents.next();
 			eventURIToRes.put(event.getHref().toString(), event);
@@ -229,7 +224,7 @@ public class CALDAVAdapter extends BaseAdapter
 		Collection<String> removeURI = new HashSet<>(1000);
 		for (String eventUri : stored)
 		{
-			if (!m_PerCalendarEvents.get(calRes).containsKey(eventUri))
+			if (!m_PerCalendarEvents.get(calRes.getHref().toString()).containsKey(eventUri))
 			{
 				removeURI.add(eventUri);
 			}
@@ -238,22 +233,28 @@ public class CALDAVAdapter extends BaseAdapter
 		WriteContext context = getWriteContext();
 		context.startTransaction(recorder);
 
-	try
-	{
-		for (String event : removeURI)
+		System.out.println("ADD EVENT URI SIZE :: " + addURI.size());
+		System.out.println("REMOVE EVENT URI SIZE :: " + removeURI.size());
+
+		try
 		{
+			for (String event : removeURI)
+			{
+				DStore.unstoreMessage(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event);
+			}
+			for (String event : addURI)
+			{
+				// Parse out event and pass it through
+				VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents().get(0);
+				System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
+				DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event, vEvent);
+			}
 
-		}
-		for (String event : addURI)
+			context.succeed();
+		} catch (Exception ex)
 		{
-
+			context.fail(ex);
 		}
-
-		context.succeed();
-	}catch (Exception ex)
-	{
-		context.fail(ex);
-	}
 
 	}
 
@@ -264,7 +265,7 @@ public class CALDAVAdapter extends BaseAdapter
 		try
 		{
 			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("message").asResource().toString()));
+			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("event").asResource().toString()));
 		} finally
 		{
 			messageDatabase.end();
@@ -276,8 +277,7 @@ public class CALDAVAdapter extends BaseAdapter
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		System.out.println("GET SYNCH TASK CALLED");
-		return new FutureTask<Void>(() ->
-		{
+		return new FutureTask<Void>(() -> {
 			startCalendarWatchers();
 
 			System.out.println("BEFORE SYNC CALENDARS");
@@ -291,9 +291,8 @@ public class CALDAVAdapter extends BaseAdapter
 			{
 				TransactionRecorder recorder1 = new TransactionRecorder();
 				syncEvents(calendar, recorder1);
-				notifyListeners(recorder);
+				notifyListeners(recorder1);
 			}
-
 
 			accountLock.unlock();
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
@@ -315,11 +314,12 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void storeCalendar(Model model, DavResource calendar)
 	{
-		String calendarName = encode(calendar);
+		String calendarName = encodeCalendar(calendar);
 		Resource calRes = model.createResource(calendarName);
 		model.add(calRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
 		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), calRes);
-		model.add(calRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(calendar.getDisplayName()));
+		model.add(calRes, model.createProperty(Vocabulary.HAS_NAME),
+				model.createTypedLiteral(calendar.getDisplayName()));
 	}
 
 	private class Worker implements Runnable
