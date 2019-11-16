@@ -12,6 +12,7 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -81,6 +82,9 @@ public class CALDAVAdapter extends BaseAdapter
 
 		this.id = Vocabulary.E(Vocabulary.CALDAV_ACCOUNT, emailAddress);
 
+		System.out.println("CALDAV EMAIL :: " + emailAddress);
+		System.out.println("CALDAV PASSWORD :: " + password);
+
 		sardine = SardineFactory.begin(emailAddress, password);
 
 		accountLock = new Mutex();
@@ -99,7 +103,16 @@ public class CALDAVAdapter extends BaseAdapter
 
 	@Override public void close()
 	{
-
+		try
+		{
+			workQ.add(POISON_PILL);
+			doWork.join();
+			doContent.shutdown();
+			doContent.awaitTermination(10_000L, TimeUnit.SECONDS);
+		} catch (InterruptedException ex)
+		{
+			//  ignore
+		}
 	}
 
 	@Override public void addListener(Model accountTriples)
@@ -135,9 +148,12 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void startCalendarWatchers() throws MessagingException, IOException
 	{
+		System.out.println("START CALENDARS CALLED");
 		assert m_Calendar.isEmpty();
 
-		//List<DavResource> calDavResources = sardine.list(serverName);
+		List<DavResource> calDavResourcesList = sardine.list(serverName);
+
+		System.out.println("NUM OF CALENDARS :: " + calDavResourcesList.size());
 		Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
 		// 1st iteration is not a calendar, just the enclosing directory
 		calDavResources.next();
@@ -145,6 +161,7 @@ public class CALDAVAdapter extends BaseAdapter
 		while(calDavResources.hasNext())
 		{
 			DavResource calRes = calDavResources.next();
+			System.out.println(calRes.getDisplayName());
 			// This is map from Calendar URI -> DavResource for a Calendar
 			m_Calendar.put(calRes.getHref().toString(), calRes);
 
@@ -166,6 +183,7 @@ public class CALDAVAdapter extends BaseAdapter
 			StmtIterator it = model.listStatements(model.createResource(calName),
 					model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
 
+
 			if (it.hasNext())
 			{
 				assert JenaUtils.checkUnique(it);
@@ -175,6 +193,7 @@ public class CALDAVAdapter extends BaseAdapter
 			{
 				System.err.println("ADDING CALENDAR " + calRes.getDisplayName());
 				// Define storing methods
+				storeCalendar(model, calRes);
 			}
 		}
 
@@ -183,8 +202,9 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void syncEvents(DavResource calRes, TransactionRecorder recorder) throws Exception
 	{
+		System.out.println("SYNC EVENTS CALLED");
 		// get the stored event URIs
-		Set<String> stored = getStoredEvents(DFetch.messageUIDs(encode(calRes)));
+		Set<String> stored = getStoredEvents(DFetch.eventURIs(encode(calRes)));
 
 		Iterator<DavResource> davEvents = sardine.list(serverHeader + calRes).iterator();
 		// 1st iteration might be the calendar url
@@ -255,12 +275,15 @@ public class CALDAVAdapter extends BaseAdapter
 
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
+		System.out.println("GET SYNCH TASK CALLED");
 		return new FutureTask<Void>(() ->
 		{
 			startCalendarWatchers();
 
+			System.out.println("BEFORE SYNC CALENDARS");
 			TransactionRecorder recorder = new TransactionRecorder();
 			syncCalendars(recorder);
+			System.out.println("AFTER SYNC CALENDARS");
 
 			notifyListeners(recorder);
 
@@ -288,6 +311,15 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		accountLock.lock();
 		accountLock.unlock();
+	}
+
+	private void storeCalendar(Model model, DavResource calendar)
+	{
+		String calendarName = encode(calendar);
+		Resource calRes = model.createResource(calendarName);
+		model.add(calRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
+		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), calRes);
+		model.add(calRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(calendar.getDisplayName()));
 	}
 
 	private class Worker implements Runnable

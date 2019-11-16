@@ -97,10 +97,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
 
-		System.out.println("SERVER NAME :: " + serverName);
-		System.out.println("EMAIL ADDRESS :: " + emailAddress);
-		System.out.println("PASSWORD :: " + password);
-
 		this.trustedSenders = new HashSet<>(100);
 		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_SENDER)
 				.forEachRemaining(x -> trustedSenders.add(x.toString()));
@@ -140,10 +136,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		Session session = Session.getInstance(props, null);
 		//session.setDebug(true);
 		store = session.getStore("imaps");
-
-		System.out.println("SERVER NAME :: " + serverName);
-		System.out.println("EMAIL ADDRESS :: " + emailAddress);
-		System.out.println("PASSWORD :: " + password);
 
 		store.connect(serverName, emailAddress, password);
 		//	we can in fact have one idle manager for all accounts ..
