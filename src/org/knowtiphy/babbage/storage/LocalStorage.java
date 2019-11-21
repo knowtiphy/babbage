@@ -41,9 +41,10 @@ public class LocalStorage implements IStorage
 	private final Map<String, IMAPAdapter> m_account;
 	private final BlockingDeque<Runnable> notificationQ;
 
-	public LocalStorage(Path databaseLocation, Path accountsFile) throws IOException, MessagingException, InterruptedException
+	public LocalStorage(Path databaseLocation, Path accountsFile) throws IOException
 	{
 		//	data structures shared between accounts
+		System.out.println("XXXXXXXXXXXXXXXXXXXXXXXXXXX");
 
 		messageDatabase = TDB2Factory.connectDataset(databaseLocation.toString());
 		listenerManager = new ListenerManager();
@@ -53,25 +54,28 @@ public class LocalStorage implements IStorage
 
 		Model model = ModelFactory.createDefaultModel();
 		RDFDataMgr.read(model, Files.newInputStream(accountsFile), Lang.TURTLE);
+		System.out.println(accountsFile);
+		JenaUtils.printModel(model, "AAA");
 
 		JenaUtils.addSubClasses(model, Vocabulary.IMAP_ACCOUNT, Vocabulary.ACCOUNT);
 		// Getting connection error because it's trying to use Account to connect to the servername
-		JenaUtils.addSubClasses(model, Vocabulary.CALDAV_ACCOUNT, Vocabulary.ACCOUNT);
-		JenaUtils.addSubClasses(model, Vocabulary.CARDDAV_ACCOUNT, Vocabulary.ACCOUNT);
+		//JenaUtils.addSubClasses(model, Vocabulary.CALDAV_ACCOUNT, Vocabulary.ACCOUNT);
+		//JenaUtils.addSubClasses(model, Vocabulary.CARDDAV_ACCOUNT, Vocabulary.ACCOUNT);
 
 		Model accountsModel = ModelFactory.createRDFSModel(model);
-
 		m_account = new HashMap<>(100);
 
 		ResIterator it = JenaUtils.listSubjectsWithProperty(accountsModel, Vocabulary.RDF_TYPE, Vocabulary.ACCOUNT);
 
-		ResIterator it1 = JenaUtils.listSubjectsWithProperty(accountsModel, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_ACCOUNT);
-		System.out.println(it1.nextResource().toString());
+		//ResIterator it1 = JenaUtils.listSubjectsWithProperty(accountsModel, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_ACCOUNT);
+		//System.out.println(it1.nextResource().toString());
+
+		System.out.println(it.hasNext());
 
 		while (it.hasNext())
 		{
 			String name = it.next().asResource().toString();
-
+			System.out.println(name);
 			assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 			assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 			assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_PASSWORD));
@@ -154,7 +158,7 @@ public class LocalStorage implements IStorage
 	}
 
 	@Override
-	public Map<String, FutureTask<?>> addListener(IStorageListener listener) throws StorageException, InterruptedException
+	public Map<String, FutureTask<?>> addListener(IStorageListener listener)
 	{
 		listenerManager.addListener(listener);
 

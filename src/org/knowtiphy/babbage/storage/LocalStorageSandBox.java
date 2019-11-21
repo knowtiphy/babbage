@@ -55,7 +55,7 @@ public class LocalStorageSandBox implements IStorage
 	private final BlockingDeque<Runnable> notificationQ;
 
 	public LocalStorageSandBox(Path databaseLocation, Path accountsFile)
-			throws IOException, MessagingException, InterruptedException, NoSuchMethodException, IllegalAccessException,
+			throws IOException, NoSuchMethodException, IllegalAccessException,
 			InvocationTargetException, InstantiationException
 	{
 		//	data structures shared between accounts
@@ -68,8 +68,6 @@ public class LocalStorageSandBox implements IStorage
 
 		Model model = ModelFactory.createDefaultModel();
 		RDFDataMgr.read(model, Files.newInputStream(accountsFile), Lang.TURTLE);
-
-		System.out.println(accountsFile);
 
 		// Theoretically I want add all various subclass of accounts here
 		JenaUtils.addSubClasses(model, Vocabulary.IMAP_ACCOUNT, Vocabulary.ACCOUNT);
@@ -169,7 +167,6 @@ public class LocalStorageSandBox implements IStorage
 
 	// Will call an addListener method in each adapter
 	@Override public Map<String, FutureTask<?>> addListener(IStorageListener listener)
-			throws StorageException, InterruptedException
 	{
 		listenerManager.addListener(listener);
 

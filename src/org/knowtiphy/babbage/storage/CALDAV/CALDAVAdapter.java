@@ -2,6 +2,8 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.Biweekly;
 import biweekly.component.VEvent;
+import biweekly.property.DateEnd;
+import biweekly.property.DateStart;
 import com.github.sardine.DavResource;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
@@ -96,6 +98,22 @@ public class CALDAVAdapter extends BaseAdapter
 		doContent = Executors.newCachedThreadPool();
 	}
 
+	public static Calendar fromDate(DateStart date)
+	{
+		Date d = new Date(date.getValue().getTime());
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(d);
+		return cal;
+	}
+
+	public static Calendar fromDate(DateEnd date)
+	{
+		Date d = new Date(date.getValue().getTime());
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(d);
+		return cal;
+	}
+
 	@Override public String getId()
 	{
 		return id;
@@ -147,7 +165,7 @@ public class CALDAVAdapter extends BaseAdapter
 		return emailAddress;
 	}
 
-	private void startCalendarWatchers() throws MessagingException, IOException
+	private void startCalendarWatchers() throws IOException
 	{
 		System.out.println("START CALENDARS CALLED");
 		assert m_Calendar.isEmpty();

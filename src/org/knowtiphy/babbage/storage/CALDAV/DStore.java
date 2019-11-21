@@ -1,20 +1,11 @@
 package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.component.VEvent;
-import org.apache.commons.io.IOUtils;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.rdf.model.*;
-import org.knowtiphy.babbage.storage.IAdapter;
-import org.knowtiphy.babbage.storage.IMAP.IMAPAdapter;
-import org.knowtiphy.babbage.storage.IMAP.MessageContent;
 import org.knowtiphy.babbage.storage.Vocabulary;
-import org.knowtiphy.utils.JenaUtils;
 
-import javax.mail.*;
-import java.io.IOException;
-import java.util.Map;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 
 /**
  * @author graham
@@ -51,8 +42,8 @@ public interface DStore
 		model.add(R(model, calendarName), P(model, Vocabulary.CONTAINS), eventRes);
 
 		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary(), x -> L(model, x));
-		attr(model, eventRes, Vocabulary.HAS_DATE_START, event.getDateStart(), x -> L(model, new XSDDateTime(JenaUtils.fromDate(x))));
-		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd(), x -> L(model, new XSDDateTime(JenaUtils.fromDate(x))));
+		attr(model, eventRes, Vocabulary.HAS_DATE_START, event.getDateStart(), x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
+		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd(), x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
 		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION, event.getDescription(), x -> L(model, x));
 		attr(model, eventRes, Vocabulary.HAS_PRIORITY, event.getPriority(), x -> L(model, x));
 	}
