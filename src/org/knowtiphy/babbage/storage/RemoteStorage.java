@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.knowtiphy.babbage.messages.*;
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.MessagingException;
 import java.io.DataOutputStream;

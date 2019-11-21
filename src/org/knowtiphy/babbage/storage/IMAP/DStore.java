@@ -1,9 +1,11 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.IMAP;
 
 import biweekly.component.VEvent;
 import org.apache.commons.io.IOUtils;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.rdf.model.*;
+import org.knowtiphy.babbage.storage.IAdapter;
+import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 
 import javax.mail.*;

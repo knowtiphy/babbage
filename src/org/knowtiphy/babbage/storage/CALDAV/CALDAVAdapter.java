@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.Biweekly;
 import biweekly.component.VEvent;
@@ -12,6 +12,9 @@ import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.knowtiphy.babbage.storage.*;
+import org.knowtiphy.babbage.storage.IMAP.DFetch;
+import org.knowtiphy.babbage.storage.IMAP.DStore;
 import org.knowtiphy.utils.JenaUtils;
 
 import javax.mail.MessagingException;
@@ -21,12 +24,14 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.DStore.P;
-import static org.knowtiphy.babbage.storage.DStore.R;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
 
 public class CALDAVAdapter extends BaseAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(CALDAVAdapter.class.getName());
+	private static final long FREQUENCY = 60_000L;
+
 	private static final Runnable POISON_PILL = () -> {
 	};
 
@@ -52,6 +57,7 @@ public class CALDAVAdapter extends BaseAdapter
 	private final ListenerManager listenerManager;
 	private final BlockingDeque<Runnable> notificationQ;
 	private final Model model;
+	private Thread synchThread;
 
 	public CALDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
 			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
@@ -159,9 +165,6 @@ public class CALDAVAdapter extends BaseAdapter
 			System.out.println(calRes.getDisplayName());
 			// This is map from Calendar URI -> DavResource for a Calendar
 			m_Calendar.put(calRes.getHref().toString(), calRes);
-
-			// Start a thread that polls this calendar for CTAG Changes, and starts the rest of the
-			// continuous syncing process
 		}
 
 	}
@@ -274,6 +277,47 @@ public class CALDAVAdapter extends BaseAdapter
 		return stored;
 	}
 
+	private void startSynchThread()
+	{
+		//
+		synchThread = new Thread(() -> {
+			try
+			{
+				Thread.sleep(FREQUENCY);
+				ensureMapsLoaded();
+
+				// See if any Calendars have been Deleted or Added as well
+				List<DavResource> calDavResourcesList = sardine.list(serverName);
+				Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
+				// 1st iteration is not a calendar, just the enclosing directory
+				calDavResources.next();
+
+				for(String calendar : m_Calendar.keySet())
+				{
+
+				}
+
+				// Poll calendars check if CTAG has changed
+					// If it has, see if the name or anything else has changed
+						// Remove old Triples
+						// Add updated Triples
+					// Now go through if any URIs have been deleted
+						// Remove Triples for that URI
+					// Now got through if any URIs have been added
+						// Add Triples for that URI
+					// Now go through checking if any ETags have changed
+						// IF they have, chuck out the old one, and repopulate with this one
+							// Remove old Triples
+							// Add new Triples
+
+
+			} catch (InterruptedException | IOException e)
+			{
+				e.printStackTrace();
+			}
+		});
+	}
+
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		System.out.println("GET SYNCH TASK CALLED");
@@ -293,8 +337,9 @@ public class CALDAVAdapter extends BaseAdapter
 				syncEvents(calendar, recorder1);
 				notifyListeners(recorder1);
 			}
-
 			accountLock.unlock();
+
+			startSynchThread();
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
 			return null;
 		});

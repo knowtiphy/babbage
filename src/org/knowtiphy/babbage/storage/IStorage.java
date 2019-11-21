@@ -1,5 +1,7 @@
 package org.knowtiphy.babbage.storage;
 
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
+
 import javax.mail.MessagingException;
 import java.util.Collection;
 import java.util.Map;

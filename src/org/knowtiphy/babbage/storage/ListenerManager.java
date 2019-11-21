@@ -21,7 +21,7 @@ public class ListenerManager
 		listeners.add(listener);
 	}
 
-	protected void notifyChangeListeners(TransactionRecorder recorder)
+	public void notifyChangeListeners(TransactionRecorder recorder)
 	{
 		Model added = ModelFactory.createDefaultModel();
 		added.add(recorder.getAdded());

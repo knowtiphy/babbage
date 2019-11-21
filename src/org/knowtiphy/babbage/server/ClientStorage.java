@@ -15,6 +15,8 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.babbage.storage.IStorage;
 import org.knowtiphy.babbage.storage.StorageException;
 

@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.IMAP;
 
 import org.knowtiphy.utils.ThrowingConsumer;
 

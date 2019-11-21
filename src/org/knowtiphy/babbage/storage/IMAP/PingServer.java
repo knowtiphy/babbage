@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.IMAP;
 
 import javax.mail.Folder;
 import javax.mail.MessagingException;
@@ -11,7 +11,7 @@ public class PingServer implements Runnable
 {
 	private static final Logger logger = Logger.getLogger(PingServer.class.getName());
 
-	private final IMAPAdapter IMAPAdapter;
+	private final org.knowtiphy.babbage.storage.IMAP.IMAPAdapter IMAPAdapter;
 	private final Folder folder;
 	private final long frequency;
 

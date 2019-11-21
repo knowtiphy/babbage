@@ -1,7 +1,7 @@
 package org.knowtiphy.babbage.storage;
 
-import com.github.sardine.DavResource;
 import org.apache.jena.rdf.model.Model;
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.Folder;
 import javax.mail.Message;

@@ -1,7 +1,7 @@
 package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
-import org.knowtiphy.babbage.storage.MessageModel;
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.babbage.storage.StorageException;
 
 import java.nio.file.Path;

@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.IMAP;
 
 import java.nio.file.Path;
 import java.util.List;

@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.IMAP;
 
 import com.sun.mail.imap.IMAPFolder;
 import com.sun.mail.imap.IdleManager;
@@ -10,6 +10,7 @@ import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.knowtiphy.babbage.storage.*;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -32,8 +33,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-import static org.knowtiphy.babbage.storage.DStore.P;
-import static org.knowtiphy.babbage.storage.DStore.R;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
 
 /**
  * @author graham
@@ -196,7 +197,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				TransactionRecorder recorder1 = new TransactionRecorder();
 				synchMessageIdsAndHeaders(folder, recorder1);
-				notifyListeners(recorder);
+				notifyListeners(recorder1);
 			}
 
 			startPingThread();

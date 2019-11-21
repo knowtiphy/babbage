@@ -6,6 +6,8 @@ import org.apache.jena.rdf.model.*;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.tdb2.TDB2Factory;
+import org.knowtiphy.babbage.storage.IMAP.IMAPAdapter;
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.JenaUtils;
 
 import javax.mail.Message;
