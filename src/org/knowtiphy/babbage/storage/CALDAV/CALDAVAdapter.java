@@ -143,6 +143,10 @@ public class CALDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 
+		// Notify the client of the account triples
+		TransactionRecorder accountRec = new TransactionRecorder();
+		accountRec.addedStatements(accountTriples);
+		notifyListeners(accountRec);
 	}
 
 	private void notifyListeners(TransactionRecorder recorder)
@@ -150,15 +154,15 @@ public class CALDAVAdapter extends BaseAdapter
 		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
 	}
 
-	protected String encodeCalendar(DavResource calendar)
-	{
-		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
-	}
-
-	protected String encodeCalendar(String calendar)
-	{
-		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar);
-	}
+//	protected String encodeCalendar(DavResource calendar)
+//	{
+//		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
+//	}
+//
+//	protected String encodeCalendar(String calendar)
+//	{
+//		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar);
+//	}
 
 
 	//	protected String encodeEvent(DavResource event) throws MessagingException
@@ -209,7 +213,7 @@ public class CALDAVAdapter extends BaseAdapter
 		Collection<DavResource> addCalendar = new HashSet<>(10);
 		for (DavResource calRes : m_Calendar.values())
 		{
-			if (!stored.contains(encodeCalendar(calRes.getHref().toString())))
+			if (!stored.contains(calRes.getHref().toString()))
 			{
 				addCalendar.add(calRes);
 			}
@@ -241,7 +245,7 @@ public class CALDAVAdapter extends BaseAdapter
 			for (String calURI : removeCalendar)
 			{
 				System.err.println("REMOVING CALENDAR " + calURI);
-				//DStore.unstoreRes(messageDatabase.getDefaultModel(), getId(), encodeCalendar(calURI));
+				DStore.unstoreRes(messageDatabase.getDefaultModel(), getId(), calURI);
 			}
 			for (DavResource calRes : addCalendar)
 			{
@@ -261,7 +265,7 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		System.out.println("SYNC EVENTS CALLED FOR CALENDAR :: " + calRes.getDisplayName());
 		// get the stored event URIs
-		Set<String> stored = getStored(DFetch.eventURIs(encodeCalendar(calRes)), EVENTRES);
+		Set<String> stored = getStored(DFetch.eventURIs(calRes.getHref().toString()), EVENTRES);
 
 		System.out.println("STORED EVENTS SIZE :: " + stored.size());
 		Iterator<DavResource> davEvents = sardine.list(serverHeader + calRes).iterator();
@@ -307,14 +311,14 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			for (String event : removeURI)
 			{
-				DStore.unstoreRes(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event);
+				DStore.unstoreRes(messageDatabase.getDefaultModel(), calRes.getHref().toString(), event);
 			}
 			for (String event : addURI)
 			{
 				// Parse out event and pass it through
 				VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents().get(0);
 				System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
-				DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event, vEvent);
+				DStore.event(messageDatabase.getDefaultModel(), calRes.getHref().toString(), event, vEvent);
 			}
 
 			context.succeed();
@@ -425,7 +429,8 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void storeCalendar(Model model, DavResource calendar)
 	{
-		String calendarName = encodeCalendar(calendar);
+		//String calendarName = encodeCalendar(calendar);
+		String calendarName = calendar.getHref().toString();
 		Resource calRes = model.createResource(calendarName);
 		model.add(calRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
 		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), calRes);
