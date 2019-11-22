@@ -35,6 +35,7 @@ public interface DStore
 		}
 	}
 
+
 	static void event(Model model, String calendarName, String eventName, VEvent event)
 	{
 		Resource eventRes = R(model, eventName);
@@ -49,12 +50,12 @@ public interface DStore
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
-	static void unstoreMessage(Model model, String folderName, String messageName)
+	static void unstoreRes(Model model, String containerName, String resName)
 	{
 		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
-		Resource messageRes = R(model, messageName);
+		Resource res = R(model, resName);
 		//  TODO -- delete everything reachable from messageName
-		StmtIterator it = model.listStatements(messageRes, null, (RDFNode) null);
+		StmtIterator it = model.listStatements(res, null, (RDFNode) null);
 		while (it.hasNext())
 		{
 			Statement stmt = it.next();
@@ -63,8 +64,8 @@ public interface DStore
 				model.remove(model.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
 		}
-		model.remove(model.listStatements(messageRes, null, (RDFNode) null));
-		model.remove(model.listStatements(R(model, folderName), P(model, Vocabulary.CONTAINS), messageRes));
+		model.remove(model.listStatements(res, null, (RDFNode) null));
+		model.remove(model.listStatements(R(model, containerName), P(model, Vocabulary.CONTAINS), res));
 	}
 
 }

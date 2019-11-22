@@ -8,13 +8,25 @@ import org.knowtiphy.babbage.storage.Vocabulary;
  */
 public interface DFetch
 {
+    String EVENTRES = "event";
+    String CALRES = "calendar";
+
     static String eventURIs(String calURI)
     {
-        return "SELECT ?event "
+        return "SELECT ?" + EVENTRES + " "
                 + "WHERE {"
-                + "      ?event <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+                + "      ?" + EVENTRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
                 + "      <" + calURI + "> <" + Vocabulary.CONTAINS + "> ?event.\n"
                 + "      }";
+    }
+
+    static String calendarURIs(String adapterURI)
+    {
+        return "SELECT ?" + CALRES + " "
+                + "WHERE {"
+                + "      ?" + CALRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
+                + "          <" + adapterURI + "> <" + Vocabulary.CONTAINS + "> ?calendar.\n"
+                + "          }";
     }
 
 }

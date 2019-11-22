@@ -15,19 +15,20 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.*;
-import org.knowtiphy.babbage.storage.IMAP.DFetch;
-import org.knowtiphy.babbage.storage.IMAP.DStore;
+import org.knowtiphy.babbage.storage.CALDAV.DFetch;
+import org.knowtiphy.babbage.storage.CALDAV.DStore;
 import org.knowtiphy.utils.JenaUtils;
 
-import javax.mail.MessagingException;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.EVENTRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.P;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -170,25 +171,35 @@ public class CALDAVAdapter extends BaseAdapter
 		System.out.println("START CALENDARS CALLED");
 		assert m_Calendar.isEmpty();
 
-		List<DavResource> calDavResourcesList = sardine.list(serverName);
-
-		System.out.println("NUM OF CALENDARS :: " + calDavResourcesList.size());
-		Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
-		// 1st iteration is not a calendar, just the enclosing directory
-		calDavResources.next();
-
-		while (calDavResources.hasNext())
+		try
 		{
-			DavResource calRes = calDavResources.next();
-			System.out.println(calRes.getDisplayName());
-			// This is map from Calendar URI -> DavResource for a Calendar
-			m_Calendar.put(calRes.getHref().toString(), calRes);
+			List<DavResource> calDavResourcesList = sardine.list(serverName);
+
+			System.out.println("NUM OF CALENDARS :: " + calDavResourcesList.size());
+			Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
+			// 1st iteration is not a calendar, just the enclosing directory
+			calDavResources.next();
+
+			while (calDavResources.hasNext())
+			{
+				DavResource calRes = calDavResources.next();
+				System.out.println(calRes.getDisplayName());
+				// This is map from Calendar URI -> DavResource for a Calendar
+				m_Calendar.put(calRes.getHref().toString(), calRes);
+			}
+		}
+		catch (Throwable ex)
+		{
+			ex.printStackTrace();
 		}
 
 	}
 
 	private void syncCalendars(TransactionRecorder recorder)
 	{
+		Set<String> stored = getStored(DFetch.calendarURIs(getId()), CALRES);
+		System.out.println("STORED CALENDARS :: " + stored.size());
+
 		WriteContext context = getWriteContext();
 		context.startTransaction(recorder);
 
@@ -220,7 +231,7 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		System.out.println("SYNC EVENTS CALLED FOR CALENDAR :: " + calRes.getDisplayName());
 		// get the stored event URIs
-		Set<String> stored = getStoredEvents(DFetch.eventURIs(encodeCalendar(calRes)));
+		Set<String> stored = getStored(DFetch.eventURIs(encodeCalendar(calRes)), EVENTRES);
 
 		System.out.println("STORED EVENTS SIZE :: " + stored.size());
 		Iterator<DavResource> davEvents = sardine.list(serverHeader + calRes).iterator();
@@ -261,7 +272,7 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			for (String event : removeURI)
 			{
-				DStore.unstoreMessage(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event);
+				DStore.unstoreRes(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event);
 			}
 			for (String event : addURI)
 			{
@@ -279,14 +290,14 @@ public class CALDAVAdapter extends BaseAdapter
 
 	}
 
-	private Set<String> getStoredEvents(String query)
+	private Set<String> getStored(String query, String resType)
 	{
 		Set<String> stored = new HashSet<>(1000);
 		messageDatabase.begin(ReadWrite.READ);
 		try
 		{
 			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("event").asResource().toString()));
+			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get(resType).asResource().toString()));
 		} finally
 		{
 			messageDatabase.end();
@@ -309,6 +320,8 @@ public class CALDAVAdapter extends BaseAdapter
 				Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
 				// 1st iteration is not a calendar, just the enclosing directory
 				calDavResources.next();
+
+				// Need to query database for existing calendars
 
 				for(String calendar : m_Calendar.keySet())
 				{
