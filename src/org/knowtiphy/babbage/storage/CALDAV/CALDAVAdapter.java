@@ -2,8 +2,7 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.Biweekly;
 import biweekly.component.VEvent;
-import biweekly.property.DateEnd;
-import biweekly.property.DateStart;
+import biweekly.util.ICalDate;
 import com.github.sardine.DavResource;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
@@ -13,15 +12,34 @@ import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdf.model.StmtIterator;
-import org.knowtiphy.babbage.storage.*;
-import org.knowtiphy.babbage.storage.CALDAV.DFetch;
-import org.knowtiphy.babbage.storage.CALDAV.DStore;
+import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.IReadContext;
+import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.ReadContext;
+import org.knowtiphy.babbage.storage.TransactionRecorder;
+import org.knowtiphy.babbage.storage.Vars;
+import org.knowtiphy.babbage.storage.Vocabulary;
+import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.JenaUtils;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Calendar;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -99,17 +117,9 @@ public class CALDAVAdapter extends BaseAdapter
 		doContent = Executors.newCachedThreadPool();
 	}
 
-	public static Calendar fromDate(DateStart date)
+	public static Calendar fromDate(ICalDate date)
 	{
-		Date d = new Date(date.getValue().getTime());
-		Calendar cal = Calendar.getInstance();
-		cal.setTime(d);
-		return cal;
-	}
-
-	public static Calendar fromDate(DateEnd date)
-	{
-		Date d = new Date(date.getValue().getTime());
+		Date d = new Date(date.getTime());
 		Calendar cal = Calendar.getInstance();
 		cal.setTime(d);
 		return cal;
@@ -147,6 +157,77 @@ public class CALDAVAdapter extends BaseAdapter
 		TransactionRecorder accountRec = new TransactionRecorder();
 		accountRec.addedStatements(accountTriples);
 		notifyListeners(accountRec);
+
+		IReadContext context = getReadContext();
+		context.start();
+
+		String construtCalendarDetails = String
+				.format("      CONSTRUCT {   ?%s <%s> <%s> . "  +
+								 			"?%s <%s> ?%s .  "  +
+								            "?%s <%s> ?%s}\n "  +
+								"WHERE {     ?%s <%s> <%s> . "  +
+								            "?%s <%s> ?%s .  "  +
+								            "?%s <%s> ?%s .  "  +
+								     " }",
+						// START OF CONSTRUCT
+						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
+						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME,
+						// START OF WHERE
+						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
+						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME);
+
+		Model mCalendarDetails = QueryExecutionFactory.create(construtCalendarDetails, context.getModel()).execConstruct();
+
+		JenaUtils.printModel(mCalendarDetails, "CALENDARS");
+
+		TransactionRecorder rec1 = new TransactionRecorder();
+		rec1.addedStatements(mCalendarDetails);
+		notifyListeners(rec1);
+
+		String constructEventDetails = String
+				.format("      CONSTRUCT {   ?%s <%s> <%s> . "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s}\n   " +
+
+								"WHERE {     ?%s <%s> <%s> .  "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s .   "  +
+											"?%s <%s> ?%s .   "  +
+								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
+								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
+								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
+									" }",
+						// START OF CONSTRUCT
+						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
+						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
+						// START OF WHERE
+						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
+						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY);
+
+		Model mEventDetails = QueryExecutionFactory.create(constructEventDetails, context.getModel()).execConstruct();
+		JenaUtils.printModel(mEventDetails, "EVENTS");
+
+		TransactionRecorder rec2 = new TransactionRecorder();
+		rec2.addedStatements(mEventDetails);
+		context.end();
+
+		notifyListeners(rec2);
 	}
 
 	private void notifyListeners(TransactionRecorder recorder)
@@ -334,7 +415,14 @@ public class CALDAVAdapter extends BaseAdapter
 				VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents().get(0);
 				System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
 				System.err.println("FOR CALENDER URI :: " + encodeCalendar(calRes));
-				DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), encodeEvent(event), vEvent);
+				try
+				{
+					DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), encodeEvent(event), vEvent);
+				}
+				catch (Throwable ex)
+				{
+					ex.printStackTrace();
+				}
 			}
 
 			context.succeed();
@@ -434,6 +522,11 @@ public class CALDAVAdapter extends BaseAdapter
 	private WriteContext getWriteContext()
 	{
 		return new WriteContext(messageDatabase);
+	}
+
+	private ReadContext getReadContext()
+	{
+		return new ReadContext(messageDatabase);
 	}
 
 	// Factor this out to its own class eventually, since all Adapters will use

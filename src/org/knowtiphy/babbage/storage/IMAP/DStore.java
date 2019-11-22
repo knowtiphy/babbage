@@ -1,15 +1,25 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
-import biweekly.component.VEvent;
 import org.apache.commons.io.IOUtils;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
-import org.apache.jena.rdf.model.*;
-import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
+import org.apache.jena.rdf.model.Literal;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelCon;
+import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 
-import javax.mail.*;
+import javax.mail.Address;
+import javax.mail.Flags;
+import javax.mail.Folder;
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Part;
 import java.io.IOException;
 import java.util.Map;
 import java.util.function.Function;
@@ -117,20 +127,6 @@ public interface DStore
 		Resource messageRes = R(model, messageName);
 		model.add(messageRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_MESSAGE));
 		model.add(R(model, folderName), P(model, Vocabulary.CONTAINS), messageRes);
-	}
-
-	static void event(Model model, String calendarName, String eventName, VEvent event)
-	{
-		Resource eventRes = R(model, eventName);
-		model.add(eventRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_EVENT));
-		model.add(R(model, calendarName), P(model, Vocabulary.CONTAINS), eventRes);
-
-		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary(), x -> L(model, x));
-		attr(model, eventRes, Vocabulary.HAS_DATE_START, event.getDateStart(), x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
-		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd(), x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
-		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION, event.getDescription(), x -> L(model, x));
-		attr(model, eventRes, Vocabulary.HAS_PRIORITY, event.getPriority(), x -> L(model, x));
-
 	}
 
 //    static void outGoingMessageId(Model model, String accountId, String messageId)
