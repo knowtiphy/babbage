@@ -143,6 +143,10 @@ public class CALDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 
+		// Notify the client of the account triples
+		TransactionRecorder accountRec = new TransactionRecorder();
+		accountRec.addedStatements(accountTriples);
+		notifyListeners(accountRec);
 	}
 
 	private void notifyListeners(TransactionRecorder recorder)
@@ -150,10 +154,16 @@ public class CALDAVAdapter extends BaseAdapter
 		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
 	}
 
-	protected String encodeCalendar(DavResource calendar)
-	{
-		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
-	}
+//	protected String encodeCalendar(DavResource calendar)
+//	{
+//		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
+//	}
+//
+//	protected String encodeCalendar(String calendar)
+//	{
+//		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar);
+//	}
+
 
 	//	protected String encodeEvent(DavResource event) throws MessagingException
 	//	{
@@ -175,7 +185,7 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			List<DavResource> calDavResourcesList = sardine.list(serverName);
 
-			System.out.println("NUM OF CALENDARS :: " + calDavResourcesList.size());
+			System.out.println("NUM OF CALENDARS :: " + (calDavResourcesList.size() - 1));
 			Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
 			// 1st iteration is not a calendar, just the enclosing directory
 			calDavResources.next();
@@ -195,7 +205,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 	}
 
-	private void syncCalendars(TransactionRecorder recorder)
+	private void syncCalendars(TransactionRecorder recorder) throws Exception
 	{
 		Set<String> stored = getStored(DFetch.calendarURIs(getId()), CALRES);
 		System.out.println("STORED CALENDARS :: " + stored.size());
@@ -209,12 +219,19 @@ public class CALDAVAdapter extends BaseAdapter
 			}
 		}
 
-		Collection<DavResource> removeCalendar = new HashSet<>(10);
+		for(String calURI : stored)
+		{
+			System.out.println("ADAPTER ID :: " + getId());
+			System.out.println("STORED CALURI :: " + calURI);
+		}
+
+
+		Collection<String> removeCalendar = new HashSet<>(10);
 		for (String calURI : stored)
 		{
 			if (!m_Calendar.containsKey(calURI))
 			{
-				//removeCalendar.add(calURI);
+				removeCalendar.add(calURI);
 			}
 		}
 
@@ -222,35 +239,33 @@ public class CALDAVAdapter extends BaseAdapter
 		WriteContext context = getWriteContext();
 		context.startTransaction(recorder);
 
-		/*for (DavResource calRes : m_Calendar.values())
-		{
-			String calName = encodeCalendar(calRes);
-			Model model = context.getModel();
-			StmtIterator it = model
-					.listStatements(model.createResource(calName), model.createProperty(Vocabulary.RDF_TYPE),
-							model.createResource(Vocabulary.CALDAV_CALENDAR));
 
-			if (it.hasNext())
+		try
+		{
+			for (String calURI : removeCalendar)
 			{
-				assert JenaUtils.checkUnique(it);
-				// Define storing methods
+				System.err.println("REMOVING CALENDAR " + calURI);
+				DStore.unstoreRes(messageDatabase.getDefaultModel(), getId(), calURI);
 			}
-			else
+			for (DavResource calRes : addCalendar)
 			{
 				System.err.println("ADDING CALENDAR " + calRes.getDisplayName());
-				// Define storing methods
-				storeCalendar(model, calRes);
+				storeCalendar(context.getModel(), calRes);
 			}
-		}*/
 
-		context.succeed();
+			context.succeed();
+		} catch (Exception ex)
+		{
+			context.fail(ex);
+		}
+
 	}
 
 	private void syncEvents(DavResource calRes, TransactionRecorder recorder) throws Exception
 	{
 		System.out.println("SYNC EVENTS CALLED FOR CALENDAR :: " + calRes.getDisplayName());
 		// get the stored event URIs
-		Set<String> stored = getStored(DFetch.eventURIs(encodeCalendar(calRes)), EVENTRES);
+		Set<String> stored = getStored(DFetch.eventURIs(calRes.getHref().toString()), EVENTRES);
 
 		System.out.println("STORED EVENTS SIZE :: " + stored.size());
 		Iterator<DavResource> davEvents = sardine.list(serverHeader + calRes).iterator();
@@ -269,6 +284,11 @@ public class CALDAVAdapter extends BaseAdapter
 				addURI.add(event.getHref().toString());
 			}
 		}
+
+		for (String eventURI : stored)
+		{
+			System.out.println("STORED EVENT URI :: " + eventURI);
+		};
 
 		// This is map from Calendar URI -> (Event URI -> DavResource for a VEvent)
 		m_PerCalendarEvents.put(calRes.getHref().toString(), eventURIToRes);
@@ -291,14 +311,14 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			for (String event : removeURI)
 			{
-				DStore.unstoreRes(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event);
+				DStore.unstoreRes(messageDatabase.getDefaultModel(), calRes.getHref().toString(), event);
 			}
 			for (String event : addURI)
 			{
 				// Parse out event and pass it through
 				VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents().get(0);
 				System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
-				DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event, vEvent);
+				DStore.event(messageDatabase.getDefaultModel(), calRes.getHref().toString(), event, vEvent);
 			}
 
 			context.succeed();
@@ -409,7 +429,8 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void storeCalendar(Model model, DavResource calendar)
 	{
-		String calendarName = encodeCalendar(calendar);
+		//String calendarName = encodeCalendar(calendar);
+		String calendarName = calendar.getHref().toString();
 		Resource calRes = model.createResource(calendarName);
 		model.add(calRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
 		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), calRes);
