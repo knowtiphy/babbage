@@ -184,12 +184,6 @@ public class CALDAVAdapter extends BaseAdapter
 		return event.substring(event.indexOf("/dav"));
 	}
 
-	protected String decodeEvent(DavResource event)
-	{
-		String eventURI = event.getHref().toString();
-		return eventURI.substring(eventURI.lastIndexOf('/') + 1);
-	}
-
 	public String getEmailAddress()
 	{
 		return emailAddress;
