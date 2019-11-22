@@ -60,9 +60,7 @@ public interface DStore
 		Resource eventRes = R(model, eventName);
 		model.add(eventRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_EVENT));
 		model.add(R(model, calendarName), P(model, Vocabulary.CONTAINS), eventRes);
-
-		optionalAttr(event, x -> x.getSummary() != null, y -> y.getSummary().getValue());
-
+		
 		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary().getValue(), x -> L(model, x));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_START, event.getDateStart().getValue(),
