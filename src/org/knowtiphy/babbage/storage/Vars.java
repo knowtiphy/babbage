@@ -36,5 +36,17 @@ public class Vars
     public static final String VAR_ATTACHMENT_ID = "attachmentId";
     public static final String VAR_FILE_NAME = "fileName";
     public static final String VAR_MIME_TYPE = "mimeType";
+
+    // Calendar VARs
+    public static final String VAR_CALENDAR_ID = "calendarId";
+    public static final String VAR_CALENDAR_NAME = "calendarName";
+
+    // Event VARs
+    public static final String VAR_EVENT_ID = "eventId";
+    public static final String VAR_SUMMARY = "summary";
+    public static final String VAR_DATE_START = "dateStart";
+    public static final String VAR_DATE_END = "dateEnd";
+    public static final String VAR_DESCRIPTION = "description";
+    public static final String VAR_PRIORITY = "priority";
    
 }

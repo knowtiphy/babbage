@@ -10,25 +10,70 @@ import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
-import org.knowtiphy.babbage.storage.*;
+import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.IAdapter;
+import org.knowtiphy.babbage.storage.IReadContext;
+import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.ReadContext;
+import org.knowtiphy.babbage.storage.StorageException;
+import org.knowtiphy.babbage.storage.TransactionRecorder;
+import org.knowtiphy.babbage.storage.Vars;
+import org.knowtiphy.babbage.storage.Vocabulary;
+import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
 import javax.activation.FileDataSource;
-import javax.mail.*;
+import javax.mail.Address;
+import javax.mail.Authenticator;
+import javax.mail.FetchProfile;
+import javax.mail.Flags;
+import javax.mail.Folder;
+import javax.mail.FolderClosedException;
+import javax.mail.Message;
+import javax.mail.MessageRemovedException;
+import javax.mail.MessagingException;
+import javax.mail.Multipart;
+import javax.mail.PasswordAuthentication;
+import javax.mail.Session;
+import javax.mail.Store;
+import javax.mail.StoreClosedException;
+import javax.mail.UIDFolder;
 import javax.mail.event.MessageChangedEvent;
 import javax.mail.event.MessageChangedListener;
 import javax.mail.event.MessageCountAdapter;
 import javax.mail.event.MessageCountEvent;
-import javax.mail.internet.*;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeBodyPart;
+import javax.mail.internet.MimeMessage;
+import javax.mail.internet.MimeMultipart;
 import javax.mail.search.FlagTerm;
 import javax.mail.search.SearchTerm;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -256,34 +301,54 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		notifyListeners(rec);
 
 		String constructQueryMH = String
-				.format("CONSTRUCT { ?%s <%s> ?%s . ?%s <%s> <%s> . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . "
-								+ "?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s }\n"
-								+ "WHERE \n" + "{\n" + "      ?%s <%s> ?%s.\n" + "      ?%s  <%s> <%s>.\n"
-								+ "      ?%s  <%s> ?%s.\n" + "      ?%s  <%s> ?%s.\n" + "      ?%s  <%s> ?%s.\n"
+				.format("CONSTRUCT { ?%s <%s> ?%s . "
+								+ " ?%s <%s> <%s> . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ "?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s }\n"
+								+ "WHERE \n" + "{\n" + "      "
+								+ " ?%s <%s> ?%s.\n" + "      "
+								+ " ?%s  <%s> <%s>.\n"
+								+ " ?%s  <%s> ?%s.\n" + "      "
+								+ " ?%s  <%s> ?%s.\n" + "      "
+								+ " ?%s  <%s> ?%s.\n"
 								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
 								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
 								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
 								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
 						// START OF CONSTRUCT
-						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID, Vars.VAR_MESSAGE_ID,
-						Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE, Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ,
-						Vars.VAR_IS_READ, Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT, Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON,
-						Vars.VAR_RECEIVED_ON, Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO, Vars.VAR_MESSAGE_ID, Vocabulary.FROM,
-						Vars.VAR_FROM, Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_BCC, Vars.VAR_BCC,
+						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
+						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED,
+						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT,
+						Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON, Vars.VAR_RECEIVED_ON,
+						Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
+						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO,
+						Vars.VAR_MESSAGE_ID, Vocabulary.FROM, Vars.VAR_FROM,
+						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC,
+						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_BCC, Vars.VAR_BCC,
 						// START OF WHERE
-						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID, Vars.VAR_MESSAGE_ID,
-						Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE, Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ,
-						Vars.VAR_IS_READ, Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT, Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON,
-						Vars.VAR_RECEIVED_ON, Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO, Vars.VAR_MESSAGE_ID, Vocabulary.FROM,
-						Vars.VAR_FROM, Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC, Vars.VAR_MESSAGE_ID,
-						Vocabulary.HAS_BCC, Vars.VAR_BCC);
+						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
+						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
+						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED,
+						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT,
+						Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON, Vars.VAR_RECEIVED_ON,
+						Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
+						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO,
+						Vars.VAR_MESSAGE_ID, Vocabulary.FROM, Vars.VAR_FROM,
+						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC,
+						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_BCC, Vars.VAR_BCC);
 
 		Model mMH = QueryExecutionFactory.create(constructQueryMH, context.getModel()).execConstruct();
 		TransactionRecorder recMH = new TransactionRecorder();
