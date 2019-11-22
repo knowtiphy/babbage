@@ -235,34 +235,14 @@ public class CALDAVAdapter extends BaseAdapter
 		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
 	}
 
-//	protected String encodeCalendar(DavResource calendar)
-//	{
-//		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
-//	}
-
-//	protected String encodeCalendar(String calendar)
-//	{
-//		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar);
-//	}
-
 	protected String encodeCalendar(DavResource calendar)
 	{
-		return "http://" + calendar.getHref().toString();
+		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
 	}
-
-	protected String encodeEvent(DavResource event)
+	
+	protected String encodeEvent(DavResource calendar, DavResource event)
 	{
-		return "http://" + event.getHref().toString();
-	}
-
-	protected String encodeEvent(String event)
-	{
-		return "http://" + event;
-	}
-
-	protected String decodeEvent(String event)
-	{
-		return event.substring(event.indexOf("/dav"));
+		return Vocabulary.E(Vocabulary.CALDAV_EVENT, getEmailAddress(), calendar.getHref(), event.getHref());
 	}
 
 	public String getEmailAddress()
@@ -289,7 +269,7 @@ public class CALDAVAdapter extends BaseAdapter
 				DavResource calRes = calDavResources.next();
 				System.out.println(calRes.getDisplayName());
 				// This is map from Calendar URI -> DavResource for a Calendar
-				m_Calendar.put(calRes.getHref().toString(), calRes);
+				m_Calendar.put(encodeCalendar(calRes), calRes);
 			}
 		}
 		catch (Throwable ex)
@@ -313,13 +293,6 @@ public class CALDAVAdapter extends BaseAdapter
 			}
 		}
 
-//		for(String calURI : stored)
-//		{
-//			System.out.println("ADAPTER ID :: " + getId());
-//			System.out.println("STORED CALURI :: " + calURI);
-//		}
-
-
 		Collection<String> removeCalendar = new HashSet<>(10);
 		for (String calURI : stored)
 		{
@@ -338,8 +311,8 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			for (String calURI : removeCalendar)
 			{
-				//System.err.println("REMOVING CALENDAR " + calURI);
-				//DStore.unstoreRes(messageDatabase.getDefaultModel(), getId(), calURI);
+				System.err.println("REMOVING CALENDAR " + calURI);
+				DStore.unstoreRes(messageDatabase.getDefaultModel(), getId(), calURI);
 			}
 			for (DavResource calRes : addCalendar)
 			{
@@ -367,15 +340,15 @@ public class CALDAVAdapter extends BaseAdapter
 		davEvents.next();
 
 		Map<String, DavResource> eventURIToRes = new HashMap<>();
-		Collection<String> addURI = new HashSet<>(1000);
+		Collection<DavResource> addURI = new HashSet<>(1000);
 		while (davEvents.hasNext())
 		{
 			DavResource event = davEvents.next();
-			eventURIToRes.put(event.getHref().toString(), event);
+			eventURIToRes.put(encodeEvent(calRes, event), event);
 
-			if (!stored.contains(encodeEvent(event)))
+			if (!stored.contains(encodeEvent(calRes, event)))
 			{
-				addURI.add(event.getHref().toString());
+				addURI.add(event);
 			}
 		}
 
@@ -385,12 +358,12 @@ public class CALDAVAdapter extends BaseAdapter
 		};
 
 		// This is map from Calendar URI -> (Event URI -> DavResource for a VEvent)
-		m_PerCalendarEvents.put(calRes.getHref().toString(), eventURIToRes);
+		m_PerCalendarEvents.put(encodeCalendar(calRes), eventURIToRes);
 		Collection<String> removeURI = new HashSet<>(1000);
 		for (String eventUri : stored)
 		{
-			System.out.println(decodeEvent(eventUri));
-			if (!m_PerCalendarEvents.get(calRes.getHref().toString()).containsKey(decodeEvent(eventUri)))
+			System.out.println(eventUri);
+			if (!m_PerCalendarEvents.get(encodeCalendar(calRes)).containsKey(eventUri))
 			{
 				removeURI.add(eventUri);
 			}
@@ -409,7 +382,7 @@ public class CALDAVAdapter extends BaseAdapter
 				System.out.println("REMOVING AN EVENT");
 				DStore.unstoreRes(messageDatabase.getDefaultModel(), encodeCalendar(calRes), event);
 			}
-			for (String event : addURI)
+			for (DavResource event : addURI)
 			{
 				// Parse out event and pass it through
 				VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents().get(0);
@@ -417,7 +390,7 @@ public class CALDAVAdapter extends BaseAdapter
 				System.err.println("FOR CALENDER URI :: " + encodeCalendar(calRes));
 				try
 				{
-					DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), encodeEvent(event), vEvent);
+					DStore.event(messageDatabase.getDefaultModel(), encodeCalendar(calRes), encodeEvent(calRes, event), vEvent);
 				}
 				catch (Throwable ex)
 				{
