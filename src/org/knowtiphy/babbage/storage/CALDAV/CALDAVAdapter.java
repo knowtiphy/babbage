@@ -200,10 +200,29 @@ public class CALDAVAdapter extends BaseAdapter
 		Set<String> stored = getStored(DFetch.calendarURIs(getId()), CALRES);
 		System.out.println("STORED CALENDARS :: " + stored.size());
 
+		Collection<DavResource> addCalendar = new HashSet<>(10);
+		for (DavResource calRes : m_Calendar.values())
+		{
+			if (!stored.contains(calRes.getHref().toString()))
+			{
+				addCalendar.add(calRes);
+			}
+		}
+
+		Collection<DavResource> removeCalendar = new HashSet<>(10);
+		for (String calURI : stored)
+		{
+			if (!m_Calendar.containsKey(calURI))
+			{
+				//removeCalendar.add(calURI);
+			}
+		}
+
+
 		WriteContext context = getWriteContext();
 		context.startTransaction(recorder);
 
-		for (DavResource calRes : m_Calendar.values())
+		/*for (DavResource calRes : m_Calendar.values())
 		{
 			String calName = encodeCalendar(calRes);
 			Model model = context.getModel();
@@ -222,7 +241,7 @@ public class CALDAVAdapter extends BaseAdapter
 				// Define storing methods
 				storeCalendar(model, calRes);
 			}
-		}
+		}*/
 
 		context.succeed();
 	}
