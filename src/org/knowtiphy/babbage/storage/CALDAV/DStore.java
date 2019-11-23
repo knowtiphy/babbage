@@ -75,9 +75,10 @@ public interface DStore
 				x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd() != null ?
-				event.getDateEnd().getValue() :
-				new Date(Duration.parse(event.getDuration().getValue().toString()).toMillis() + event.getDateStart()
-						.getValue().getTime()), x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
+						event.getDateEnd().getValue() :
+						new Date(event.getDateStart().getValue().getTime() + Duration
+								.parse(event.getDuration().getValue().toString()).toMillis()),
+				x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION,
 				optionalAttr(event, x -> x.getDescription() != null, y -> y.getDescription().getValue()),
