@@ -60,7 +60,7 @@ public interface DStore
 		Resource eventRes = R(model, eventName);
 		model.add(eventRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_EVENT));
 		model.add(R(model, calendarName), P(model, Vocabulary.CONTAINS), eventRes);
-		
+
 		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary().getValue(), x -> L(model, x));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_START, event.getDateStart().getValue(),
@@ -76,6 +76,10 @@ public interface DStore
 
 		attr(model, eventRes, Vocabulary.HAS_PRIORITY,
 				optionalAttr(event, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(model, x));
+
+		attr(model, eventRes, Vocabulary.HAS_DURATION,
+				optionalAttr(event, x -> x.getDuration() != null, y -> y.getDuration().getValue()),
+				x -> L(model, x));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
