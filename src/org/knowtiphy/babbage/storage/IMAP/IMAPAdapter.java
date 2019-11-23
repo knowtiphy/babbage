@@ -125,7 +125,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Folder inbox;
 
 	public IMAPAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-				   BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException, MessagingException, IOException
+			BlockingDeque<Runnable> notificationQ, Model model)
+			throws InterruptedException, MessagingException, IOException
 	{
 		System.out.println("IMAPAdapter INSTANTIATED");
 
@@ -169,11 +170,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		incoming.setProperty("mail.imaps.usesocketchannels", "true");
 		incoming.setProperty("mail.imaps.peek", "true");
 		incoming.setProperty("mail.imaps.connectionpoolsize", "10");
-//		incoming.setProperty("mail.imaps.fetchsize", "1000000");
-//		incoming.setProperty("mail.imaps.timeout", timeout + "");
-//		incoming.setProperty("mail.imaps.connectiontimeout", connectiontimeout + "");
-//		incoming.setProperty("mail.imaps.writetimeout", writetimeout + "");
-//		incoming.setProperty("mail.imaps.connectionpooltimeout", connectionpooltimeout + "");
+		//		incoming.setProperty("mail.imaps.fetchsize", "1000000");
+		//		incoming.setProperty("mail.imaps.timeout", timeout + "");
+		//		incoming.setProperty("mail.imaps.connectiontimeout", connectiontimeout + "");
+		//		incoming.setProperty("mail.imaps.writetimeout", writetimeout + "");
+		//		incoming.setProperty("mail.imaps.connectionpooltimeout", connectionpooltimeout + "");
 		// incoming.setProperty("mail.imaps.port", "993");
 
 		//	we need system properties to pick up command line flags
@@ -192,8 +193,72 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		props1.put("mail.event.executor", es);
 	}
 
-	@Override
-	public String getId()
+	private static void openFolder(Folder folder) throws StorageException
+	{
+		for (int i = 0; i < NUM_ATTEMPTS; i++)
+		{
+			try
+			{
+				folder.open(Folder.READ_WRITE);
+				return;
+			} catch (IllegalStateException e)
+			{
+				//	the folder is already open
+				return;
+			} catch (MessagingException e)
+			{
+				//	ignore and try again
+			}
+		}
+
+		throw new StorageException("Failed to re-open folder");
+	}
+
+	private static UIDFolder U(Folder folder)
+	{
+		return (UIDFolder) folder;
+	}
+
+	//	Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
+	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
+	{
+		assert messages.length > 0;
+		messages[0].getFolder().setFlags(messages, flags, value);
+	}
+
+	private static List<Address> toList(String raw, boolean ignoreAddr) throws AddressException
+	{
+		if (raw == null)
+		{
+			return new LinkedList<>();
+		}
+
+		String trim = raw.trim();
+		if (trim.isEmpty())
+		{
+			return new LinkedList<>();
+		}
+
+		String[] tos = trim.split(",");
+		List<Address> result = new ArrayList<>(10);
+		for (String to : tos)
+		{
+			try
+			{
+				result.add(new InternetAddress(to.trim()));
+			} catch (AddressException ex)
+			{
+				if (!ignoreAddr)
+				{
+					throw (ex);
+				}
+			}
+		}
+
+		return result;
+	}
+
+	@Override public String getId()
 	{
 		return id;
 	}
@@ -231,8 +296,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	public FutureTask<?> getSynchTask()
 	{
-		return new FutureTask<Void>(() ->
-		{
+		return new FutureTask<Void>(() -> {
 			startFolderWatchers();
 			TransactionRecorder recorder = new TransactionRecorder();
 			synchronizeFolders(recorder);
@@ -253,6 +317,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
+	// @formatter:off
 	@Override public void addListener(Model accountTriples) throws UnsupportedOperationException
 	{
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE),
@@ -358,6 +423,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		notifyListeners(recMH);
 
 	}
+	// @formatter:on
 
 	public void close()
 	{
@@ -382,18 +448,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			pingThread.interrupt();
 		}
 
-//		for (Folder folder : m_folder.values())
-//		{
-//			logger.info(emailAddress + " :: " + folder.getName() + " :: closing ");
-//			try
-//			{
-//				//Platform.runLater(() -> message.set(emailAddress + " :: " + folder.getName() + " :: closing "));
-//				folder.close();
-//			} catch (Exception $)
-//			{
-//				//	ignore
-//			}
-//		}
+		//		for (Folder folder : m_folder.values())
+		//		{
+		//			logger.info(emailAddress + " :: " + folder.getName() + " :: closing ");
+		//			try
+		//			{
+		//				//Platform.runLater(() -> message.set(emailAddress + " :: " + folder.getName() + " :: closing "));
+		//				folder.close();
+		//			} catch (Exception $)
+		//			{
+		//				//	ignore
+		//			}
+		//		}
 
 		LOGGER.log(Level.INFO, "{0} :: closing store", emailAddress);
 		try
@@ -408,8 +474,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	AUDIT -- I think this one is ok
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
 	{
-		return addWork(new MessageWork(() ->
-		{
+		return addWork(new MessageWork(() -> {
 			Message[] messages = U(folderId, messageIds);
 			mark(messages, new Flags(Flags.Flag.ANSWERED), flag);
 			return messages[0].getFolder();
@@ -419,8 +484,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	AUDIT -- I think this one is ok
 	public Future<?> markMessagesAsRead(Collection<String> messageIds, String folderId, boolean flag)
 	{
-		return addWork(new MessageWork(() ->
-		{
+		return addWork(new MessageWork(() -> {
 			Message[] messages = U(folderId, messageIds);
 			mark(messages, new Flags(Flags.Flag.SEEN), flag);
 			return messages[0].getFolder();
@@ -430,8 +494,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	AUDIT -- I think this one is ok
 	public Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag)
 	{
-		return addWork(new MessageWork(() ->
-		{
+		return addWork(new MessageWork(() -> {
 			Message[] messages = U(folderId, messageIds);
 			mark(messages, new Flags(JUNK_FLAG), flag);
 			return messages[0].getFolder();
@@ -439,8 +502,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	//  TOOD -- got to go since its just a composition of mark junk and copy org.knowtiphy.pinkpigmail.messages -- merge with move
-	public Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds,
-										String targetFolderId, boolean delete)
+	public Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
+			boolean delete)
 	{
 		return addWork(() -> {
 			LOGGER.log(Level.INFO, "moveMessagesToJunk : {0}", delete);
@@ -453,12 +516,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			sourceFolder.copyMessages(messages, targetFolder);
 			if (delete)
 			{
-//					for (String mID : messageIds)
-//					{
-//						logger.info("moveMessagesToJunk " + mID);
-//						assert m_PerFolderMessage.get(sourceFolder).get(mID) != null;
-//						m_toDelete.put(m_PerFolderMessage.get(sourceFolder).get(mID), mID);
-//					}
+				//					for (String mID : messageIds)
+				//					{
+				//						logger.info("moveMessagesToJunk " + mID);
+				//						assert m_PerFolderMessage.get(sourceFolder).get(mID) != null;
+				//						m_toDelete.put(m_PerFolderMessage.get(sourceFolder).get(mID), mID);
+				//					}
 				mark(messages, new Flags(Flags.Flag.DELETED), true);
 				sourceFolder.expunge();
 			}
@@ -469,22 +532,22 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
-	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds,
-								  String targetFolderId, boolean delete)
+	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
+			boolean delete)
 	{
 		Folder source = m_folder.get(sourceFolderId);
 		assert source != null;
 		Folder target = m_folder.get(targetFolderId);
 		assert target != null;
 
-//		for (String mID : messageIds)
-//		{
-////			assert m_message.get(mID) != null;
-////			m_toDelete.put(m_message.get(mID), mID);
-//			System.out.println(m_folder.get(sourceFolderId));
-//			assert m_PerFolderMessage.get(m_folder.get(sourceFolderId)).get(mID) != null;
-//			m_toDelete.put(m_PerFolderMessage.get(m_folder.get(sourceFolderId)).get(mID), mID);
-//		}
+		//		for (String mID : messageIds)
+		//		{
+		////			assert m_message.get(mID) != null;
+		////			m_toDelete.put(m_message.get(mID), mID);
+		//			System.out.println(m_folder.get(sourceFolderId));
+		//			assert m_PerFolderMessage.get(m_folder.get(sourceFolderId)).get(mID) != null;
+		//			m_toDelete.put(m_PerFolderMessage.get(m_folder.get(sourceFolderId)).get(mID), mID);
+		//		}
 
 		return addWork(new MessageWork(() -> {
 			//  TODO -- this is wrong, since can have both source and target close/fail
@@ -506,14 +569,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		Folder folder = m_folder.get(folderId);
 		assert folder != null;
-//		for (String mID : messageIds)
-//		{
-//			assert m_PerFolderMessage.get(folder).get(mID) != null;
-//			m_toDelete.put(m_PerFolderMessage.get(folder).get(mID), mID);
-//		}
+		//		for (String mID : messageIds)
+		//		{
+		//			assert m_PerFolderMessage.get(folder).get(mID) != null;
+		//			m_toDelete.put(m_PerFolderMessage.get(folder).get(mID), mID);
+		//		}
 
-		return addWork(new MessageWork(() ->
-		{
+		return addWork(new MessageWork(() -> {
 			Message[] messages = U(folderId, messageIds);
 			mark(messages, new Flags(Flags.Flag.DELETED), true);
 			messages[0].getFolder().expunge();
@@ -523,35 +585,38 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	public Future<?> appendMessages(String folderId, Message[] messages)
 	{
-		return addWork(new MessageWork(() ->
-		{
+		return addWork(new MessageWork(() -> {
 			m_folder.get(folderId).appendMessages(messages);
 			return m_folder.get(folderId);
 		}));
 	}
 
+	//	re-open a closed folder, re-synchronizing the org.knowtiphy.pinkpigmail.messages in the folder and rebuilding
+	//	the per folder message map
+	//	TODO -- what about the m_delete map?
+
 	public Message createMessage(MessageModel model) throws MessagingException, IOException
 	{
 		Message message = createMessage();
 
-//			ReadContext context = getReadContext();
-//			context.start();
-//			try
-//			{
-//				ResultSet resultSet = QueryExecutionFactory
-//						.create(DFetch.outboxMessage(accountId, messageId), context.getModel()).execSelect();
-//				QuerySolution s = resultSet.next();
-//				recipients = s.get(Vars.VAR_TO) == null ? null : s.get(Vars.VAR_TO).asLiteral().getString();
-//				ccs = s.get("cc") == null ? null : s.get("cc").asLiteral().getString();
-//				subject = s.get(Vars.VAR_SUBJECT) == null ? null : s.get(Vars.VAR_SUBJECT).asLiteral().getString();
-//				content = s.get(Vars.VAR_CONTENT) == null ? null : s.get(Vars.VAR_CONTENT).asLiteral().getString();
-//			} finally
-//			{
-//				context.end();
-//			}
+		//			ReadContext context = getReadContext();
+		//			context.start();
+		//			try
+		//			{
+		//				ResultSet resultSet = QueryExecutionFactory
+		//						.create(DFetch.outboxMessage(accountId, messageId), context.getModel()).execSelect();
+		//				QuerySolution s = resultSet.next();
+		//				recipients = s.get(Vars.VAR_TO) == null ? null : s.get(Vars.VAR_TO).asLiteral().getString();
+		//				ccs = s.get("cc") == null ? null : s.get("cc").asLiteral().getString();
+		//				subject = s.get(Vars.VAR_SUBJECT) == null ? null : s.get(Vars.VAR_SUBJECT).asLiteral().getString();
+		//				content = s.get(Vars.VAR_CONTENT) == null ? null : s.get(Vars.VAR_CONTENT).asLiteral().getString();
+		//			} finally
+		//			{
+		//				context.end();
+		//			}
 
 		message.setFrom(new InternetAddress(getEmailAddress()));
-		message.setReplyTo(new Address[]{new InternetAddress(getEmailAddress())});
+		message.setReplyTo(new Address[] { new InternetAddress(getEmailAddress()) });
 		//  TODO -- get rid of the toList stuff
 		if (model.getTo() != null)
 		{
@@ -586,8 +651,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			message.setSubject(model.getSubject());
 		}
 		//  have to have non null content
-		((Multipart) message.getContent()).getBodyPart(0).setContent(
-				model.getContent() == null ? "" : model.getContent(), model.getMimeType());
+		((Multipart) message.getContent()).getBodyPart(0)
+				.setContent(model.getContent() == null ? "" : model.getContent(), model.getMimeType());
 
 		//	setup attachments
 		for (Path path : model.getAttachments())
@@ -605,15 +670,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	AUDIT -- I think this will now work if we have a folder closed exception and we re-run the work.
 	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
 	{
-		return doContent.submit(new MessageWork(() ->
-		{
+		return doContent.submit(new MessageWork(() -> {
 			ensureMapsLoaded();
 
 			//	check if the content is not already in the database
 			ReadContext rContext = getReadContext();
 			rContext.start();
-			boolean notThere = !rContext.getModel().listObjectsOfProperty(
-					rContext.getModel().createResource(messageId),
+			boolean notThere = !rContext.getModel().listObjectsOfProperty(rContext.getModel().createResource(messageId),
 					rContext.getModel().createProperty(Vocabulary.HAS_CONTENT)).hasNext();
 			rContext.end();
 			System.err.println("Not there = " + notThere);
@@ -625,9 +688,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				Message[] msgs = U(encode(folder), List.of(messageId));
 
 				//	how do we set a profile for the actual content?
-//				FetchProfile fp = new FetchProfile();
-//				fp.add(FetchProfile.Item.CONTENT_INFO);
-//				folder.fetch(msgs, fp);
+				//				FetchProfile fp = new FetchProfile();
+				//				fp.add(FetchProfile.Item.CONTENT_INFO);
+				//				folder.fetch(msgs, fp);
 
 				System.err.println("Not there = AAAAA");
 				assert m_folder.containsKey(folderId);
@@ -681,14 +744,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
-
-	//	re-open a closed folder, re-synchronizing the org.knowtiphy.pinkpigmail.messages in the folder and rebuilding
-	//	the per folder message map
-	//	TODO -- what about the m_delete map?
-
 	private void reOpenFolder(Folder folder) throws MessagingException, StorageException, InterruptedException
 	{
-		LOGGER.log(Level.INFO, "reOpenFolder :: {0} :: {1}", new Object[]{folder.getName(), folder.isOpen()});
+		LOGGER.log(Level.INFO, "reOpenFolder :: {0} :: {1}", new Object[] { folder.getName(), folder.isOpen() });
 		//assert !folder.isOpen();
 
 		accountLock.lock();
@@ -709,23 +767,23 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		//	TODO -- have to work out how to do this -- leave till later
 		LOGGER.log(Level.INFO, "RECONNECTING WITH NO RECOVERY :: {0}", emailAddress);
-//		if (store.isConnected())
-//		{
-//			store.close();
-//		}
-//		store.connect(serverName, emailAddress, password);
-//		logger.info("END RECONNECTING");
-//		for (Folder folder : folders)
-//		{
-//			logger.info("REOPENING :: " + folder.getName());
-//			if (folder.isOpen())
-//			{
-//				folder.close();
-//			}
-//
-//			folder.open(javax.mail.Folder.READ_WRITE);
-//			logger.info("END REOPENING");
-//		}
+		//		if (store.isConnected())
+		//		{
+		//			store.close();
+		//		}
+		//		store.connect(serverName, emailAddress, password);
+		//		logger.info("END RECONNECTING");
+		//		for (Folder folder : folders)
+		//		{
+		//			logger.info("REOPENING :: " + folder.getName());
+		//			if (folder.isOpen())
+		//			{
+		//				folder.close();
+		//			}
+		//
+		//			folder.open(javax.mail.Folder.READ_WRITE);
+		//			logger.info("END REOPENING");
+		//		}
 	}
 
 	public String encode(Folder folder) throws MessagingException
@@ -733,16 +791,19 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return Vocabulary.E(Vocabulary.IMAP_FOLDER, getEmailAddress(), U(folder).getUIDValidity());
 	}
 
+	//	open a folder -- try multiple times just in case it doesn't work
+
 	protected String encode(Message message) throws MessagingException
 	{
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, getEmailAddress(),
-				U(message.getFolder()).getUIDValidity(), U(message.getFolder()).getUID(message));
+		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, getEmailAddress(), U(message.getFolder()).getUIDValidity(),
+				U(message.getFolder()).getUID(message));
 	}
 
 	protected String encode(Message message, String cidName) throws MessagingException
 	{
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE_CID_PART, getEmailAddress(),
-				U(message.getFolder()).getUIDValidity(), U(message.getFolder()).getUID(message), cidName);
+		return Vocabulary
+				.E(Vocabulary.IMAP_MESSAGE_CID_PART, getEmailAddress(), U(message.getFolder()).getUIDValidity(),
+						U(message.getFolder()).getUID(message), cidName);
 	}
 
 	private WriteContext getWriteContext()
@@ -753,29 +814,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private void notifyListeners(TransactionRecorder recorder)
 	{
 		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
-	}
-
-	//	open a folder -- try multiple times just in case it doesn't work
-
-	private static void openFolder(Folder folder) throws StorageException
-	{
-		for (int i = 0; i < NUM_ATTEMPTS; i++)
-		{
-			try
-			{
-				folder.open(Folder.READ_WRITE);
-				return;
-			} catch (IllegalStateException e)
-			{
-				//	the folder is already open
-				return;
-			} catch (MessagingException e)
-			{
-				//	ignore and try again
-			}
-		}
-
-		throw new StorageException("Failed to re-open folder");
 	}
 
 	private void reWatchFolder(Folder folder) throws StorageException
@@ -793,7 +831,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				try
 				{
-					LOGGER.log(Level.INFO, "REWATCH :: {0} :: {1}", new Object[]{i, folder.getName()});
+					LOGGER.log(Level.INFO, "REWATCH :: {0} :: {1}", new Object[] { i, folder.getName() });
 					reOpenFolder(folder);
 					idleManager.watch(folder);
 					return;
@@ -807,18 +845,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		throw new StorageException("Failed to re-watch folder");
 	}
 
-	private static UIDFolder U(Folder folder)
-	{
-		return (UIDFolder) folder;
-	}
-
 	private void store(Model model, Folder folder) throws MessagingException
 	{
 		String folderName = encode(folder);
 		Resource folderRes = model.createResource(folderName);
 		model.add(folderRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
 		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);
-		model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY), model.createTypedLiteral(((UIDFolder) folder).getUIDValidity()));
+		model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
+				model.createTypedLiteral(((UIDFolder) folder).getUIDValidity()));
 		model.add(folderRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(folder.getName()));
 		DStore.folderCounts(model, this, folder);
 	}
@@ -851,45 +885,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return task;
 	}
 
-	//	Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
-	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
-	{
-		assert messages.length > 0;
-		messages[0].getFolder().setFlags(messages, flags, value);
-	}
-
-	private static List<Address> toList(String raw, boolean ignoreAddr) throws AddressException
-	{
-		if (raw == null)
-		{
-			return new LinkedList<>();
-		}
-
-		String trim = raw.trim();
-		if (trim.isEmpty())
-		{
-			return new LinkedList<>();
-		}
-
-		String[] tos = trim.split(",");
-		List<Address> result = new ArrayList<>(10);
-		for (String to : tos)
-		{
-			try
-			{
-				result.add(new InternetAddress(to.trim()));
-			} catch (AddressException ex)
-			{
-				if (!ignoreAddr)
-				{
-					throw (ex);
-				}
-			}
-		}
-
-		return result;
-	}
-
 	private MimeMessage createMessage() throws MessagingException
 	{
 		//	we need system properties to pick up command line flags
@@ -906,8 +901,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		props.putAll(outGoing);
 		Session session = Session.getInstance(props, new Authenticator()
 		{
-			@Override
-			protected PasswordAuthentication getPasswordAuthentication()
+			@Override protected PasswordAuthentication getPasswordAuthentication()
 			{
 				return new PasswordAuthentication(getEmailAddress(), getPassword());
 			}
@@ -977,8 +971,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				//  store any folders we don't already have, and update folder counts for ones we do have
 				//  TODO -- need to handle deleted folders
-				StmtIterator it = model.listStatements(model.createResource(folderName),
-						model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
+				StmtIterator it = model
+						.listStatements(model.createResource(folderName), model.createProperty(Vocabulary.RDF_TYPE),
+								model.createResource(Vocabulary.IMAP_FOLDER));
 
 				if (it.hasNext())
 				{
@@ -1104,8 +1099,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//  get the stored message IDs
 		Set<String> stored = getStoredMessageIDs(DFetch.messageUIDs(encode(folder)));
 		//  get the stored message IDs for those org.knowtiphy.pinkpigmail.messages for which we have headers
-		Set<String> withHeaders = getStoredMessageIDs(
-				DFetch.messageUIDsWithHeaders(id, encode(folder)));
+		Set<String> withHeaders = getStoredMessageIDs(DFetch.messageUIDsWithHeaders(id, encode(folder)));
 		//  get message headers for message ids that we don't have headers for
 		stored.removeAll(withHeaders);
 
@@ -1162,16 +1156,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		@Override
-		public void messageChanged(MessageChangedEvent messageChangedEvent)
+		@Override public void messageChanged(MessageChangedEvent messageChangedEvent)
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE CHANGED {0}", messageChangedEvent);
 			LOGGER.log(Level.INFO, "{0}THREAD IS = ", Thread.currentThread().getId());
 
 			Message message = messageChangedEvent.getMessage();
 
-			addWork(new MessageWork(() ->
-			{
+			addWork(new MessageWork(() -> {
 				if (messageChangedEvent.getMessageChangeType() == MessageChangedEvent.FLAGS_CHANGED)
 				{
 					//	deletes are handled elsewhere
@@ -1221,14 +1213,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			this.folder = folder;
 		}
 
-		@Override
-		public void messagesRemoved(MessageCountEvent e)
+		@Override public void messagesRemoved(MessageCountEvent e)
 		{
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 			LOGGER.log(Level.INFO, "{0}THREAD  = ", Thread.currentThread().getId());
 
-			addWork(new MessageWork(() ->
-			{
+			addWork(new MessageWork(() -> {
 				WriteContext context = getWriteContext();
 				context.startTransaction();
 
@@ -1238,15 +1228,15 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					for (Message message : e.getMessages())
 					{
 						//	delete event for a delete message that a client connected to this org.knowtiphy.pinkpigmail.server initiated
-//						if (m_toDelete.containsKey(message))
-//						{
-//							String messageName = m_toDelete.get(message);
-//							m_PerFolderMessage.get(folder).remove(messageName);
-//							m_toDelete.remove(message);
-//							DStore.unstoreMessage(messageDatabase.getDefaultModel(), encode(folder), messageName);
-//						}
-//						else
-//						{
+						//						if (m_toDelete.containsKey(message))
+						//						{
+						//							String messageName = m_toDelete.get(message);
+						//							m_PerFolderMessage.get(folder).remove(messageName);
+						//							m_toDelete.remove(message);
+						//							DStore.unstoreMessage(messageDatabase.getDefaultModel(), encode(folder), messageName);
+						//						}
+						//						else
+						//						{
 						DStore.unstoreMessage(context.getModel(), encode(folder), encode(message));
 					}
 
@@ -1261,8 +1251,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}));
 		}
 
-		@Override
-		public void messagesAdded(MessageCountEvent e)
+		@Override public void messagesAdded(MessageCountEvent e)
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
 			LOGGER.log(Level.INFO, "THREAD IS = {0}", Thread.currentThread().getId());
@@ -1304,8 +1293,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			this.work = work;
 		}
 
-		@Override
-		public Folder call() throws Exception
+		@Override public Folder call() throws Exception
 		{
 			for (int attempts = 0; attempts < NUM_ATTEMPTS; attempts++)
 			{
@@ -1349,8 +1337,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			this.queue = queue;
 		}
 
-		@Override
-		public void run()
+		@Override public void run()
 		{
 			while (true)
 			{
@@ -1379,7 +1366,5 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 	}
-
-
 
 }
