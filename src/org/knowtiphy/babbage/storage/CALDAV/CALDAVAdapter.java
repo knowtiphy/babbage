@@ -24,6 +24,8 @@ import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.JenaUtils;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
@@ -119,6 +121,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 	public static Calendar fromDate(ICalDate date)
 	{
+		LocalDateTime dateTime = LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
 		Date d = new Date(date.getTime());
 		Calendar cal = Calendar.getInstance();
 		cal.setTime(d);
@@ -437,111 +440,146 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		//
 		synchThread = new Thread(() -> {
-			try
+			while (true)
 			{
-				Thread.sleep(FREQUENCY);
-				ensureMapsLoaded();
-
-				Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
-
-				// See if any Calendars have been Deleted or Added as well
-				Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
-				// 1st iteration is not a calendar, just the enclosing directory
-				calDavResources.next();
-
-				// During this loop, I can check the CTAGS, Check if need to be added
-				while (calDavResources.hasNext())
+				try
 				{
-					DavResource serverCal = calDavResources.next();
-					String encodedCalURI = encodeCalendar(serverCal);
+					Thread.sleep(FREQUENCY);
+					ensureMapsLoaded();
 
-					// Calendar not in DB, add to map, add to set to add
-					if (!storedCalendars.contains(encodedCalURI))
+					System.out.println("IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+					Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
+
+					// See if any Calendars have been Deleted or Added as well
+					Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
+					// 1st iteration is not a calendar, just the enclosing directory
+					calDavResources.next();
+
+					// During this loop, I can check the CTAGS, Check if need to be added/deleted
+					while (calDavResources.hasNext())
 					{
-						m_Calendar.put(encodedCalURI, serverCal);
+						DavResource serverCal = calDavResources.next();
+						String encodedCalURI = encodeCalendar(serverCal);
+						// How to get deleteCal ? i
 
-						// Add Events
-						Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
-						// 1st iteration is the calendar uri, so skip
-						davEvents.next();
-
-						Collection<DavResource> addEvent = new HashSet<>(1000);
-						Map<String, DavResource> eventURIToRes = new HashMap<>();
-						while (davEvents.hasNext())
+						// Calendar not in DB, add to map, store it and events
+						if (!storedCalendars.contains(encodedCalURI))
 						{
-							DavResource serverEvent = davEvents.next();
-							eventURIToRes.put(encodeEvent(serverCal, serverEvent), serverEvent);
-							addEvent.add(serverEvent);
-						}
+							m_Calendar.put(encodedCalURI, serverCal);
 
-						m_PerCalendarEvents.put(encodedCalURI, eventURIToRes);
+							// Add Events
+							Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
+							// 1st iteration is the calendar uri, so skip
+							davEvents.next();
 
-						TransactionRecorder recorder = new TransactionRecorder();
-						WriteContext context = getWriteContext();
-						context.startTransaction(recorder);
-
-						try
-						{
-							storeCalendar(context.getModel(), serverCal);
-							for (DavResource event : addEvent)
+							Collection<DavResource> addEvent = new HashSet<>(1000);
+							Map<String, DavResource> eventURIToRes = new HashMap<>();
+							while (davEvents.hasNext())
 							{
-								// Parse out event and pass it through
-								VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents().get(0);
-								System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
-								System.err.println("FOR CALENDER URI :: " + encodedCalURI);
-								try
-								{
-									DStore.event(messageDatabase.getDefaultModel(), encodedCalURI, encodeEvent(serverCal, event),
-											vEvent);
-								} catch (Throwable ex)
-								{
-									ex.printStackTrace();
-								}
+								DavResource serverEvent = davEvents.next();
+								eventURIToRes.put(encodeEvent(serverCal, serverEvent), serverEvent);
+								addEvent.add(serverEvent);
 							}
 
-							context.succeed();
-							notifyListeners(recorder);
-						} catch (Exception ex)
-						{
-							context.fail(ex);
-						}
+							m_PerCalendarEvents.put(encodedCalURI, eventURIToRes);
 
+							TransactionRecorder recorder = new TransactionRecorder();
+							WriteContext context = getWriteContext();
+							context.startTransaction(recorder);
+
+							try
+							{
+								storeCalendar(context.getModel(), serverCal);
+								for (DavResource event : addEvent)
+								{
+									// Parse out event and pass it through
+									VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first()
+											.getEvents().get(0);
+									System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
+									System.err.println("FOR CALENDER URI :: " + encodedCalURI);
+									try
+									{
+										DStore.event(messageDatabase.getDefaultModel(), encodedCalURI,
+												encodeEvent(serverCal, event), vEvent);
+									} catch (Throwable ex)
+									{
+										ex.printStackTrace();
+									}
+								}
+
+								context.succeed();
+								notifyListeners(recorder);
+							} catch (Exception ex)
+							{
+								context.fail(ex);
+							}
+
+						}
+						// If it wasn't in stored, and it's not in the map, it's to be deleted
+						else if (!m_Calendar.containsKey(encodedCalURI))
+						{
+							TransactionRecorder recorder = new TransactionRecorder();
+							WriteContext context = getWriteContext();
+							context.startTransaction(recorder);
+
+							try
+							{
+								for (String eventURI : m_PerCalendarEvents.get(encodedCalURI).keySet())
+								{
+									DStore.unstoreRes(context.getModel(), encodedCalURI, eventURI);
+								}
+
+								DStore.unstoreRes(context.getModel(), getId(), encodedCalURI);
+
+								m_PerCalendarEvents.remove(encodedCalURI);
+								m_Calendar.remove(encodedCalURI);
+
+								context.succeed();
+								notifyListeners(recorder);
+							} catch (Exception ex)
+							{
+								context.fail(ex);
+							}
+						}
+						// It does contain the calendar, check if CTags differ, check if names differ
+						else
+						{
+							DavResource currCal = m_Calendar.get(encodedCalURI);
+							// Remove the name triple, and add the new one
+							if (!currCal.getDisplayName().equals(serverCal.getDisplayName()))
+							{
+
+							}
+							if (!currCal.getCustomProps().get("getctag")
+									.equals(serverCal.getCustomProps().get("getctag")))
+							{
+								m_Calendar.put(encodedCalURI, currCal);
+
+							}
+						}
 					}
-					// It does contain the calendar, check if CTags differ, check if names differ
-					else
-					{
-						DavResource currCal = m_Calendar.get(encodedCalURI);
-						// Remove the name triple, and add the new one
-						if (!currCal.getDisplayName().equals(serverCal.getDisplayName()))
-						{
 
-						}
+					// Poll calendars check if CTAG has changed
+					// If it has, see if the name or anything else has changed
+					// Remove old Triples
+					// Add updated Triples
+					// Now go through if any URIs have been deleted
+					// Remove Triples for that URI
+					// Now got through if any URIs have been added
+					// Add Triples for that URI
+					// Now go through checking if any ETags have changed
+					// IF they have, chuck out the old one, and repopulate with this one
+					// Remove old Triples
+					// Add new Triples
 
-						if (!currCal.getCustomProps().get("getctag").equals(serverCal.getCustomProps().get("getctag")))
-						{
-
-						}
-					}
+				} catch (Exception e)
+				{
+					e.printStackTrace();
 				}
-
-				// Poll calendars check if CTAG has changed
-				// If it has, see if the name or anything else has changed
-				// Remove old Triples
-				// Add updated Triples
-				// Now go through if any URIs have been deleted
-				// Remove Triples for that URI
-				// Now got through if any URIs have been added
-				// Add Triples for that URI
-				// Now go through checking if any ETags have changed
-				// IF they have, chuck out the old one, and repopulate with this one
-				// Remove old Triples
-				// Add new Triples
-
-			} catch (Exception e)
-			{
-				e.printStackTrace();
 			}
 		});
+
+		//synchThread.start();
 	}
 
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
@@ -550,10 +588,8 @@ public class CALDAVAdapter extends BaseAdapter
 		return new FutureTask<Void>(() -> {
 			startCalendarWatchers();
 
-			System.out.println("BEFORE SYNC CALENDARS");
 			TransactionRecorder recorder = new TransactionRecorder();
 			syncCalendars(recorder);
-			System.out.println("AFTER SYNC CALENDARS");
 
 			notifyListeners(recorder);
 

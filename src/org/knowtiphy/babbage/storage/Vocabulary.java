@@ -65,8 +65,8 @@ public interface Vocabulary
     String CALDAV_CALENDAR = TBASE + "CALDAVCalendar";
     String CALDAV_EVENT = TBASE + "CALDAVEvent";
 
-    String HAS_DATE_START = TBASE + "hasDateStart";
-    String HAS_DATE_END = TBASE + "hasDateEnd";
+    String HAS_DATE_START = TBASE + "startsAt";
+    String HAS_DATE_END = TBASE + "endsAt";
     String HAS_SUMMARY = TBASE + "hasSummary";
     String HAS_DESCRIPTION = TBASE + "hasDescription";
     String HAS_PRIORITY = TBASE + "hasPriority";
