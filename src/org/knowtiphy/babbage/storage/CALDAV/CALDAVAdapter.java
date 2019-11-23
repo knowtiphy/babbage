@@ -210,7 +210,7 @@ public class CALDAVAdapter extends BaseAdapter
 											"?%s <%s> ?%s .   "  +
 											"?%s <%s> ?%s .   "  +
 											"?%s <%s> ?%s .   "  +
-								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
+								            "?%s <%s> ?%s .   "  +
 								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
 								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
 									" }",
@@ -578,7 +578,7 @@ public class CALDAVAdapter extends BaseAdapter
 			}
 		});
 
-		//synchThread.start();
+		synchThread.start();
 	}
 
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
