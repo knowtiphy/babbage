@@ -125,6 +125,13 @@ public class CALDAVAdapter extends BaseAdapter
 		return cal;
 	}
 
+	public static Calendar fromDate(Date date)
+	{
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(date);
+		return cal;
+	}
+
 	@Override public String getId()
 	{
 		return id;
@@ -194,7 +201,6 @@ public class CALDAVAdapter extends BaseAdapter
 											"?%s <%s> ?%s .   "  +
 											"?%s <%s> ?%s .   "  +
 											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
 											"?%s <%s> ?%s}\n   " +
 
 								"WHERE {     ?%s <%s> <%s> .  "  +
@@ -204,7 +210,6 @@ public class CALDAVAdapter extends BaseAdapter
 								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
 								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
 								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
-							    "OPTIONAL {  ?%s <%s> ?%s }\n "  +
 									" }",
 						// START OF CONSTRUCT
 						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
@@ -214,7 +219,6 @@ public class CALDAVAdapter extends BaseAdapter
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DURATION, Vars.VAR_DURATION,
 						// START OF WHERE
 						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
 						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
@@ -222,8 +226,7 @@ public class CALDAVAdapter extends BaseAdapter
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DURATION, Vars.VAR_DURATION);
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY);
 
 		Model mEventDetails = QueryExecutionFactory.create(constructEventDetails, context.getModel()).execConstruct();
 		JenaUtils.printModel(mEventDetails, "EVENTS");

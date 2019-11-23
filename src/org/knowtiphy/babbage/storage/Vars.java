@@ -48,6 +48,5 @@ public class Vars
     public static final String VAR_DATE_END = "dateEnd";
     public static final String VAR_DESCRIPTION = "description";
     public static final String VAR_PRIORITY = "priority";
-    public static final String VAR_DURATION = "duration";
-   
+
 }

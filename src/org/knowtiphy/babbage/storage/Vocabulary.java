@@ -70,7 +70,6 @@ public interface Vocabulary
     String HAS_SUMMARY = TBASE + "hasSummary";
     String HAS_DESCRIPTION = TBASE + "hasDescription";
     String HAS_PRIORITY = TBASE + "hasPriority";
-    String HAS_DURATION = TBASE + "hasDuration";
 
     // Vocabulary for CardDav
     String CARDDAV_ACCOUNT = TBASE + "CARDDAVAccount";

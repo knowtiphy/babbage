@@ -2,7 +2,6 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.component.VEvent;
 import org.apache.jena.datatypes.RDFDatatype;
-import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
@@ -14,6 +13,8 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
+import java.time.Duration;
+import java.util.Date;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -36,7 +37,6 @@ public interface DStore
 	{
 		return model.createTypedLiteral(value);
 	}
-
 
 	static <T> Literal L(Model model, T value, RDFDatatype rdfDatatype)
 	{
@@ -74,9 +74,10 @@ public interface DStore
 		attr(model, eventRes, Vocabulary.HAS_DATE_START, event.getDateStart().getValue(),
 				x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
 
-		attr(model, eventRes, Vocabulary.HAS_DATE_END,
-				optionalAttr(event, x -> x.getDateEnd() != null, y -> y.getDateEnd().getValue()),
-				x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
+		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd() != null ?
+				event.getDateEnd().getValue() :
+				new Date(Duration.parse(event.getDuration().getValue().toString()).toMillis() + event.getDateStart()
+						.getValue().getTime()), x -> L(model, new XSDDateTime(CALDAVAdapter.fromDate(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION,
 				optionalAttr(event, x -> x.getDescription() != null, y -> y.getDescription().getValue()),
@@ -84,10 +85,6 @@ public interface DStore
 
 		attr(model, eventRes, Vocabulary.HAS_PRIORITY,
 				optionalAttr(event, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(model, x));
-
-		attr(model, eventRes, Vocabulary.HAS_DURATION,
-				optionalAttr(event, x -> x.getDuration() != null, y -> y.getDuration().getValue().toString()),
-				x -> L(model, x, XSDDatatype.XSDduration));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
