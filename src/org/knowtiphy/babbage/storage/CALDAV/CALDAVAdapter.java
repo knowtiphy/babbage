@@ -84,13 +84,13 @@ public class CALDAVAdapter extends BaseAdapter
 			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
 	{
 		System.out.println("CALDAVAdapter INSTANTIATED");
+		// Query for serverName, emailAdress, and password
 
 		this.messageDatabase = messageDatabase;
 		this.listenerManager = listenerManager;
 		this.notificationQ = notificationQ;
 		this.model = model;
 
-		// Query for serverName, emailAdress, and password
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_PASSWORD));
