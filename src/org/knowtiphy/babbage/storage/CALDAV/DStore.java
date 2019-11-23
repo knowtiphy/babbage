@@ -1,8 +1,9 @@
 package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.component.VEvent;
+import org.apache.jena.datatypes.RDFDatatype;
+import org.apache.jena.datatypes.xsd.XSDDatatype;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
-import org.apache.jena.datatypes.xsd.XSDDuration;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelCon;
@@ -34,6 +35,12 @@ public interface DStore
 	static <T> Literal L(ModelCon model, T value)
 	{
 		return model.createTypedLiteral(value);
+	}
+
+
+	static <T> Literal L(Model model, T value, RDFDatatype rdfDatatype)
+	{
+		return model.createTypedLiteral(value, rdfDatatype);
 	}
 
 	static <S> void attr(Model model, Resource subject, String predicate, S value, Function<S, ? extends Literal> fn)
@@ -79,8 +86,8 @@ public interface DStore
 				optionalAttr(event, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(model, x));
 
 		attr(model, eventRes, Vocabulary.HAS_DURATION,
-				optionalAttr(event, x -> x.getDuration() != null, y -> y.getDuration().getValue()),
-				x -> L(model, new XSDDuration(x)));
+				optionalAttr(event, x -> x.getDuration() != null, y -> y.getDuration().getValue().toString()),
+				x -> L(model, x, XSDDatatype.XSDduration));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
