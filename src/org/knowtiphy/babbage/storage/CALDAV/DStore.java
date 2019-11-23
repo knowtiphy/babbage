@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.component.VEvent;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
+import org.apache.jena.datatypes.xsd.XSDDuration;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelCon;
@@ -79,7 +80,7 @@ public interface DStore
 
 		attr(model, eventRes, Vocabulary.HAS_DURATION,
 				optionalAttr(event, x -> x.getDuration() != null, y -> y.getDuration().getValue()),
-				x -> L(model, x));
+				x -> L(model, new XSDDuration(x)));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
