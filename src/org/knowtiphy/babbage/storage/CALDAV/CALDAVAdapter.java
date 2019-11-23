@@ -2,7 +2,6 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.Biweekly;
 import biweekly.component.VEvent;
-import biweekly.util.ICalDate;
 import com.github.sardine.DavResource;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
@@ -24,11 +23,7 @@ import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.JenaUtils;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Calendar;
 import java.util.Collection;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -37,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
@@ -68,8 +64,8 @@ public class CALDAVAdapter extends BaseAdapter
 	private final String id;
 
 	//	RDF ids to Java folder and message objects
-	private final Map<String, DavResource> m_Calendar = new HashMap<>(5);
-	private final Map<String, Map<String, DavResource>> m_PerCalendarEvents = new HashMap<>(1000);
+	private final Map<String, DavResource> m_Calendar = new ConcurrentHashMap<>(5);
+	private final Map<String, Map<String, DavResource>> m_PerCalendarEvents = new ConcurrentHashMap<>(1000);
 
 	private final BlockingQueue<Runnable> workQ;
 	//private final BlockingQueue<Runnable> contentQ;
@@ -117,22 +113,6 @@ public class CALDAVAdapter extends BaseAdapter
 		doWork = new Thread(new Worker(workQ));
 		// Figure out what this guy is doing
 		doContent = Executors.newCachedThreadPool();
-	}
-
-	public static Calendar fromDate(ICalDate date)
-	{
-		LocalDateTime dateTime = LocalDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
-		Date d = new Date(date.getTime());
-		Calendar cal = Calendar.getInstance();
-		cal.setTime(d);
-		return cal;
-	}
-
-	public static Calendar fromDate(Date date)
-	{
-		Calendar cal = Calendar.getInstance();
-		cal.setTime(date);
-		return cal;
 	}
 
 	@Override public String getId()
@@ -316,11 +296,6 @@ public class CALDAVAdapter extends BaseAdapter
 		WriteContext context = getWriteContext();
 		context.startTransaction(recorder);
 
-		//JenaUtils.printModel(context.getModel(), "TEST OF CONTEXT MODEL");
-
-		System.err.println("SIZE OF CONTEXT MODEL :: " + context.getModel().size());
-		System.err.println("SIZE OF MESSAGE DB MODEL :: " + messageDatabase.getDefaultModel().size());
-
 		try
 		{
 			for (String calURI : removeCalendar)
@@ -438,7 +413,6 @@ public class CALDAVAdapter extends BaseAdapter
 
 	private void startSynchThread()
 	{
-		//
 		synchThread = new Thread(() -> {
 			while (true)
 			{
@@ -448,21 +422,23 @@ public class CALDAVAdapter extends BaseAdapter
 					ensureMapsLoaded();
 
 					System.out.println("IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
-					Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
+					//Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
 
-					// See if any Calendars have been Deleted or Added as well
-					Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
+					// List to check if any cals need to be removed
+					Iterator<DavResource> calDavResources =  sardine.list(serverName).iterator();
 					// 1st iteration is not a calendar, just the enclosing directory
 					calDavResources.next();
 
+					Collection<String> serverCalURIs = new HashSet<>(10);
 					// During this loop, I can check the CTAGS, Check if need to be added/deleted
 					while (calDavResources.hasNext())
 					{
 						DavResource serverCal = calDavResources.next();
 						String encodedCalURI = encodeCalendar(serverCal);
+						serverCalURIs.add(encodedCalURI);
 
 						// Calendar not in DB, add to map, store it and events
-						if (!storedCalendars.contains(encodedCalURI))
+						if (!m_Calendar.containsKey(encodedCalURI))
 						{
 							m_Calendar.put(encodedCalURI, serverCal);
 
@@ -488,6 +464,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 							try
 							{
+								System.out.println("SYNCH THREAD ADDDING CAL");
 								storeCalendar(context.getModel(), serverCal);
 								for (DavResource event : addEvent)
 								{
@@ -514,32 +491,6 @@ public class CALDAVAdapter extends BaseAdapter
 							}
 
 						}
-						// If it wasn't in stored, and thus not in the map now, it's to be deleted
-						else if (!m_Calendar.containsKey(encodedCalURI))
-						{
-							TransactionRecorder recorder = new TransactionRecorder();
-							WriteContext context = getWriteContext();
-							context.startTransaction(recorder);
-
-							try
-							{
-								for (String eventURI : m_PerCalendarEvents.get(encodedCalURI).keySet())
-								{
-									DStore.unstoreRes(context.getModel(), encodedCalURI, eventURI);
-								}
-
-								DStore.unstoreRes(context.getModel(), getId(), encodedCalURI);
-
-								m_PerCalendarEvents.remove(encodedCalURI);
-								m_Calendar.remove(encodedCalURI);
-
-								context.succeed();
-								notifyListeners(recorder);
-							} catch (Exception ex)
-							{
-								context.fail(ex);
-							}
-						}
 						// It does contain the calendar, check if CTags differ, check if names differ
 						else
 						{
@@ -554,6 +505,42 @@ public class CALDAVAdapter extends BaseAdapter
 
 								}
 
+							}
+						}
+
+					}
+
+					// For every Calendar URI in m_Calendar, if sever does not contain, remove it
+					// Maybe do all at once? Or would that be too abrasive to user?
+					for (String currentCalUri : m_Calendar.keySet())
+					{
+
+						if (!serverCalURIs.contains(currentCalUri))
+						{
+							System.out.println("SYNCH THREAD REMOVING CAL");
+
+							TransactionRecorder recorder = new TransactionRecorder();
+							WriteContext context = getWriteContext();
+							context.startTransaction(recorder);
+
+							try
+							{
+
+								for (String eventURI : m_PerCalendarEvents.get(currentCalUri).keySet())
+								{
+									DStore.unstoreRes(context.getModel(), currentCalUri, eventURI);
+								}
+
+								DStore.unstoreRes(context.getModel(), getId(), currentCalUri);
+
+								m_PerCalendarEvents.remove(currentCalUri);
+								m_Calendar.remove(currentCalUri);
+
+								context.succeed();
+								notifyListeners(recorder);
+							} catch (Exception ex)
+							{
+								context.fail(ex);
 							}
 						}
 					}
