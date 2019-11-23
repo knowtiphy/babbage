@@ -460,7 +460,6 @@ public class CALDAVAdapter extends BaseAdapter
 					{
 						DavResource serverCal = calDavResources.next();
 						String encodedCalURI = encodeCalendar(serverCal);
-						// How to get deleteCal ? i
 
 						// Calendar not in DB, add to map, store it and events
 						if (!storedCalendars.contains(encodedCalURI))
@@ -515,7 +514,7 @@ public class CALDAVAdapter extends BaseAdapter
 							}
 
 						}
-						// If it wasn't in stored, and it's not in the map, it's to be deleted
+						// If it wasn't in stored, and thus not in the map now, it's to be deleted
 						else if (!m_Calendar.containsKey(encodedCalURI))
 						{
 							TransactionRecorder recorder = new TransactionRecorder();
@@ -545,15 +544,15 @@ public class CALDAVAdapter extends BaseAdapter
 						else
 						{
 							DavResource currCal = m_Calendar.get(encodedCalURI);
-							// Remove the name triple, and add the new one
-							if (!currCal.getDisplayName().equals(serverCal.getDisplayName()))
-							{
-
-							}
 							if (!currCal.getCustomProps().get("getctag")
 									.equals(serverCal.getCustomProps().get("getctag")))
 							{
-								m_Calendar.put(encodedCalURI, currCal);
+								m_Calendar.put(encodedCalURI, serverCal);
+								// Remove the name triple, and add the new one
+								if (!currCal.getDisplayName().equals(serverCal.getDisplayName()))
+								{
+
+								}
 
 							}
 						}

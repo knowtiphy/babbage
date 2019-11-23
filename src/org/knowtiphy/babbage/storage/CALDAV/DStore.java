@@ -2,7 +2,7 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.component.VEvent;
 import org.apache.jena.datatypes.RDFDatatype;
-import org.apache.jena.datatypes.xsd.XSDDatatype;
+import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelCon;
@@ -14,8 +14,9 @@ import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.GregorianCalendar;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -73,14 +74,14 @@ public interface DStore
 		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary().getValue(), x -> L(model, x));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_START,
-				LocalDateTime.ofInstant(event.getDateStart().getValue().toInstant(), ZoneId.systemDefault()),
-				x -> L(model, x, XSDDatatype.XSDdateTime));
+				ZonedDateTime.ofInstant(event.getDateStart().getValue().toInstant(), ZoneId.systemDefault()),
+				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd() != null ?
-						LocalDateTime.ofInstant(event.getDateEnd().getValue().toInstant(), ZoneId.systemDefault()) :
-						LocalDateTime.ofInstant(event.getDateStart().getValue().toInstant(), ZoneId.systemDefault())
+						ZonedDateTime.ofInstant(event.getDateEnd().getValue().toInstant(), ZoneId.systemDefault()) :
+						ZonedDateTime.ofInstant(event.getDateStart().getValue().toInstant(), ZoneId.systemDefault())
 								.plus(Duration.parse(event.getDuration().getValue().toString())),
-				x -> L(model, x, XSDDatatype.XSDdateTime));
+				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION,
 				optionalAttr(event, x -> x.getDescription() != null, y -> y.getDescription().getValue()),
