@@ -349,14 +349,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								+ "?%s <%s> ?%s}\n" + "WHERE \n" + "{\n" + "      ?%s <%s> <%s>.\n" + "      ?%s <%s> ?%s.\n"
 								+ "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "}",
 						// START OF CONSTRUCT
-						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER, Vars.VAR_ACCOUNT_ID,
-						Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID, Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME,
-						Vars.VAR_FOLDER_NAME, Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
+						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
+						Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
+						Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
 						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
 						// START OF WHERE
-						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER, Vars.VAR_ACCOUNT_ID,
-						Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID, Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME,
-						Vars.VAR_FOLDER_NAME, Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
+						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
+						Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
+						Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
 						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT);
 
 		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
@@ -367,6 +369,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		String constructQueryMH = String
 				.format("CONSTRUCT { ?%s <%s> ?%s . "
+								+ " ?%s <%s> ?%s . "
 								+ " ?%s <%s> <%s> . "
 								+ " ?%s <%s> ?%s . "
 								+ " ?%s <%s> ?%s . "
@@ -380,6 +383,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								+ " ?%s <%s> ?%s }\n"
 								+ "WHERE \n" + "{\n" + "      "
 								+ " ?%s <%s> ?%s.\n" + "      "
+								+ " ?%s  <%s> ?%s.\n" + "      "
 								+ " ?%s  <%s> <%s>.\n"
 								+ " ?%s  <%s> ?%s.\n" + "      "
 								+ " ?%s  <%s> ?%s.\n" + "      "
@@ -390,6 +394,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
 						// START OF CONSTRUCT
 						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
 						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
 						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
 						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
@@ -403,6 +408,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_BCC, Vars.VAR_BCC,
 						// START OF WHERE
 						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
 						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
 						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
 						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,

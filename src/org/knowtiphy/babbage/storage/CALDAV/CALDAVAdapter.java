@@ -49,7 +49,7 @@ import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
 public class CALDAVAdapter extends BaseAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(CALDAVAdapter.class.getName());
-	private static final long FREQUENCY = 60_000L;
+	private static final long FREQUENCY = 30_000L;
 
 	private static final Runnable POISON_PILL = () -> {
 	};
@@ -413,22 +413,26 @@ public class CALDAVAdapter extends BaseAdapter
 			{
 				try
 				{
-					Thread.sleep(FREQUENCY);
-					ensureMapsLoaded();
+					//					Thread.sleep(FREQUENCY);
+					//					ensureMapsLoaded();
+
+					accountLock.lock();
 
 					System.out.println("IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
 					Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
 
-					Iterator<DavResource> calDavResources =  sardine.list(serverName).iterator();
+					Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
 					// 1st iteration is not a calendar, just the enclosing directory
 					calDavResources.next();
 
+					Collection<String> serverCalURIs = new HashSet<>(10);
 					// During this loop, I can check the CTAGS, Check if need to be added/deleted
 					// Maybe all at once later on
 					while (calDavResources.hasNext())
 					{
 						DavResource serverCal = calDavResources.next();
 						String encodedServerCalURI = encodeCalendar(serverCal);
+						serverCalURIs.add(encodedServerCalURI);
 
 						// Calendar not in DB, add to map, store it and events
 						if (!storedCalendars.contains(encodedServerCalURI))
@@ -489,9 +493,12 @@ public class CALDAVAdapter extends BaseAdapter
 						else
 						{
 							DavResource currCal = m_Calendar.get(encodedServerCalURI);
+							assert currCal != null;
 							if (!currCal.getCustomProps().get("getctag")
 									.equals(serverCal.getCustomProps().get("getctag")))
 							{
+								System.out.println(
+										":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
 								m_Calendar.put(encodedServerCalURI, serverCal);
 								// Remove the name triple, and add the new one
 								if (!currCal.getDisplayName().equals(serverCal.getDisplayName()))
@@ -499,8 +506,11 @@ public class CALDAVAdapter extends BaseAdapter
 									// Will implement this later
 								}
 
-								Collection<String> storedEvents = getStored(DFetch.eventURIs(encodedServerCalURI), EVENTRES);
+								Collection<String> storedEvents = getStored(DFetch.eventURIs(encodedServerCalURI),
+										EVENTRES);
 								Collection<DavResource> addEvents = new HashSet<>();
+								Collection<String> serverEventURIs = new HashSet<>();
+
 								Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
 								// 1st iteration is the calendar uri, so skip
 								davEvents.next();
@@ -509,11 +519,13 @@ public class CALDAVAdapter extends BaseAdapter
 								{
 									DavResource serverEvent = davEvents.next();
 									String encodedServerEventURI = encodeEvent(serverCal, serverEvent);
+									serverEventURIs.add(encodedServerEventURI);
 
 									// New Event, store it
-									if (!storedEvents.contains(encodedServerCalURI))
+									if (!storedEvents.contains(encodedServerEventURI))
 									{
-										m_PerCalendarEvents.get(encodedServerCalURI).put(encodedServerEventURI, serverEvent);
+										m_PerCalendarEvents.get(encodedServerCalURI)
+												.put(encodedServerEventURI, serverEvent);
 										addEvents.add(serverEvent);
 									}
 									// Not new event, compare ETAGS
@@ -521,6 +533,52 @@ public class CALDAVAdapter extends BaseAdapter
 									{
 
 									}
+
+								}
+
+								// Events to be removed
+								Collection<String> removeEvent = new HashSet<>();
+								for (String currEventURI : m_PerCalendarEvents.get(encodedServerCalURI).keySet())
+								{
+									if (!serverEventURIs.contains(currEventURI))
+									{
+										removeEvent.add(currEventURI);
+									}
+								}
+
+								TransactionRecorder recorder = new TransactionRecorder();
+								WriteContext context = getWriteContext();
+								context.startTransaction(recorder);
+								try
+								{
+									for (String event : removeEvent)
+									{
+										System.out.println("REMOVING AN EVENT");
+										DStore.unstoreRes(messageDatabase.getDefaultModel(), encodedServerCalURI,
+												event);
+									}
+									for (DavResource event : addEvents)
+									{
+										// Parse out event and pass it through
+										VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first()
+												.getEvents().get(0);
+										System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
+										System.err.println("FOR CALENDER URI :: " + encodedServerCalURI);
+										try
+										{
+											DStore.event(messageDatabase.getDefaultModel(), encodedServerCalURI,
+													encodeEvent(serverCal, event), vEvent);
+										} catch (Throwable ex)
+										{
+											ex.printStackTrace();
+										}
+									}
+
+									context.succeed();
+									notifyListeners(recorder);
+								} catch (Exception ex)
+								{
+									context.fail(ex);
 								}
 
 							}
@@ -528,16 +586,13 @@ public class CALDAVAdapter extends BaseAdapter
 
 					}
 
-					// Could also fetch again for stored URIS instead of using additonal set
-					// of whats in server, as both should be == at this point
-					storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
-
-					// For every Calendar URI in m_Calendar, if sever does not contain, remove it
+					// Calendars to be removed
+					// For every Calendar URI in m_Calendar, if server does not contain it, remove it
 					// Maybe do all at once? Or would that be too abrasive to user?
 					for (String currentCalUri : m_Calendar.keySet())
 					{
 
-						if (!storedCalendars.contains(currentCalUri))
+						if (!serverCalURIs.contains(currentCalUri))
 						{
 							System.out.println("SYNCH THREAD REMOVING CAL");
 
@@ -580,6 +635,9 @@ public class CALDAVAdapter extends BaseAdapter
 					// Remove old Triples
 					// Add new Triples
 
+					accountLock.unlock();
+					Thread.sleep(FREQUENCY);
+
 				} catch (Exception e)
 				{
 					e.printStackTrace();
@@ -609,7 +667,9 @@ public class CALDAVAdapter extends BaseAdapter
 			}
 			accountLock.unlock();
 
-			startSynchThread();
+			//accountLock.unlock();
+
+			//startSynchThread();
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
 			return null;
 		});
