@@ -416,9 +416,12 @@ public class CALDAVAdapter extends BaseAdapter
 					//					Thread.sleep(FREQUENCY);
 					//					ensureMapsLoaded();
 
+					// RETHINKING OF DOING
+
 					accountLock.lock();
 
 					System.out.println("IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+
 					Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
 
 					Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
@@ -434,10 +437,15 @@ public class CALDAVAdapter extends BaseAdapter
 						String encodedServerCalURI = encodeCalendar(serverCal);
 						serverCalURIs.add(encodedServerCalURI);
 
-						// Calendar not in DB, add to map, store it and events
-						if (!storedCalendars.contains(encodedServerCalURI))
+						if (!m_Calendar.containsKey(encodedServerCalURI))
 						{
 							m_Calendar.put(encodedServerCalURI, serverCal);
+						}
+
+						// Calendar not in DB, store it and events
+						if (!storedCalendars.contains(encodedServerCalURI))
+						{
+							//m_Calendar.put(encodedServerCalURI, serverCal);
 
 							// Add Events
 							Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
@@ -668,8 +676,8 @@ public class CALDAVAdapter extends BaseAdapter
 			accountLock.unlock();
 
 			//accountLock.unlock();
-
 			//startSynchThread();
+
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
 			return null;
 		});

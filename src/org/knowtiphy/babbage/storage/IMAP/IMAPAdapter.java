@@ -345,9 +345,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		// So when this added, query the DB and feed those into client the client via notifying the listener
 		String constructQueryFD = String
-				.format("CONSTRUCT { ?%s <%s> <%s> . " + "<%s> <%s> ?%s . " + "?%s <%s> ?%s . " + "?%s <%s> ?%s . "
-								+ "?%s <%s> ?%s}\n" + "WHERE \n" + "{\n" + "      ?%s <%s> <%s>.\n" + "      <%s> <%s> ?%s.\n"
-								+ "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "      ?%s <%s> ?%s.\n" + "}",
+				.format("CONSTRUCT { ?%s <%s> <%s> . " +
+								"    <%s> <%s> ?%s  . " +
+								   " ?%s <%s> ?%s   . " +
+								   " ?%s <%s> ?%s . "   +
+								     "?%s <%s> ?%s}\n"  +
+								"WHERE \n" + "{\n" + " ?%s <%s> <%s>.\n" + "      "
+								+ "                 <%s> <%s> ?%s.\n"
+								+ "                ?%s <%s> ?%s.\n" + "      "
+								+ "                ?%s <%s> ?%s.\n" + "      "
+								+ "                ?%s <%s> ?%s.\n" + "}",
 						// START OF CONSTRUCT
 						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
 						getId(), Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
@@ -369,7 +376,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		String constructQueryMH = String
 				.format("CONSTRUCT { ?%s <%s> ?%s . "
-								+ " <%s> <%s> ?%s . "
 								+ " ?%s <%s> <%s> . "
 								+ " ?%s <%s> ?%s . "
 								+ " ?%s <%s> ?%s . "
@@ -394,7 +400,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
 						// START OF CONSTRUCT
 						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
-						getId(), Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
 						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
 						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
 						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
