@@ -18,7 +18,6 @@ import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.ReadContext;
 import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.TransactionRecorder;
-import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.FileUtils;
@@ -63,6 +62,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
@@ -129,8 +129,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					   BlockingDeque<Runnable> notificationQ, Model model)
 			throws InterruptedException, MessagingException, IOException
 	{
-		System.out.println("IMAPAdapter INSTANTIATED");
-
 		this.messageDatabase = messageDatabase;
 		this.listenerManager = listenerManager;
 		this.notificationQ = notificationQ;
@@ -144,9 +142,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
-		if (JenaUtils.has(model, name, Vocabulary.HAS_NICK_NAME))
+		try
 		{
 			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
+		} catch (NoSuchElementException ex)
+		{
+			//	the account doesn't have a nick name
 		}
 
 		this.trustedSenders = new HashSet<>(100);
@@ -333,7 +334,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
 		if (nickName != null)
 		{
-			System.err.println("PUBLISHING ACCOUNT NICK NAME " + nickName);
 			accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
 		trustedSenders.forEach(x -> accountTriples
@@ -341,7 +341,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		trustedContentProviders.forEach(x -> accountTriples
 				.add(R(accountTriples, id),
 						P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
-
 
 		// Notify the client of the account triples
 		TransactionRecorder accountRec = new TransactionRecorder();
@@ -352,95 +351,19 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		context.start();
 
 		// So when this added, query the DB and feed those into client the client via notifying the listener
-		String constructQueryFD = String
-				.format("CONSTRUCT { ?%s <%s> <%s> . " +
-								"    <%s> <%s> ?%s  . " +
-								" ?%s <%s> ?%s   . " +
-								" ?%s <%s> ?%s . " +
-								"?%s <%s> ?%s}\n" +
-								"WHERE \n" + "{\n" + " ?%s <%s> <%s>.\n" + "      "
-								+ "                 <%s> <%s> ?%s.\n"
-								+ "                ?%s <%s> ?%s.\n" + "      "
-								+ "                ?%s <%s> ?%s.\n" + "      "
-								+ "                ?%s <%s> ?%s.\n" + "}",
-						// START OF CONSTRUCT
-						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
-						getId(), Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
-						// START OF WHERE
-						Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
-						getId(), Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
-						Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT);
-
+		String constructQueryFD = DFetch.skeleton(getId());
 		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
-
 		TransactionRecorder rec = new TransactionRecorder();
 		rec.addedStatements(mFD);
 		notifyListeners(rec);
 
-		String constructQueryMH = String
-				.format("CONSTRUCT { ?%s <%s> ?%s . "
-								+ " ?%s <%s> <%s> . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ "?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s . "
-								+ " ?%s <%s> ?%s }\n"
-								+ "WHERE \n" + "{\n" + "      "
-								+ " ?%s <%s> ?%s.\n" + "      "
-								+ " <%s>  <%s> ?%s.\n" + "      "
-								+ " ?%s  <%s> <%s>.\n"
-								+ " ?%s  <%s> ?%s.\n" + "      "
-								+ " ?%s  <%s> ?%s.\n" + "      "
-								+ " ?%s  <%s> ?%s.\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-								+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
-						// START OF CONSTRUCT
-						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
-						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED,
-						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT,
-						Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON, Vars.VAR_RECEIVED_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO,
-						Vars.VAR_MESSAGE_ID, Vocabulary.FROM, Vars.VAR_FROM,
-						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC,
-						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_BCC, Vars.VAR_BCC,
-						// START OF WHERE
-						Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
-						getId(), Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
-						Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
-						Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED,
-						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_SUBJECT, Vars.VAR_SUBJECT,
-						Vars.VAR_MESSAGE_ID, Vocabulary.RECEIVED_ON, Vars.VAR_RECEIVED_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.SENT_ON, Vars.VAR_SENT_ON,
-						Vars.VAR_MESSAGE_ID, Vocabulary.TO, Vars.VAR_TO,
-						Vars.VAR_MESSAGE_ID, Vocabulary.FROM, Vars.VAR_FROM,
-						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC,
-						Vars.VAR_MESSAGE_ID, Vocabulary.HAS_BCC, Vars.VAR_BCC);
-
+		String constructQueryMH = DFetch.initialState(getId());
 		Model mMH = QueryExecutionFactory.create(constructQueryMH, context.getModel()).execConstruct();
 		TransactionRecorder recMH = new TransactionRecorder();
 		recMH.addedStatements(mMH);
 		context.end();
 
 		notifyListeners(recMH);
-
 	}
 	// @formatter:on
 
