@@ -5,7 +5,6 @@
  */
 package org.knowtiphy.babbage.storage;
 
-import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.Folder;
@@ -31,7 +30,7 @@ public interface IAdapter
 
 	void close();
 
-	void addListener(Model accountTriples);
+	void addListener();
 
 	Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag);
 

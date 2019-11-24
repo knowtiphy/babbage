@@ -170,11 +170,11 @@ public class LocalStorageSandBox implements IStorage
 	{
 		listenerManager.addListener(listener);
 
-		Model accountTriples = ModelFactory.createDefaultModel();
 		for (IAdapter adapter : m_adapter.values())
 		{
 			// Add relevant triples to the model
-			adapter.addListener(accountTriples);
+			System.err.println("ADAPTER === " + adapter.getId());
+			adapter.addListener();
 		}
 
 		// Start the synching of the IMAP org.knowtiphy.pinkpigmail.server, adds its work to the front of the Queue

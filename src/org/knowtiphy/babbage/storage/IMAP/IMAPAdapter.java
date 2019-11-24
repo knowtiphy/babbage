@@ -8,6 +8,7 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.BaseAdapter;
@@ -326,8 +327,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	// @formatter:off
 	@Override
-	public void addListener(Model accountTriples) throws UnsupportedOperationException
+	public void addListener() throws UnsupportedOperationException
 	{
+		Model accountTriples = ModelFactory.createDefaultModel();
+
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE), P(accountTriples, Vocabulary.IMAP_ACCOUNT));
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME), serverName);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
@@ -351,19 +354,19 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		context.start();
 
 		// So when this added, query the DB and feed those into client the client via notifying the listener
-		String constructQueryFD = DFetch.skeleton(getId());
+		String constructQueryFD = DFetch.skeleton(id);
 		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
 		TransactionRecorder rec = new TransactionRecorder();
 		rec.addedStatements(mFD);
 		notifyListeners(rec);
 
-		String constructQueryMH = DFetch.initialState(getId());
+		String constructQueryMH = DFetch.initialState(id);
 		Model mMH = QueryExecutionFactory.create(constructQueryMH, context.getModel()).execConstruct();
 		TransactionRecorder recMH = new TransactionRecorder();
 		recMH.addedStatements(mMH);
-		context.end();
-
 		notifyListeners(recMH);
+
+		context.end();
 	}
 	// @formatter:on
 
@@ -792,8 +795,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		String folderName = encode(folder);
 		Resource folderRes = model.createResource(folderName);
 		model.add(folderRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
-		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);
-		model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
+		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
 				model.createTypedLiteral(((UIDFolder) folder).getUIDValidity()));
 		model.add(folderRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(folder.getName()));
 		DStore.folderCounts(model, this, folder);

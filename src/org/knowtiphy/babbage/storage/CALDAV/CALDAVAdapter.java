@@ -10,6 +10,7 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Resource;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IReadContext;
@@ -135,8 +136,10 @@ public class CALDAVAdapter extends BaseAdapter
 	}
 
 	// @formatter:off
-	@Override public void addListener(Model accountTriples)
+	@Override public void addListener()
 	{
+		Model accountTriples = ModelFactory.createDefaultModel();
+
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE),
 				P(accountTriples, Vocabulary.CALDAV_ACCOUNT));
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME), serverName);

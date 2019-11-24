@@ -1,6 +1,5 @@
 package org.knowtiphy.babbage.storage;
 
-import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.Folder;
@@ -20,7 +19,7 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
-	public void addListener(Model accountTriples)
+	public void addListener()
 	{
 		throw new UnsupportedOperationException();
 	}
