@@ -99,6 +99,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private final String serverName;
 	private final String emailAddress;
 	private final String password;
+	private String nickName;
 	private final String id;
 	private final Set<String> trustedSenders, trustedContentProviders;
 
@@ -125,7 +126,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Folder inbox;
 
 	public IMAPAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-			BlockingDeque<Runnable> notificationQ, Model model)
+					   BlockingDeque<Runnable> notificationQ, Model model)
 			throws InterruptedException, MessagingException, IOException
 	{
 		System.out.println("IMAPAdapter INSTANTIATED");
@@ -143,6 +144,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
+		if (JenaUtils.has(model, name, Vocabulary.HAS_NICK_NAME))
+		{
+			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
+		}
 
 		this.trustedSenders = new HashSet<>(100);
 		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_SENDER)
@@ -258,7 +263,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return result;
 	}
 
-	@Override public String getId()
+	@Override
+	public String getId()
 	{
 		return id;
 	}
@@ -318,16 +324,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	// @formatter:off
-	@Override public void addListener(Model accountTriples) throws UnsupportedOperationException
+	@Override
+	public void addListener(Model accountTriples) throws UnsupportedOperationException
 	{
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE),
-				P(accountTriples, Vocabulary.IMAP_ACCOUNT));
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME),
-				serverName);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS),
-				emailAddress);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD),
-				password);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE), P(accountTriples, Vocabulary.IMAP_ACCOUNT));
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME), serverName);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
+		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
+		if (nickName != null)
+		{
+			System.err.println("PUBLISHING ACCOUNT NICK NAME " + nickName);
+			accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+		}
 		trustedSenders.forEach(x -> accountTriples
 				.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
 		trustedContentProviders.forEach(x -> accountTriples
@@ -347,9 +355,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		String constructQueryFD = String
 				.format("CONSTRUCT { ?%s <%s> <%s> . " +
 								"    <%s> <%s> ?%s  . " +
-								   " ?%s <%s> ?%s   . " +
-								   " ?%s <%s> ?%s . "   +
-								     "?%s <%s> ?%s}\n"  +
+								" ?%s <%s> ?%s   . " +
+								" ?%s <%s> ?%s . " +
+								"?%s <%s> ?%s}\n" +
 								"WHERE \n" + "{\n" + " ?%s <%s> <%s>.\n" + "      "
 								+ "                 <%s> <%s> ?%s.\n"
 								+ "                ?%s <%s> ?%s.\n" + "      "
@@ -514,7 +522,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	//  TOOD -- got to go since its just a composition of mark junk and copy org.knowtiphy.pinkpigmail.messages -- merge with move
 	public Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-			boolean delete)
+										boolean delete)
 	{
 		return addWork(() -> {
 			LOGGER.log(Level.INFO, "moveMessagesToJunk : {0}", delete);
@@ -544,7 +552,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-			boolean delete)
+								  boolean delete)
 	{
 		Folder source = m_folder.get(sourceFolderId);
 		assert source != null;
@@ -627,7 +635,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//			}
 
 		message.setFrom(new InternetAddress(getEmailAddress()));
-		message.setReplyTo(new Address[] { new InternetAddress(getEmailAddress()) });
+		message.setReplyTo(new Address[]{new InternetAddress(getEmailAddress())});
 		//  TODO -- get rid of the toList stuff
 		if (model.getTo() != null)
 		{
@@ -757,7 +765,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private void reOpenFolder(Folder folder) throws MessagingException, StorageException, InterruptedException
 	{
-		LOGGER.log(Level.INFO, "reOpenFolder :: {0} :: {1}", new Object[] { folder.getName(), folder.isOpen() });
+		LOGGER.log(Level.INFO, "reOpenFolder :: {0} :: {1}", new Object[]{folder.getName(), folder.isOpen()});
 		//assert !folder.isOpen();
 
 		accountLock.lock();
@@ -842,7 +850,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				try
 				{
-					LOGGER.log(Level.INFO, "REWATCH :: {0} :: {1}", new Object[] { i, folder.getName() });
+					LOGGER.log(Level.INFO, "REWATCH :: {0} :: {1}", new Object[]{i, folder.getName()});
 					reOpenFolder(folder);
 					idleManager.watch(folder);
 					return;
@@ -912,7 +920,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		props.putAll(outGoing);
 		Session session = Session.getInstance(props, new Authenticator()
 		{
-			@Override protected PasswordAuthentication getPasswordAuthentication()
+			@Override
+			protected PasswordAuthentication getPasswordAuthentication()
 			{
 				return new PasswordAuthentication(getEmailAddress(), getPassword());
 			}
@@ -1167,7 +1176,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		@Override public void messageChanged(MessageChangedEvent messageChangedEvent)
+		@Override
+		public void messageChanged(MessageChangedEvent messageChangedEvent)
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE CHANGED {0}", messageChangedEvent);
 			LOGGER.log(Level.INFO, "{0}THREAD IS = ", Thread.currentThread().getId());
@@ -1224,7 +1234,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			this.folder = folder;
 		}
 
-		@Override public void messagesRemoved(MessageCountEvent e)
+		@Override
+		public void messagesRemoved(MessageCountEvent e)
 		{
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 			LOGGER.log(Level.INFO, "{0}THREAD  = ", Thread.currentThread().getId());
@@ -1262,7 +1273,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}));
 		}
 
-		@Override public void messagesAdded(MessageCountEvent e)
+		@Override
+		public void messagesAdded(MessageCountEvent e)
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
 			LOGGER.log(Level.INFO, "THREAD IS = {0}", Thread.currentThread().getId());
@@ -1304,7 +1316,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			this.work = work;
 		}
 
-		@Override public Folder call() throws Exception
+		@Override
+		public Folder call() throws Exception
 		{
 			for (int attempts = 0; attempts < NUM_ATTEMPTS; attempts++)
 			{
@@ -1348,7 +1361,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			this.queue = queue;
 		}
 
-		@Override public void run()
+		@Override
+		public void run()
 		{
 			while (true)
 			{

@@ -21,6 +21,7 @@ public interface Vocabulary
     String HAS_EMAIL_ADDRESS = TBASE + "hasEmailAddress";
     String HAS_PASSWORD = TBASE + "hasPassword";
     String HAS_SERVER_HEADER = TBASE + "hasServerHeader";
+    String HAS_NICK_NAME = TBASE + "hasNickName";
 
     String HAS_TRUSTED_CONTENT_PROVIDER = TBASE + "hasTrustedContentProvider";
 	String HAS_TRUSTED_SENDER = TBASE + "hasTrustedSender";
