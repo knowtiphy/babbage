@@ -2,7 +2,12 @@ package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
-import org.apache.jena.rdf.model.*;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelCon;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.Property;
+import org.apache.jena.rdf.model.ResIterator;
+import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.tdb2.TDB2Factory;
@@ -13,14 +18,17 @@ import org.knowtiphy.utils.JenaUtils;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Transport;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.StringReader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.logging.Logger;
 
 /**
@@ -208,17 +216,17 @@ public class LocalStorage implements IStorage
 
 		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
 
-		ByteArrayOutputStream stream = new ByteArrayOutputStream();
-		RDFDataMgr.write(stream, mFD, Lang.RDFJSON);
-
-		byte[] data = stream.toByteArray();
-
-		String str = new String(data, StandardCharsets.UTF_8);
-		StringReader reader = new StringReader(str);
-		//System.out.println(string);
-
-		Model modelTest = ModelFactory.createDefaultModel();
-		modelTest.read(reader, null, "RDF/JSON");
+//		ByteArrayOutputStream stream = new ByteArrayOutputStream();
+//		RDFDataMgr.write(stream, mFD, Lang.RDFJSON);
+//
+//		byte[] data = stream.toByteArray();
+//
+//		String str = new String(data, StandardCharsets.UTF_8);
+//		StringReader reader = new StringReader(str);
+//		//System.out.println(string);
+//
+//		Model modelTest = ModelFactory.createDefaultModel();
+//		modelTest.read(reader, null, "RDF/JSON");
 
 		//JenaUtils.printModel(modelTest, "TEST FROM JSON");
 
