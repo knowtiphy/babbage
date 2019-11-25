@@ -65,12 +65,14 @@ public interface Vocabulary
     String CALDAV_ACCOUNT = TBASE + "CALDAVAccount";
     String CALDAV_CALENDAR = TBASE + "CALDAVCalendar";
     String CALDAV_EVENT = TBASE + "CALDAVEvent";
+    String HAS_CTAG = TBASE + "hasCTag";
 
     String HAS_DATE_START = TBASE + "startsAt";
     String HAS_DATE_END = TBASE + "endsAt";
     String HAS_SUMMARY = TBASE + "hasSummary";
     String HAS_DESCRIPTION = TBASE + "hasDescription";
     String HAS_PRIORITY = TBASE + "hasPriority";
+    String HAS_ETAG = TBASE + "hasETag";
 
     // Vocabulary for CardDav
     String CARDDAV_ACCOUNT = TBASE + "CARDDAVAccount";

@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.Biweekly;
 import biweekly.component.VEvent;
+import biweekly.util.ICalDate;
 import com.github.sardine.DavResource;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
@@ -24,6 +25,8 @@ import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.JenaUtils;
 
 import java.io.IOException;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -123,6 +126,11 @@ public class CALDAVAdapter extends BaseAdapter
 		doWork = new Thread(new Worker(workQ));
 		// Figure out what this guy is doing
 		doContent = Executors.newCachedThreadPool();
+	}
+
+	public static ZonedDateTime fromDate(ICalDate date)
+	{
+		return ZonedDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
 	}
 
 	@Override
