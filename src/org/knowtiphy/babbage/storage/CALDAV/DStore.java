@@ -14,8 +14,6 @@ import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
 import java.time.Duration;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.GregorianCalendar;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -74,12 +72,12 @@ public interface DStore
 		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary().getValue(), x -> L(model, x));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_START,
-				ZonedDateTime.ofInstant(event.getDateStart().getValue().toInstant(), ZoneId.systemDefault()),
+				CALDAVAdapter.fromDate(event.getDateStart().getValue()),
 				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd() != null ?
-						ZonedDateTime.ofInstant(event.getDateEnd().getValue().toInstant(), ZoneId.systemDefault()) :
-						ZonedDateTime.ofInstant(event.getDateStart().getValue().toInstant(), ZoneId.systemDefault())
+						CALDAVAdapter.fromDate(event.getDateEnd().getValue()) :
+						CALDAVAdapter.fromDate(event.getDateStart().getValue())
 								.plus(Duration.parse(event.getDuration().getValue().toString())),
 				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
 
