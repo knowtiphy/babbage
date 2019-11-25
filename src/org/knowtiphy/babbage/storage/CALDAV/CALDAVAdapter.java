@@ -148,6 +148,11 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			//  ignore
 		}
+
+		if (synchThread != null)
+		{
+			synchThread.interrupt();
+		}
 	}
 
 	// @formatter:off
@@ -729,10 +734,6 @@ public class CALDAVAdapter extends BaseAdapter
 
 										if (!storedTAG.equals(serverEvent.getEtag()))
 										{
-											System.out.println("ETAGS DIFFER");
-											System.out.println("STORED ETAG :: " + getStoredTag(DFetch.eventETag(serverEventURI), ETAG).replace("\\\"", "\""));
-											System.out.println("SERVER ETAG :: " + serverEvent.getEtag());
-
 											storeEventDiffs(serverEventURI, serverEvent);
 										}
 									}
@@ -829,7 +830,12 @@ public class CALDAVAdapter extends BaseAdapter
 					accountLock.unlock();
 					Thread.sleep(FREQUENCY);
 
-				} catch (Exception e)
+				}
+				catch (InterruptedException shutdown)
+				{
+					return;
+				}
+				catch (Exception e)
 				{
 					e.printStackTrace();
 				}
