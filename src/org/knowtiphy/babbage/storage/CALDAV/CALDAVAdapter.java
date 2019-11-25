@@ -30,6 +30,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
@@ -81,7 +82,7 @@ public class CALDAVAdapter extends BaseAdapter
 	private Thread synchThread;
 
 	public CALDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
+						 BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
 	{
 		System.out.println("CALDAVAdapter INSTANTIATED");
 		// Query for serverName, emailAdress, and password
@@ -100,6 +101,13 @@ public class CALDAVAdapter extends BaseAdapter
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
 		this.serverHeader = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_HEADER));
+		try
+		{
+			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
+		} catch (NoSuchElementException ex)
+		{
+			//	the account doesn't have a nick name
+		}
 
 		this.id = Vocabulary.E(Vocabulary.CALDAV_ACCOUNT, emailAddress);
 
@@ -117,12 +125,14 @@ public class CALDAVAdapter extends BaseAdapter
 		doContent = Executors.newCachedThreadPool();
 	}
 
-	@Override public String getId()
+	@Override
+	public String getId()
 	{
 		return id;
 	}
 
-	@Override public void close()
+	@Override
+	public void close()
 	{
 		try
 		{
@@ -137,7 +147,8 @@ public class CALDAVAdapter extends BaseAdapter
 	}
 
 	// @formatter:off
-	@Override public void addListener()
+	@Override
+	public void addListener()
 	{
 		Model accountTriples = ModelFactory.createDefaultModel();
 
@@ -147,7 +158,7 @@ public class CALDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
-	if (nickName != null)
+		if (nickName != null)
 		{
 			accountTriples.add(org.knowtiphy.babbage.storage.IMAP.DStore.R(accountTriples, id), org.knowtiphy.babbage.storage.IMAP.DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
@@ -160,13 +171,13 @@ public class CALDAVAdapter extends BaseAdapter
 		context.start();
 
 		String construtCalendarDetails = String
-				.format("      CONSTRUCT {   ?%s <%s> <%s> . "  +
-								 			"?%s <%s> ?%s .  "  +
-								            "?%s <%s> ?%s}\n "  +
-								"WHERE {     ?%s <%s> <%s> . "  +
-								            "?%s <%s> ?%s .  "  +
-								            "?%s <%s> ?%s .  "  +
-								     " }",
+				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
+								"?%s <%s> ?%s .  " +
+								"?%s <%s> ?%s}\n " +
+								"WHERE {     ?%s <%s> <%s> . " +
+								"?%s <%s> ?%s .  " +
+								"?%s <%s> ?%s .  " +
+								" }",
 						// START OF CONSTRUCT
 						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
 						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
@@ -185,22 +196,22 @@ public class CALDAVAdapter extends BaseAdapter
 		notifyListeners(rec1);
 
 		String constructEventDetails = String
-				.format("      CONSTRUCT {   ?%s <%s> <%s> . "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s}\n   " +
+				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s}\n   " +
 
-								"WHERE {     ?%s <%s> <%s> .  "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
-											"?%s <%s> ?%s .   "  +
-								            "?%s <%s> ?%s .   "  +
-								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
-								"OPTIONAL {  ?%s <%s> ?%s }\n "  +
-									" }",
+								"WHERE {     ?%s <%s> <%s> .  " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								" }",
 						// START OF CONSTRUCT
 						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
 						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
@@ -663,7 +674,8 @@ public class CALDAVAdapter extends BaseAdapter
 		synchThread.start();
 	}
 
-	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	@Override
+	public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		System.out.println("GET SYNCH TASK CALLED");
 		return new FutureTask<Void>(() -> {
@@ -726,7 +738,8 @@ public class CALDAVAdapter extends BaseAdapter
 			this.queue = queue;
 		}
 
-		@Override public void run()
+		@Override
+		public void run()
 		{
 			while (true)
 			{
