@@ -702,7 +702,7 @@ public class CALDAVAdapter extends BaseAdapter
 						Thread.sleep(FREQUENCY);
 					} catch (InterruptedException ex)
 					{
-						synchThread.interrupt();
+						return;
 					}
 				}
 			}
