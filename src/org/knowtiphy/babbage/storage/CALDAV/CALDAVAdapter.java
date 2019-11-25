@@ -61,6 +61,7 @@ public class CALDAVAdapter extends BaseAdapter
 	private final String emailAddress;
 	private final String password;
 	private final String serverHeader;
+	private String nickName;
 
 	private final String id;
 
@@ -146,7 +147,10 @@ public class CALDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
-
+	if (nickName != null)
+		{
+			accountTriples.add(org.knowtiphy.babbage.storage.IMAP.DStore.R(accountTriples, id), org.knowtiphy.babbage.storage.IMAP.DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+		}
 		// Notify the client of the account triples
 		TransactionRecorder accountRec = new TransactionRecorder();
 		accountRec.addedStatements(accountTriples);
