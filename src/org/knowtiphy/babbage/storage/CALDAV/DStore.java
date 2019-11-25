@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.storage.CALDAV;
 
 import biweekly.component.VEvent;
+import com.github.sardine.DavResource;
 import org.apache.jena.datatypes.RDFDatatype;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.rdf.model.Literal;
@@ -63,30 +64,42 @@ public interface DStore
 		}
 	}
 
-	static void event(Model model, String calendarName, String eventName, VEvent event)
+	static void storeCalendar(Model model, String adapterID, String encodedCalendar, DavResource calendar)
+	{
+		Resource calRes = model.createResource(encodedCalendar);
+		model.add(calRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_CALENDAR));
+		model.add(model.createResource(adapterID), model.createProperty(Vocabulary.CONTAINS), calRes);
+		model.add(calRes, model.createProperty(Vocabulary.HAS_NAME),
+				model.createTypedLiteral(calendar.getDisplayName()));
+		model.add(calRes, model.createProperty(Vocabulary.HAS_CTAG),
+				model.createTypedLiteral(calendar.getCustomProps().get("getctag")));
+	}
+
+	static void storeEvent(Model model, String calendarName, String eventName, VEvent vEvent, DavResource event)
 	{
 		Resource eventRes = R(model, eventName);
 		model.add(eventRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_EVENT));
 		model.add(R(model, calendarName), P(model, Vocabulary.CONTAINS), eventRes);
 
-		attr(model, eventRes, Vocabulary.HAS_SUMMARY, event.getSummary().getValue(), x -> L(model, x));
+		attr(model, eventRes, Vocabulary.HAS_ETAG, event.getEtag(), x -> L(model, x));
 
-		attr(model, eventRes, Vocabulary.HAS_DATE_START,
-				CALDAVAdapter.fromDate(event.getDateStart().getValue()),
+		attr(model, eventRes, Vocabulary.HAS_SUMMARY, vEvent.getSummary().getValue(), x -> L(model, x));
+
+		attr(model, eventRes, Vocabulary.HAS_DATE_START, CALDAVAdapter.fromDate(vEvent.getDateStart().getValue()),
 				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
 
-		attr(model, eventRes, Vocabulary.HAS_DATE_END, event.getDateEnd() != null ?
-						CALDAVAdapter.fromDate(event.getDateEnd().getValue()) :
-						CALDAVAdapter.fromDate(event.getDateStart().getValue())
-								.plus(Duration.parse(event.getDuration().getValue().toString())),
+		attr(model, eventRes, Vocabulary.HAS_DATE_END, vEvent.getDateEnd() != null ?
+						CALDAVAdapter.fromDate(vEvent.getDateEnd().getValue()) :
+						CALDAVAdapter.fromDate(vEvent.getDateStart().getValue())
+								.plus(Duration.parse(vEvent.getDuration().getValue().toString())),
 				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
 
 		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION,
-				optionalAttr(event, x -> x.getDescription() != null, y -> y.getDescription().getValue()),
+				optionalAttr(vEvent, x -> x.getDescription() != null, y -> y.getDescription().getValue()),
 				x -> L(model, x));
 
 		attr(model, eventRes, Vocabulary.HAS_PRIORITY,
-				optionalAttr(event, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(model, x));
+				optionalAttr(vEvent, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(model, x));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
