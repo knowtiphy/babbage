@@ -641,12 +641,29 @@ public class CALDAVAdapter extends BaseAdapter
 								System.out.println("SYNCH THREAD ADDDING CAL");
 								DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
 
+								// Commit this before storing events
+
+								context.succeed();
+								notifyListeners(recorder);
+							}
+							catch (Exception ex)
+							{
+								context.fail(ex);
+							}
+
+							TransactionRecorder recorder2 = new TransactionRecorder();
+							WriteContext context2 = getWriteContext();
+							context2.startTransaction(recorder2);
+
+							try
+							{
+
 								for (DavResource event : addEvent)
 								{
 									// Parse out event and pass it through
 									VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first()
 											.getEvents().get(0);
-									System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
+									//System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
 									System.err.println("FOR CALENDER URI :: " + serverCalURI);
 									try
 									{
@@ -658,11 +675,11 @@ public class CALDAVAdapter extends BaseAdapter
 									}
 								}
 
-								context.succeed();
-								notifyListeners(recorder);
+								context2.succeed();
+								notifyListeners(recorder2);
 							} catch (Exception ex)
 							{
-								context.fail(ex);
+								context2.fail(ex);
 							}
 
 						}
@@ -747,8 +764,11 @@ public class CALDAVAdapter extends BaseAdapter
 										System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
 										try
 										{
-											DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
+											Model m = ModelFactory.createDefaultModel();
+											DStore.storeEvent(m, serverCalURI,
 													encodeEvent(serverCal, event), vEvent, event);
+											JenaUtils.printModel(m, "XXXXXXXXXXXXXXXXXXXXXXXXX");
+											messageDatabase.getDefaultModel().add(m);
 										} catch (Throwable ex)
 										{
 											ex.printStackTrace();
