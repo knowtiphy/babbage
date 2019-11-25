@@ -645,8 +645,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 								context.succeed();
 								notifyListeners(recorder);
-							}
-							catch (Exception ex)
+							} catch (Exception ex)
 							{
 								context.fail(ex);
 							}
@@ -723,13 +722,17 @@ public class CALDAVAdapter extends BaseAdapter
 									// Not new event, compare ETAGS
 									else
 									{
-										System.out.println("CHECK CURRENT EVENT :: " + serverEventURI);
-
 										m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
 
-										if (!getStoredTag(DFetch.eventETag(serverEventURI), ETAG)
-												.equals(serverEvent.getEtag()))
+										String storedTAG = getStoredTag(DFetch.eventETag(serverEventURI), ETAG)
+												.replace("\\", "");
+
+										if (!storedTAG.equals(serverEvent.getEtag()))
 										{
+											System.out.println("ETAGS DIFFER");
+											System.out.println("STORED ETAG :: " + getStoredTag(DFetch.eventETag(serverEventURI), ETAG).replace("\\\"", "\""));
+											System.out.println("SERVER ETAG :: " + serverEvent.getEtag());
+
 											storeEventDiffs(serverEventURI, serverEvent);
 										}
 									}
@@ -765,8 +768,8 @@ public class CALDAVAdapter extends BaseAdapter
 										try
 										{
 											Model m = ModelFactory.createDefaultModel();
-											DStore.storeEvent(m, serverCalURI,
-													encodeEvent(serverCal, event), vEvent, event);
+											DStore.storeEvent(m, serverCalURI, encodeEvent(serverCal, event), vEvent,
+													event);
 											JenaUtils.printModel(m, "XXXXXXXXXXXXXXXXXXXXXXXXX");
 											messageDatabase.getDefaultModel().add(m);
 										} catch (Throwable ex)
