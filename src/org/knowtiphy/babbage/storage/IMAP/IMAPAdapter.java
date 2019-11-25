@@ -910,7 +910,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			for (Folder folder : m_folder.values())
 			{
 				String folderName = encode(folder);
-				System.out.println(folderName);
 
 				Model model = context.getModel();
 
