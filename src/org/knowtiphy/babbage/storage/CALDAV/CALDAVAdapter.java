@@ -667,23 +667,23 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		System.out.println("GET SYNCH TASK CALLED");
 		return new FutureTask<Void>(() -> {
-			startCalendarWatchers();
+//			startCalendarWatchers();
+//
+//			TransactionRecorder recorder = new TransactionRecorder();
+//			syncCalendars(recorder);
+//
+//			notifyListeners(recorder);
+//
+//			for (DavResource calendar : m_Calendar.values())
+//			{
+//				TransactionRecorder recorder1 = new TransactionRecorder();
+//				syncEvents(calendar, recorder1);
+//				notifyListeners(recorder1);
+//			}
+//			accountLock.unlock();
 
-			TransactionRecorder recorder = new TransactionRecorder();
-			syncCalendars(recorder);
-
-			notifyListeners(recorder);
-
-			for (DavResource calendar : m_Calendar.values())
-			{
-				TransactionRecorder recorder1 = new TransactionRecorder();
-				syncEvents(calendar, recorder1);
-				notifyListeners(recorder1);
-			}
 			accountLock.unlock();
-
-			//accountLock.unlock();
-			//startSynchThread();
+			startSynchThread();
 
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
 			return null;
