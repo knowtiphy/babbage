@@ -38,16 +38,24 @@ import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CTAG;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATEEND;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATESTART;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DESCRIPTION;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.ETAG;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.EVENTRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.NAME;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.PRIORITY;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.SUMMARY;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.L;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.P;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -70,7 +78,6 @@ public class CALDAVAdapter extends BaseAdapter
 	private final BlockingQueue<Runnable> workQ;
 	//private final BlockingQueue<Runnable> contentQ;
 	private final Thread doWork;
-	private final ExecutorService doContent;
 	private final Mutex accountLock;
 	private final Dataset messageDatabase;
 	private final ListenerManager listenerManager;
@@ -119,8 +126,6 @@ public class CALDAVAdapter extends BaseAdapter
 		workQ = new LinkedBlockingQueue<>();
 		doWork = new Thread(new Worker(workQ));
 		doWork.start();
-		// Figure out what this guy is doing
-		doContent = Executors.newCachedThreadPool();
 	}
 
 	public static ZonedDateTime fromDate(ICalDate date)
@@ -139,8 +144,6 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			workQ.add(POISON_PILL);
 			doWork.join();
-			doContent.shutdown();
-			doContent.awaitTermination(10_000L, TimeUnit.SECONDS);
 		} catch (InterruptedException ex)
 		{
 			//  ignore
