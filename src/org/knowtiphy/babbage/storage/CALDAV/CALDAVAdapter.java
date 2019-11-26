@@ -594,11 +594,12 @@ public class CALDAVAdapter extends BaseAdapter
 							// Calendars to be removed
 							// For every Calendar URI in m_Calendar, if server does not contain it, remove it
 							// Maybe do all at once? Or would that be too abrasive to user?
-							for (String currentCalUri : m_Calendar.keySet())
+							for (String storedCalURI : storedCalendars)
 							{
 
-								if (!serverCalURIs.contains(currentCalUri))
+								if (!serverCalURIs.contains(storedCalURI))
 								{
+									Set<String> currStoredEvents = getStored(DFetch.eventURIs(storedCalURI), EVENTRES);
 									System.out.println("SYNCH THREAD REMOVING CAL");
 
 									TransactionRecorder recorder = new TransactionRecorder();
@@ -608,21 +609,43 @@ public class CALDAVAdapter extends BaseAdapter
 									try
 									{
 
-										for (String eventURI : m_PerCalendarEvents.get(currentCalUri).keySet())
+										// Dftech of current events for that calender
+										for (String eventURI : currStoredEvents)
 										{
-											DStore.unstoreRes(context.getModel(), currentCalUri, eventURI);
+											DStore.unstoreRes(context.getModel(), storedCalURI, eventURI);
 										}
-
-										DStore.unstoreRes(context.getModel(), getId(), currentCalUri);
-
-										m_PerCalendarEvents.remove(currentCalUri);
-										m_Calendar.remove(currentCalUri);
 
 										context.succeed();
 										notifyListeners(recorder);
 									} catch (Exception ex)
 									{
 										context.fail(ex);
+									}
+
+
+									TransactionRecorder recorder1 = new TransactionRecorder();
+									WriteContext context1 =  getWriteContext();
+									context1.startTransaction(recorder1);
+
+									try
+									{
+										DStore.unstoreRes(context.getModel(), getId(), storedCalURI);
+
+										if (m_PerCalendarEvents.get(storedCalURI) != null)
+										{
+											m_PerCalendarEvents.remove(storedCalURI);
+										}
+
+										if (m_Calendar.get(storedCalURI) != null)
+										{
+											m_Calendar.remove(storedCalURI);
+										}
+
+										context1.succeed();
+										notifyListeners(recorder1);
+									}catch (Exception ex)
+									{
+										context1.fail(ex);
 									}
 								}
 							}
