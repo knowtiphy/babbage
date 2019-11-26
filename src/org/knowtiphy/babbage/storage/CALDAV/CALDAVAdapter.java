@@ -43,19 +43,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CTAG;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATEEND;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATESTART;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DESCRIPTION;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.ETAG;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.EVENTRES;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.NAME;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.PRIORITY;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.SUMMARY;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.L;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.P;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -395,7 +384,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 							accountLock.lock();
 
-							System.out.println("IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+							System.out.println(":::::::::::::::::::::::::: IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
 
 							Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
 
@@ -445,7 +434,6 @@ public class CALDAVAdapter extends BaseAdapter
 
 									try
 									{
-										System.out.println("SYNCH THREAD ADDDING CAL");
 										DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
 
 										context.succeed();
@@ -522,7 +510,6 @@ public class CALDAVAdapter extends BaseAdapter
 											// New Event, store it
 											if (!storedEvents.contains(serverEventURI))
 											{
-												System.out.println("EVENT NOT STORED, TO ADD");
 												m_PerCalendarEvents.get(serverCalURI)
 														.put(serverEventURI, serverEvent);
 												addEvents.add(serverEvent);
@@ -562,7 +549,6 @@ public class CALDAVAdapter extends BaseAdapter
 										{
 											for (String event : removeEvent)
 											{
-												System.out.println("REMOVING AN EVENT");
 												DStore.unstoreRes(messageDatabase.getDefaultModel(), serverCalURI,
 														event);
 											}
@@ -571,8 +557,6 @@ public class CALDAVAdapter extends BaseAdapter
 												// Parse out event and pass it through
 												VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event))
 														.first().getEvents().get(0);
-												System.err.println(
-														"ADDING EVENT :: " + vEvent.getSummary().getValue());
 												try
 												{
 													DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
@@ -604,7 +588,6 @@ public class CALDAVAdapter extends BaseAdapter
 								if (!serverCalURIs.contains(storedCalURI))
 								{
 									Set<String> currStoredEvents = getStored(DFetch.eventURIs(storedCalURI), EVENTRES);
-									System.out.println("SYNCH THREAD REMOVING CAL");
 
 									TransactionRecorder recorder = new TransactionRecorder();
 									WriteContext context = getWriteContext();
