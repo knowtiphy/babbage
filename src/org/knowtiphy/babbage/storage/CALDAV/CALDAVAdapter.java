@@ -21,7 +21,6 @@ import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.ReadContext;
 import org.knowtiphy.babbage.storage.TransactionRecorder;
-import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.JenaUtils;
@@ -116,7 +115,7 @@ public class CALDAVAdapter extends BaseAdapter
 		sardine = SardineFactory.begin(emailAddress, password);
 
 		accountLock = new Mutex();
-		
+
 		workQ = new LinkedBlockingQueue<>();
 		doWork = new Thread(new Worker(workQ));
 		doWork.start();
@@ -177,67 +176,17 @@ public class CALDAVAdapter extends BaseAdapter
 		IReadContext context = getReadContext();
 		context.start();
 
-		String construtCalendarDetails = String
-				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
-								"?%s <%s> ?%s .  " +
-								"?%s <%s> ?%s}\n " +
-								"WHERE {     ?%s <%s> <%s> . " +
-								"?%s <%s> ?%s .  " +
-								"?%s <%s> ?%s .  " +
-								" }",
-						// START OF CONSTRUCT
-						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
-						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
-						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME,
-						// START OF WHERE
-						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
-						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
-						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME);
+		String construtCalendarDetails = DFetch.skeleton();
 
 		Model mCalendarDetails = QueryExecutionFactory.create(construtCalendarDetails, context.getModel()).execConstruct();
-
-		JenaUtils.printModel(mCalendarDetails, "CALENDARS");
 
 		TransactionRecorder rec1 = new TransactionRecorder();
 		rec1.addedStatements(mCalendarDetails);
 		notifyListeners(rec1);
 
-		String constructEventDetails = String
-				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s}\n   " +
-
-								"WHERE {     ?%s <%s> <%s> .  " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"OPTIONAL {  ?%s <%s> ?%s }\n " +
-								"OPTIONAL {  ?%s <%s> ?%s }\n " +
-								" }",
-						// START OF CONSTRUCT
-						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
-						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
-						// START OF WHERE
-						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
-						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY);
+		String constructEventDetails = DFetch.initialState();
 
 		Model mEventDetails = QueryExecutionFactory.create(constructEventDetails, context.getModel()).execConstruct();
-		JenaUtils.printModel(mEventDetails, "EVENTS");
 
 		TransactionRecorder rec2 = new TransactionRecorder();
 		rec2.addedStatements(mEventDetails);
