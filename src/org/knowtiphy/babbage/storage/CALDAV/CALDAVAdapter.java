@@ -116,8 +116,7 @@ public class CALDAVAdapter extends BaseAdapter
 		sardine = SardineFactory.begin(emailAddress, password);
 
 		accountLock = new Mutex();
-		accountLock.lock();
-
+		
 		workQ = new LinkedBlockingQueue<>();
 		doWork = new Thread(new Worker(workQ));
 		doWork.start();
@@ -441,10 +440,6 @@ public class CALDAVAdapter extends BaseAdapter
 
 						try
 						{
-							//					Thread.sleep(FREQUENCY);
-							//					ensureMapsLoaded();
-
-							// RETHINKING OF DOING
 
 							accountLock.lock();
 
@@ -709,24 +704,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
-		System.out.println("GET SYNCH TASK CALLED");
 		return new FutureTask<Void>(() -> {
-			//			startCalendarWatchers();
-			//
-			//			TransactionRecorder recorder = new TransactionRecorder();
-			//			syncCalendars(recorder);
-			//
-			//			notifyListeners(recorder);
-			//
-			//			for (DavResource calendar : m_Calendar.values())
-			//			{
-			//				TransactionRecorder recorder1 = new TransactionRecorder();
-			//				syncEvents(calendar, recorder1);
-			//				notifyListeners(recorder1);
-			//			}
-			//			accountLock.unlock();
-
-			accountLock.unlock();
 			startSynchThread();
 
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
