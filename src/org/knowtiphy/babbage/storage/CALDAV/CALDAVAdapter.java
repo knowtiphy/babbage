@@ -548,6 +548,7 @@ public class CALDAVAdapter extends BaseAdapter
 											if (!serverEventURIs.contains(currEventURI))
 											{
 												removeEvent.add(currEventURI);
+												m_PerCalendarEvents.get(serverCalURI).remove(currEventURI);
 											}
 										}
 
