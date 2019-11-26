@@ -21,6 +21,8 @@ import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Part;
 import java.io.IOException;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -106,15 +108,18 @@ public interface DStore
 	{
 		Resource messageRes = R(model, messageName);
 		attr(model, messageRes, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> L(model, x));
-		attr(model, messageRes, Vocabulary.RECEIVED_ON, message.getReceivedDate(), x ->
-		{
-			if (x == null)
-			{
-				System.out.println("DATE IS NULL");
-			}
-			return L(model, new XSDDateTime(JenaUtils.fromDate(x)));
-		});
-		attr(model, messageRes, Vocabulary.SENT_ON, message.getSentDate(), x -> L(model, new XSDDateTime(JenaUtils.fromDate(x))));
+		attr(model, messageRes, Vocabulary.RECEIVED_ON,
+				ZonedDateTime.ofInstant(message.getReceivedDate().toInstant(), ZoneId.systemDefault()), x -> {
+					if (x == null)
+					{
+						System.out.println("DATE IS NULL");
+					}
+
+					return L(model, new XSDDateTime(JenaUtils.fromDate(x)));
+				});
+		attr(model, messageRes, Vocabulary.SENT_ON,
+				ZonedDateTime.ofInstant(message.getSentDate().toInstant(), ZoneId.systemDefault()),
+				x -> L(model, new XSDDateTime(JenaUtils.fromDate(x))));
 		addresses(model, messageRes, Vocabulary.FROM, message.getFrom());
 		addresses(model, messageRes, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));
 		addresses(model, messageRes, Vocabulary.HAS_CC, message.getRecipients(Message.RecipientType.CC));
@@ -129,12 +134,12 @@ public interface DStore
 		model.add(R(model, folderName), P(model, Vocabulary.CONTAINS), messageRes);
 	}
 
-//    static void outGoingMessageId(Model model, String accountId, String messageId)
-//    {
-//        Resource messageRes = R(model, messageId);
-//        model.add(messageRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.DRAFT_MESSAGE));
-//        model.add(R(model, accountId), P(model, Vocabulary.CONTAINS), messageRes);
-//    }
+	//    static void outGoingMessageId(Model model, String accountId, String messageId)
+	//    {
+	//        Resource messageRes = R(model, messageId);
+	//        model.add(messageRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.DRAFT_MESSAGE));
+	//        model.add(R(model, accountId), P(model, Vocabulary.CONTAINS), messageRes);
+	//    }
 
 	static String mimeType(Part part) throws MessagingException
 	{
@@ -170,16 +175,19 @@ public interface DStore
 		return fileName;
 	}
 
-	static void messageContent(Model model, IMAPAdapter IMAPAdapter, Message message, MessageContent messageContent) throws MessagingException, IOException
+	static void messageContent(Model model, IMAPAdapter IMAPAdapter, Message message, MessageContent messageContent)
+			throws MessagingException, IOException
 	{
 		Resource messageRes = model.createResource(IMAPAdapter.encode(message));
-		model.add(messageRes, P(model, Vocabulary.HAS_CONTENT), L(model, messageContent.getContent().getContent().toString()));
+		model.add(messageRes, P(model, Vocabulary.HAS_CONTENT),
+				L(model, messageContent.getContent().getContent().toString()));
 		model.add(messageRes, P(model, Vocabulary.HAS_MIME_TYPE), L(model, mimeType(messageContent.getContent())));
 		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
 		{
 			Resource cidRes = R(model, IMAPAdapter.encode(message, entry.getKey()));
 			model.add(messageRes, P(model, Vocabulary.HAS_CID_PART), cidRes);
-			model.add(cidRes, P(model, Vocabulary.HAS_CONTENT), model.createTypedLiteral(IOUtils.toByteArray(entry.getValue().getInputStream())));
+			model.add(cidRes, P(model, Vocabulary.HAS_CONTENT),
+					model.createTypedLiteral(IOUtils.toByteArray(entry.getValue().getInputStream())));
 			model.add(cidRes, P(model, Vocabulary.HAS_MIME_TYPE), L(model, mimeType(entry.getValue())));
 			model.add(cidRes, P(model, Vocabulary.HAS_LOCAL_CID), R(model, entry.getKey()));
 		}
@@ -193,7 +201,8 @@ public interface DStore
 			{
 				Resource attachRes = R(model, IMAPAdapter.encode(message, String.valueOf(i)));
 				model.add(messageRes, P(model, Vocabulary.HAS_ATTACHMENT), attachRes);
-				model.add(attachRes, P(model, Vocabulary.HAS_CONTENT), model.createTypedLiteral(IOUtils.toByteArray(part.getInputStream())));
+				model.add(attachRes, P(model, Vocabulary.HAS_CONTENT),
+						model.createTypedLiteral(IOUtils.toByteArray(part.getInputStream())));
 				model.add(attachRes, P(model, Vocabulary.HAS_MIME_TYPE), L(model, mimeType(part)));
 				model.add(attachRes, P(model, Vocabulary.HAS_FILE_NAME), L(model, fileName));
 				i++;
@@ -220,19 +229,19 @@ public interface DStore
 		model.remove(model.listStatements(R(model, folderName), P(model, Vocabulary.CONTAINS), messageRes));
 	}
 
-//    static void unstoreDraft(Model model, String messageId) throws MessagingException
-//    {
-//        System.err.println("DELETING D(" + messageId + ")");
-//        Resource messageRes = R(model, messageId);
-//        //  TODO -- delete everything reachable from messageName
-//        StmtIterator it = model.listStatements(messageRes, null, (RDFNode) null);
-//        while (it.hasNext())
-//        {
-//            Statement stmt = it.next();
-//            if (stmt.getObject().isResource())
-//            {
-//                model.remove(model.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
-//            }
-//        }
-//    }
+	//    static void unstoreDraft(Model model, String messageId) throws MessagingException
+	//    {
+	//        System.err.println("DELETING D(" + messageId + ")");
+	//        Resource messageRes = R(model, messageId);
+	//        //  TODO -- delete everything reachable from messageName
+	//        StmtIterator it = model.listStatements(messageRes, null, (RDFNode) null);
+	//        while (it.hasNext())
+	//        {
+	//            Statement stmt = it.next();
+	//            if (stmt.getObject().isResource())
+	//            {
+	//                model.remove(model.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+	//            }
+	//        }
+	//    }
 }
