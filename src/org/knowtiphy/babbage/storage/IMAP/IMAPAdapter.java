@@ -393,18 +393,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			pingThread.interrupt();
 		}
 
-		//		for (Folder folder : m_folder.values())
-		//		{
-		//			logger.info(emailAddress + " :: " + folder.getName() + " :: closing ");
-		//			try
-		//			{
-		//				//Platform.runLater(() -> message.set(emailAddress + " :: " + folder.getName() + " :: closing "));
-		//				folder.close();
-		//			} catch (Exception $)
-		//			{
-		//				//	ignore
-		//			}
-		//		}
+		for (Folder folder : m_folder.values())
+		{
+			LOGGER.info(emailAddress + " :: " + folder.getName() + " :: closing ");
+			try
+			{
+				LOGGER.log(Level.INFO, "{0}:{1} :: closing", new Object[]{emailAddress, folder.getName()});
+				folder.close();
+			} catch (Exception $)
+			{
+				//	ignore
+			}
+		}
 
 		LOGGER.log(Level.INFO, "{0} :: closing store", emailAddress);
 		try
@@ -795,7 +795,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		String folderName = encode(folder);
 		Resource folderRes = model.createResource(folderName);
 		model.add(folderRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
-		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
+		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);
+		model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
 				model.createTypedLiteral(((UIDFolder) folder).getUIDValidity()));
 		model.add(folderRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(folder.getName()));
 		DStore.folderCounts(model, this, folder);
