@@ -108,18 +108,10 @@ public interface DStore
 	{
 		Resource messageRes = R(model, messageName);
 		attr(model, messageRes, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> L(model, x));
-		attr(model, messageRes, Vocabulary.RECEIVED_ON,
-				ZonedDateTime.ofInstant(message.getReceivedDate().toInstant(), ZoneId.systemDefault()), x -> {
-					if (x == null)
-					{
-						System.out.println("DATE IS NULL");
-					}
-
-					return L(model, new XSDDateTime(JenaUtils.fromDate(x)));
-				});
-		attr(model, messageRes, Vocabulary.SENT_ON,
-				ZonedDateTime.ofInstant(message.getSentDate().toInstant(), ZoneId.systemDefault()),
-				x -> L(model, new XSDDateTime(JenaUtils.fromDate(x))));
+		attr(model, messageRes, Vocabulary.RECEIVED_ON, message.getReceivedDate(),
+				x -> L(model, new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())))));
+		attr(model, messageRes, Vocabulary.SENT_ON, message.getSentDate(),
+				x -> L(model, new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())))));
 		addresses(model, messageRes, Vocabulary.FROM, message.getFrom());
 		addresses(model, messageRes, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));
 		addresses(model, messageRes, Vocabulary.HAS_CC, message.getRecipients(Message.RecipientType.CC));
