@@ -1,5 +1,6 @@
 package org.knowtiphy.babbage.storage.CALDAV;
 
+import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
 import java.util.HashSet;
@@ -83,4 +84,60 @@ public interface DFetch
                 + "      }";
     }
 
+    static String skeleton()
+	{
+		return String
+				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
+								"?%s <%s> ?%s .  " +
+								"?%s <%s> ?%s}\n " +
+								"WHERE {     ?%s <%s> <%s> . " +
+								"?%s <%s> ?%s .  " +
+								"?%s <%s> ?%s .  " +
+								" }",
+						// START OF CONSTRUCT
+						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
+						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME,
+						// START OF WHERE
+						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
+						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
+						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME);
+	}
+
+	static String initialState()
+	{
+		return String
+				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s}\n   " +
+
+								"WHERE {     ?%s <%s> <%s> .  " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								" }",
+						// START OF CONSTRUCT
+						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
+						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
+						// START OF WHERE
+						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
+						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
+						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY);
+	}
 }
