@@ -444,7 +444,7 @@ public class CALDAVAdapter extends BaseAdapter
 									{
 										System.out.println("SYNCH THREAD ADDDING CAL");
 										DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
-										
+
 										context.succeed();
 										notifyListeners(recorder);
 									} catch (Exception ex)
@@ -465,7 +465,7 @@ public class CALDAVAdapter extends BaseAdapter
 											VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event))
 													.first().getEvents().get(0);
 											//System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
-											System.err.println("FOR CALENDER URI :: " + serverCalURI);
+											//System.err.println("FOR CALENDER URI :: " + serverCalURI);
 											try
 											{
 												DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
@@ -571,11 +571,8 @@ public class CALDAVAdapter extends BaseAdapter
 														"ADDING EVENT :: " + vEvent.getSummary().getValue());
 												try
 												{
-													Model m = ModelFactory.createDefaultModel();
-													DStore.storeEvent(m, serverCalURI,
+													DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
 															encodeEvent(serverCal, event), vEvent, event);
-													JenaUtils.printModel(m, "XXXXXXXXXXXXXXXXXXXXXXXXX");
-													messageDatabase.getDefaultModel().add(m);
 												} catch (Throwable ex)
 												{
 													ex.printStackTrace();
