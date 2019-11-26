@@ -417,7 +417,7 @@ public class CALDAVAdapter extends BaseAdapter
 								// Calendar not in DB, store it and events
 								if (!storedCalendars.contains(serverCalURI))
 								{
-									//m_Calendar.put(encodedServerCalURI, serverCal);
+									m_Calendar.put(serverCalURI, serverCal);
 
 									// Add Events
 									Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal)
@@ -444,9 +444,7 @@ public class CALDAVAdapter extends BaseAdapter
 									{
 										System.out.println("SYNCH THREAD ADDDING CAL");
 										DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
-
-										// Commit this before storing events
-
+										
 										context.succeed();
 										notifyListeners(recorder);
 									} catch (Exception ex)
