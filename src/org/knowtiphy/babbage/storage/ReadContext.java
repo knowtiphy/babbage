@@ -29,9 +29,20 @@ public class ReadContext implements IReadContext
         database.begin(ReadWrite.READ);
     }
 
+    public void abort()
+    {
+        database.abort();
+    }
+
     @Override
     public void end()
     {
         database.end();
+    }
+
+    public <E extends Exception> void fail(E ex) throws E
+    {
+        database.abort();
+        throw ex;
     }
 }

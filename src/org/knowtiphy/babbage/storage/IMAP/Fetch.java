@@ -1,12 +1,17 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
+
+import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
 
 /**
  * @author graham
  */
-public interface DFetch
+public interface Fetch
 {
 	//private final static Pattern MSG_NOT_JUNK_PATTERN = Pattern.compile("(\\$NotJunk)", Pattern.CASE_INSENSITIVE);
 	static String skeleton(String id)
@@ -87,6 +92,11 @@ public interface DFetch
 				Vars.VAR_MESSAGE_ID, Vocabulary.FROM, Vars.VAR_FROM,
 				Vars.VAR_MESSAGE_ID, Vocabulary.HAS_CC, Vars.VAR_CC,
 				Vars.VAR_MESSAGE_ID, Vocabulary.HAS_BCC, Vars.VAR_BCC);
+	}
+
+	static StmtIterator folder(Model model, String folderId)
+	{
+		return model.listStatements(model.createResource(folderId), P(model, Vocabulary.RDF_TYPE), R(model, Vocabulary.IMAP_FOLDER));
 	}
 
 	static String messageUIDs(String folderId)

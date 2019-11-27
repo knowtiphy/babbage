@@ -38,6 +38,11 @@ public class ListenerManager
 		}
 	}
 
+	public void notifyChangeListeners(Model model)
+	{
+		notifyChangeListeners(model, ModelFactory.createDefaultModel());
+	}
+
 	public void notifyChangeListeners(TransactionRecorder recorder)
 	{
 		Model added = ModelFactory.createDefaultModel();

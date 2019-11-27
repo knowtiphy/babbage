@@ -12,14 +12,11 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IAdapter;
-import org.knowtiphy.babbage.storage.IReadContext;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
-import org.knowtiphy.babbage.storage.ReadContext;
 import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.TransactionRecorder;
 import org.knowtiphy.babbage.storage.Vocabulary;
-import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -80,6 +77,11 @@ import java.util.regex.Pattern;
 
 import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolder;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolderCounts;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageContent;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageHeaders;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.deleteMessageFlags;
 
 /**
  * @author graham
@@ -156,7 +158,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		workQ = new LinkedBlockingQueue<>();
 		doWork = new Thread(new Worker(workQ));
-		doContent = Executors.newSingleThreadExecutor();//newCachedThreadPool();
+		doContent = Executors.newCachedThreadPool();
 
 		doWork.start();
 
@@ -297,9 +299,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		return new FutureTask<Void>(() -> {
 			startFolderWatchers();
-			TransactionRecorder recorder = new TransactionRecorder();
-			synchronizeFolders(recorder);
-			notifyListeners(recorder);
+			synchronizeFolders();
 
 			for (Folder folder : m_folder.values())
 			{
@@ -316,9 +316,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
-	// @formatter:off
 	@Override
-	public void addListener() throws UnsupportedOperationException
+	public void addListener()
 	{
 		Model accountTriples = ModelFactory.createDefaultModel();
 
@@ -330,36 +329,22 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
-		trustedSenders.forEach(x -> accountTriples
-				.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
-		trustedContentProviders.forEach(x -> accountTriples
-				.add(R(accountTriples, id),
-						P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
+		trustedSenders.forEach(x -> accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
+		trustedContentProviders.forEach(x -> accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
 
 		// Notify the client of the account triples
-		TransactionRecorder accountRec = new TransactionRecorder();
-		accountRec.addedStatements(accountTriples);
-		notifyListeners(accountRec);
+		notifyListeners(accountTriples);
 
-		IReadContext context = getReadContext();
-		context.start();
+		messageDatabase.begin(ReadWrite.READ);
+		Model mFD = QueryExecutionFactory.create(Fetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct();
+		messageDatabase.end();
+		notifyListeners(mFD);
 
-		// So when this added, query the DB and feed those into client the client via notifying the listener
-		String constructQueryFD = DFetch.skeleton(id);
-		Model mFD = QueryExecutionFactory.create(constructQueryFD, context.getModel()).execConstruct();
-		TransactionRecorder rec = new TransactionRecorder();
-		rec.addedStatements(mFD);
-		notifyListeners(rec);
-
-		String constructQueryMH = DFetch.initialState(id);
-		Model mMH = QueryExecutionFactory.create(constructQueryMH, context.getModel()).execConstruct();
-		TransactionRecorder recMH = new TransactionRecorder();
-		recMH.addedStatements(mMH);
-		notifyListeners(recMH);
-
-		context.end();
+		messageDatabase.begin(ReadWrite.READ);
+		Model mMH = QueryExecutionFactory.create(Fetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct();
+		messageDatabase.end();
+		notifyListeners(mMH);
 	}
-	// @formatter:on
 
 	public void close()
 	{
@@ -611,11 +596,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			ensureMapsLoaded();
 
 			//	check if the content is not already in the database
-			ReadContext rContext = getReadContext();
-			rContext.start();
-			boolean stored = rContext.getModel().listObjectsOfProperty(rContext.getModel().createResource(messageId),
-					rContext.getModel().createProperty(Vocabulary.HAS_CONTENT)).hasNext();
-			rContext.end();
+			messageDatabase.begin(ReadWrite.READ);
+			Model dbase = messageDatabase.getDefaultModel();
+			boolean stored = dbase.listObjectsOfProperty(R(dbase, messageId), P(dbase, Vocabulary.HAS_CONTENT)).hasNext();
+			messageDatabase.end();
 			System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
 
 			if (!stored)
@@ -630,14 +614,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				//				folder.fetch(msgs, fp);
 
 				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-				Model toAdd = ModelFactory.createDefaultModel();
+				Model adds = ModelFactory.createDefaultModel();
 				for (Message message : msgs)
 				{
-					MessageContent messageContent = new MessageContent(message, true).process();
-					DStore.messageContent(toAdd, this, message, messageContent);
+					addMessageContent(adds, this, message, new MessageContent(message, true).process());
 				}
-
-				update(toAdd);
+				update(adds, null);
 				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
 				return folder;
 			}
@@ -720,15 +702,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	protected String encode(Message message) throws MessagingException
 	{
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, getEmailAddress(), U(message.getFolder()).getUIDValidity(),
-				U(message.getFolder()).getUID(message));
+		UIDFolder folder = U(message.getFolder());
+		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, getEmailAddress(), folder.getUIDValidity(), folder.getUID(message));
 	}
 
 	protected String encode(Message message, String cidName) throws MessagingException
 	{
-		return Vocabulary
-				.E(Vocabulary.IMAP_MESSAGE_CID_PART, getEmailAddress(), U(message.getFolder()).getUIDValidity(),
-						U(message.getFolder()).getUID(message), cidName);
+		UIDFolder folder = U(message.getFolder());
+		return Vocabulary.E(Vocabulary.IMAP_MESSAGE_CID_PART, getEmailAddress(), folder.getUIDValidity(), folder.getUID(message), cidName);
 	}
 
 	private void reWatchFolder(Folder folder) throws StorageException
@@ -852,69 +833,72 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
-	private void synchronizeFolders(TransactionRecorder recorder) throws MessagingException
-	{
-		LOGGER.info("synchronizeFolders");
-
-		Model model = ModelFactory.createDefaultModel();
-
-		//	FIX write context needed here
-		for (Folder folder : m_folder.values())
-		{
-			String folderName = encode(folder);
-
-			//  store any folders we don't already have, and update folder counts for ones we do have
-			//  TODO -- need to handle deleted folders
-			StmtIterator it = model
-					.listStatements(model.createResource(folderName), model.createProperty(Vocabulary.RDF_TYPE),
-							model.createResource(Vocabulary.IMAP_FOLDER));
-
-			if (it.hasNext())
-			{
-				//  TODO -- should really check that the validity hasn't changed
-				assert JenaUtils.checkUnique(it);
-				//	folder counts may have changed
-				DStore.folderCounts(model, this, folder);
-			}
-			else
-			{
-				DStore.folder(model, this, folder);
-			}
-		}
-
-		update(model);
-	}
-
 	//  get the ids of those org.knowtiphy.pinkpigmail.messages stored in the database that match the query
-	private Set<String> getStoredMessageIDs(String query)
+	private Set<String> getStoredMessageIDs(Model model, String query)
 	{
 		Set<String> stored = new HashSet<>(1000);
-		messageDatabase.begin(ReadWrite.READ);
-		try
-		{
-			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("message").asResource().toString()));
-		} finally
-		{
-			messageDatabase.end();
-		}
-
+		ResultSet resultSet = QueryExecutionFactory.create(query, model).execSelect();
+		stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("message").asResource().toString()));
 		return stored;
 	}
 
-	//	TODO -- should combine methods
-	private void synchMessageIdsAndHeaders(Folder folder, TransactionRecorder recorder) throws MessagingException
+	//	synch methods
+
+	private void synchronizeFolders() throws MessagingException
 	{
-		synchMessageIds(folder, recorder);
-		synchMessageHeaders(folder, recorder);
+		LOGGER.info("synchronizeFolders");
+
+		//  store any folders we don't already have, and update folder counts for ones we do have
+		//  TODO -- need to handle deleted folders
+
+		Model adds = ModelFactory.createDefaultModel();
+		Model deletes = ModelFactory.createDefaultModel();
+
+		messageDatabase.begin(ReadWrite.READ);
+		try
+		{
+			for (Folder folder : m_folder.values())
+			{
+				String folderId = encode(folder);
+
+				StmtIterator storedFolder = Fetch.folder(messageDatabase.getDefaultModel(), folderId);
+				boolean isStored = storedFolder.hasNext();
+				assert !isStored || JenaUtils.checkUnique(storedFolder);
+
+				//	if we have the folder delete its folder counts as they may have changed
+				if (isStored)
+				{
+					//  TODO -- should really check that the validity hasn't changed
+					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
+				}
+				//	add a new folder
+				else
+				{
+					addFolder(adds, this, folder);
+				}
+
+				addFolderCounts(adds, this, folder);
+			}
+		} catch (MessagingException ex)
+		{
+			abort(ex);
+		}
+
+		messageDatabase.end();
+		update(adds, deletes);
 	}
 
 	private void synchMessageIds(Folder folder, TransactionRecorder recorder) throws MessagingException
 	{
 		LOGGER.log(Level.INFO, "synchMessageIds {0}", folder.getName());
 
+		String folderId = encode(folder);
+
 		//  get the stored message IDs
-		Set<String> stored = getStoredMessageIDs(DFetch.messageUIDs(encode(folder)));
+
+		messageDatabase.begin(ReadWrite.READ);
+		Set<String> stored = getStoredMessageIDs(messageDatabase.getDefaultModel(), Fetch.messageUIDs(folderId));
+		messageDatabase.end();
 
 		//  get the set of message IDst that IMAP reports
 		//  TODO -- this is dumb, sequence is bad
@@ -929,9 +913,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		folder.fetch(msgs, fp);
 
 		Map<String, Message> perMessageMap = new HashMap<>(1000);
+		Collection<String> removeUID = new HashSet<>(1000);
+		Collection<String> addUID = new HashSet<>(1000);
 
 		//  we need to add org.knowtiphy.pinkpigmail.messages in the set (folder - stored)
-		Collection<String> addUID = new HashSet<>(1000);
 		for (Message msg : msgs)
 		{
 			String messageName = encode(msg);
@@ -950,7 +935,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		m_PerFolderMessage.put(folder, perMessageMap);
 
 		//  we need to remove org.knowtiphy.pinkpigmail.messages in the set (stored - folder) - stored - m_message,keys() at this point
-		Collection<String> removeUID = new HashSet<>(1000);
 		for (String messageName : stored)
 		{
 			if (!m_PerFolderMessage.get(folder).containsKey(messageName))
@@ -959,37 +943,24 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		//  delete any stored message whose ID is not in the set of message IDs for the folder
-		//        logger.info("TO ADD = " + addUID.size());
-		//        logger.info("TO REMOVE = " + removeUID.size());
-		WriteContext context = getWriteContext();
-		context.startTransaction(recorder);
-
-		try
-		{
-			for (String message : removeUID)
-			{
-				DStore.unstoreMessage(messageDatabase.getDefaultModel(), encode(folder), message);
-			}
-			for (String message : addUID)
-			{
-				DStore.messageID(messageDatabase.getDefaultModel(), encode(folder), message);
-			}
-
-			context.succeed();
-		} catch (MessagingException ex)
-		{
-			context.fail(ex);
-		}
+		Model deletes = ModelFactory.createDefaultModel();
+		removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), deletes, folderId, message));
+		Model adds = ModelFactory.createDefaultModel();
+		addUID.forEach(message -> DStore.addMessageID(adds, folderId, message));
+		update(adds, deletes);
 	}
 
 	private void synchMessageHeaders(Folder folder, TransactionRecorder recorder) throws MessagingException
 	{
-		//  get the stored message IDs
-		Set<String> stored = getStoredMessageIDs(DFetch.messageUIDs(encode(folder)));
+		String folderId = encode(folder);
+
+		messageDatabase.begin(ReadWrite.READ);
+		Set<String> stored = getStoredMessageIDs(messageDatabase.getDefaultModel(), Fetch.messageUIDs(folderId));
 		//  get the stored message IDs for those org.knowtiphy.pinkpigmail.messages for which we have headers
-		Set<String> withHeaders = getStoredMessageIDs(DFetch.messageUIDsWithHeaders(id, encode(folder)));
+		Set<String> withHeaders = getStoredMessageIDs(messageDatabase.getDefaultModel(), Fetch.messageUIDsWithHeaders(id, folderId));
 		//  get message headers for message ids that we don't have headers for
+		messageDatabase.end();
+
 		stored.removeAll(withHeaders);
 
 		if (!stored.isEmpty())
@@ -1003,13 +974,28 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.fetch(msgs, fp);
 
 			//  fetch headers we don't have
-			Model toAdd = ModelFactory.createDefaultModel();
+			Model adds = ModelFactory.createDefaultModel();
+			Model deletes = ModelFactory.createDefaultModel();
+
+			messageDatabase.begin(ReadWrite.READ);
+
 			for (Message msg : msgs)
 			{
-				DStore.messageHeaders(toAdd, msg, encode(msg));
+				String messageId = encode(msg);
+				addMessageHeaders(adds, msg, messageId);
+				deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
 			}
-			update(toAdd);
+
+			messageDatabase.end();
+			update(adds, deletes);
 		}
+	}
+
+	//	TODO -- should combine methods
+	private void synchMessageIdsAndHeaders(Folder folder, TransactionRecorder recorder) throws MessagingException
+	{
+		synchMessageIds(folder, recorder);
+		synchMessageHeaders(folder, recorder);
 	}
 
 	// Handles incoming org.knowtiphy.pinkpigmail.messages from the IMAP org.knowtiphy.pinkpigmail.server, new ones not caught in the synch of initial start up state
@@ -1051,27 +1037,26 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					//	deletes are handled elsewhere
 					if (!isDeleted(message))
 					{
-						WriteContext context = getWriteContext();
-						context.startTransaction();
-						try
+						Model adds = ModelFactory.createDefaultModel();
+						Model deletes = ModelFactory.createDefaultModel();
+
+						String folderId = encode(folder);
+
+						addFolderCounts(adds, account, folder);
+						DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
+						String messageId = encode(message);
+						if (m_PerFolderMessage.get(folder).containsKey(messageId))
 						{
-							DStore.folderCounts(context.getModel(), account, folder);
-							String messageName = encode(message);
-							if (m_PerFolderMessage.get(folder).containsKey(messageName))
-							{
-								DStore.flags(context.getModel(), messageName, message);
-							}
-							else
-							{
-								//  not sure if this is possible -- probably not
-								LOGGER.info("OUT OF ORDER CHANGE");
-							}
-							context.succeed();
-							notifyListeners(context.getRecorder());
-						} catch (MessagingException ex)
-						{
-							context.fail(ex);
+							DStore.addFlags(adds, messageId, message);
+							deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
 						}
+						else
+						{
+							//  not sure if this is possible -- probably not
+							LOGGER.info("OUT OF ORDER CHANGE");
+						}
+
+						update(adds, deletes);
 					}
 				}
 				else
@@ -1102,12 +1087,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "{0}THREAD  = ", Thread.currentThread().getId());
 
 			addWork(new MessageWork(() -> {
-				WriteContext context = getWriteContext();
-				context.startTransaction();
 
+				Model deletes = ModelFactory.createDefaultModel();
 				try
 				{
-					DStore.folderCounts(context.getModel(), account, folder);
+//					folderCounts(context.getModel(), account, folder);
+					messageDatabase.begin(ReadWrite.READ);
+
+					String folderId = encode(folder);
 					for (Message message : e.getMessages())
 					{
 						//	delete event for a delete message that a client connected to this org.knowtiphy.pinkpigmail.server initiated
@@ -1120,15 +1107,15 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						}
 						//						else
 						//						{
-						DStore.unstoreMessage(context.getModel(), encode(folder), encode(message));
+						DStore.deleteMessage(messageDatabase.getDefaultModel(), deletes, folderId, encode(message));
 					}
 
-					context.succeed();
-					notifyListeners(context.getRecorder());
+					messageDatabase.end();
+					update(null, deletes);
 					return folder;
 				} catch (MessagingException ex)
 				{
-					context.fail(ex);
+					abort(ex);
 					return null;
 				}
 			}));
@@ -1142,28 +1129,23 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			addWork(new MessageWork(() -> {
 
-				WriteContext context = getWriteContext();
-				context.startTransaction();
-				try
-				{
-					Model model = context.getModel();
-					DStore.folderCounts(model, account, folder);
-					for (Message message : e.getMessages())
-					{
-						String messageName = encode(message);
-						DStore.messageID(context.getModel(), encode(folder), messageName);
-						DStore.messageHeaders(context.getModel(), message, messageName);
-						m_PerFolderMessage.get(folder).put(messageName, message);
-					}
+				Model adds = ModelFactory.createDefaultModel();
+				Model deletes = ModelFactory.createDefaultModel();
 
-					context.succeed();
-					notifyListeners(context.getRecorder());
-					return folder;
-				} catch (MessagingException ex)
+				String folderId = encode(folder);
+				DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
+				DStore.addFolderCounts(adds, account, folder);
+				for (Message message : e.getMessages())
 				{
-					context.fail(ex);
-					return null;
+					String messageId = encode(message);
+					DStore.addMessageID(adds, folderId, messageId);
+					deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
+					addMessageHeaders(adds, message, messageId);
+					m_PerFolderMessage.get(folder).put(messageId, message);
 				}
+
+				return folder;
+
 			}));
 		}
 	}
@@ -1252,5 +1234,4 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 	}
-
 }

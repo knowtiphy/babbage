@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
@@ -101,13 +102,35 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
-	protected void update(Model model)
+	protected void notifyListeners(TransactionRecorder recorder)
 	{
-		WriteContext context = getWriteContext();
-		context.startTransaction();
-		context.getModel().add(model);
-		context.succeed();
-		notifyListeners(context.getRecorder());
+		notificationQ.add(() -> listenerManager.notifyChangeListeners(recorder));
+	}
+
+	protected void notifyListeners(Model model)
+	{
+		notificationQ.add(() -> listenerManager.notifyChangeListeners(model));
+	}
+
+
+	protected void notifyListeners(Model adds, Model deletes)
+	{
+		notificationQ.add(() -> listenerManager.notifyChangeListeners(adds, deletes));
+	}
+
+	protected void update(Model adds, Model deletes)
+	{
+		messageDatabase.begin(ReadWrite.WRITE);
+		if (adds != null)
+		{
+			messageDatabase.getDefaultModel().add(adds);
+		}
+		if (deletes != null)
+		{
+			messageDatabase.getDefaultModel().remove(deletes);
+		}
+		messageDatabase.end();
+		notifyListeners(adds, deletes);
 	}
 
 	protected WriteContext getWriteContext()
@@ -115,13 +138,14 @@ public abstract class BaseAdapter implements IAdapter
 		return new WriteContext(messageDatabase);
 	}
 
-	protected void notifyListeners(TransactionRecorder recorder)
-	{
-		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
-	}
-
 	protected ReadContext getReadContext()
 	{
 		return new ReadContext(messageDatabase);
+	}
+
+	public <E extends Exception> void abort(E ex) throws E
+	{
+		messageDatabase.abort();
+		throw ex;
 	}
 }
