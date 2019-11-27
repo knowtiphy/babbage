@@ -78,10 +78,6 @@ public class CALDAVAdapter extends BaseAdapter
 	//private final BlockingQueue<Runnable> contentQ;
 	private final Thread doWork;
 	private final Mutex accountLock;
-	private final Dataset messageDatabase;
-	private final ListenerManager listenerManager;
-	private final BlockingDeque<Runnable> notificationQ;
-	private final Model model;
 	private String nickName;
 	private Thread synchThread;
 
@@ -91,11 +87,6 @@ public class CALDAVAdapter extends BaseAdapter
 		super(messageDatabase, listenerManager, notificationQ);
 		System.out.println("CALDAVAdapter INSTANTIATED");
 		// Query for serverName, emailAdress, and password
-
-		this.messageDatabase = messageDatabase;
-		this.listenerManager = listenerManager;
-		this.notificationQ = notificationQ;
-		this.model = model;
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
