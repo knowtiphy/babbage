@@ -21,14 +21,8 @@ public class ListenerManager
 		listeners.add(listener);
 	}
 
-	public void notifyChangeListeners(TransactionRecorder recorder)
+	public void notifyChangeListeners(Model added, Model removed)
 	{
-		Model added = ModelFactory.createDefaultModel();
-		added.add(recorder.getAdded());
-
-		Model removed = ModelFactory.createDefaultModel();
-		removed.add(recorder.getRemoved());
-
 		if (!added.isEmpty() || !removed.isEmpty())
 		{
 			for (IStorageListener listener : listeners)
@@ -42,5 +36,14 @@ public class ListenerManager
 				}
 			}
 		}
+	}
+
+	public void notifyChangeListeners(TransactionRecorder recorder)
+	{
+		Model added = ModelFactory.createDefaultModel();
+		added.add(recorder.getAdded());
+		Model removed = ModelFactory.createDefaultModel();
+		removed.add(recorder.getRemoved());
+		notifyChangeListeners(added, removed);
 	}
 }

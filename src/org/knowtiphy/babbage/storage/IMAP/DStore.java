@@ -20,6 +20,7 @@ import javax.mail.Folder;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Part;
+import javax.mail.UIDFolder;
 import java.io.IOException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -61,7 +62,8 @@ public interface DStore
 		}
 	}
 
-	static <S> void attr(Model model, Resource subject, String predicate, S value, Function<S, ? extends Literal> fn)
+	//	store a non-null attribute
+	static <S> void attribute(Model model, Resource subject, String predicate, S value, Function<S, ? extends Literal> fn)
 	{
 		if (value != null)
 		{
@@ -77,6 +79,18 @@ public interface DStore
 		model.remove(model.listStatements(messageRes, P(model, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), (RDFNode) null));
 		model.add(messageRes, P(model, Vocabulary.HAS_MESSAGE_COUNT), L(model, folder.getMessageCount()));
 		model.add(messageRes, P(model, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), L(model, folder.getUnreadMessageCount()));
+	}
+
+	static void folder(Model model, IAdapter account, Folder folder) throws MessagingException
+	{
+		String folderName = account.encode(folder);
+		Resource folderRes = model.createResource(folderName);
+		model.add(folderRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
+		model.add(model.createResource(account.getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);
+		model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
+				model.createTypedLiteral(((UIDFolder) folder).getUIDValidity()));
+		model.add(folderRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(folder.getName()));
+		DStore.folderCounts(model, account, folder);
 	}
 
 	static void flags(Model model, String messageName, Message message) throws MessagingException
@@ -107,10 +121,10 @@ public interface DStore
 	static void messageHeaders(Model model, Message message, String messageName) throws MessagingException
 	{
 		Resource messageRes = R(model, messageName);
-		attr(model, messageRes, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> L(model, x));
-		attr(model, messageRes, Vocabulary.RECEIVED_ON, message.getReceivedDate(),
+		attribute(model, messageRes, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> L(model, x));
+		attribute(model, messageRes, Vocabulary.RECEIVED_ON, message.getReceivedDate(),
 				x -> L(model, new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())))));
-		attr(model, messageRes, Vocabulary.SENT_ON, message.getSentDate(),
+		attribute(model, messageRes, Vocabulary.SENT_ON, message.getSentDate(),
 				x -> L(model, new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())))));
 		addresses(model, messageRes, Vocabulary.FROM, message.getFrom());
 		addresses(model, messageRes, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));

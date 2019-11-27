@@ -9,7 +9,6 @@ import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IAdapter;
@@ -116,11 +115,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private final Thread doWork;
 	private final ExecutorService doContent;
 	private final Mutex accountLock;
-	private final Dataset messageDatabase;
-	private final ListenerManager listenerManager;
-	private final BlockingDeque<Runnable> notificationQ;
-	// Maybe don't this here
-	private final Model model;
 	private final IdleManager idleManager;
 	private final Store store;
 	private Thread pingThread;
@@ -130,10 +124,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					   BlockingDeque<Runnable> notificationQ, Model model)
 			throws InterruptedException, MessagingException, IOException
 	{
-		this.messageDatabase = messageDatabase;
-		this.listenerManager = listenerManager;
-		this.notificationQ = notificationQ;
-		this.model = model;
+		super(messageDatabase, listenerManager, notificationQ);
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
@@ -165,7 +156,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		workQ = new LinkedBlockingQueue<>();
 		doWork = new Thread(new Worker(workQ));
-		doContent = Executors.newCachedThreadPool();
+		doContent = Executors.newSingleThreadExecutor();//newCachedThreadPool();
 
 		doWork.start();
 
@@ -615,21 +606,22 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	AUDIT -- I think this will now work if we have a folder closed exception and we re-run the work.
 	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
 	{
+		System.err.println("ensureMessageContentLoaded : " + messageId);
 		return doContent.submit(new MessageWork(() -> {
 			ensureMapsLoaded();
 
 			//	check if the content is not already in the database
 			ReadContext rContext = getReadContext();
 			rContext.start();
-			boolean notThere = !rContext.getModel().listObjectsOfProperty(rContext.getModel().createResource(messageId),
+			boolean stored = rContext.getModel().listObjectsOfProperty(rContext.getModel().createResource(messageId),
 					rContext.getModel().createProperty(Vocabulary.HAS_CONTENT)).hasNext();
 			rContext.end();
-			System.err.println("Not there = " + notThere);
+			System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
 
-			if (notThere)
+			if (!stored)
 			{
+				assert m_folder.containsKey(folderId);
 				Folder folder = m_folder.get(folderId);
-
 				Message[] msgs = U(encode(folder), List.of(messageId));
 
 				//	how do we set a profile for the actual content?
@@ -637,29 +629,17 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				//				fp.add(FetchProfile.Item.CONTENT_INFO);
 				//				folder.fetch(msgs, fp);
 
-				System.err.println("Not there = AAAAA");
-				assert m_folder.containsKey(folderId);
-
-				System.err.println("Not there = BBBBB");
-				WriteContext context = getWriteContext();
-				context.startTransaction();
-
-				try
+				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
+				Model toAdd = ModelFactory.createDefaultModel();
+				for (Message message : msgs)
 				{
-					//Message message = m_PerFolderMessage.get(folder).get(messageId);
-					for (Message message : msgs)
-					{
-						MessageContent messageContent = new MessageContent(message, true).process();
-						DStore.messageContent(context.getModel(), this, message, messageContent);
-					}
-					context.succeed();
-					System.err.println("Not there = CCCCC");
-
-					return folder;
-				} catch (IOException | MessagingException ex)
-				{
-					context.fail(ex);
+					MessageContent messageContent = new MessageContent(message, true).process();
+					DStore.messageContent(toAdd, this, message, messageContent);
 				}
+
+				update(toAdd);
+				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
+				return folder;
 			}
 
 			return null;
@@ -751,16 +731,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						U(message.getFolder()).getUID(message), cidName);
 	}
 
-	private WriteContext getWriteContext()
-	{
-		return new WriteContext(messageDatabase);
-	}
-
-	private void notifyListeners(TransactionRecorder recorder)
-	{
-		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
-	}
-
 	private void reWatchFolder(Folder folder) throws StorageException
 	{
 		LOGGER.log(Level.INFO, "REWATCH :: {0}", folder.getName());
@@ -790,18 +760,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		throw new StorageException("Failed to re-watch folder");
 	}
 
-	private void store(Model model, Folder folder) throws MessagingException
-	{
-		String folderName = encode(folder);
-		Resource folderRes = model.createResource(folderName);
-		model.add(folderRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
-		model.add(model.createResource(getId()), model.createProperty(Vocabulary.CONTAINS), folderRes);
-		model.add(folderRes, model.createProperty(Vocabulary.HAS_UID_VALIDITY),
-				model.createTypedLiteral(((UIDFolder) folder).getUIDValidity()));
-		model.add(folderRes, model.createProperty(Vocabulary.HAS_NAME), model.createTypedLiteral(folder.getName()));
-		DStore.folderCounts(model, this, folder);
-	}
-
 	//	AUDIT -- safe
 	private Message[] U(String folderId, Collection<String> messageIds)
 	{
@@ -816,11 +774,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 
 		return messages;
-	}
-
-	private ReadContext getReadContext()
-	{
-		return new ReadContext(messageDatabase);
 	}
 
 	public <T> Future<T> addWork(Callable<T> operation)
@@ -903,42 +856,33 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		LOGGER.info("synchronizeFolders");
 
-		WriteContext context = getWriteContext();
-		context.startTransaction(recorder);
+		Model model = ModelFactory.createDefaultModel();
 
-		try
+		//	FIX write context needed here
+		for (Folder folder : m_folder.values())
 		{
-			for (Folder folder : m_folder.values())
+			String folderName = encode(folder);
+
+			//  store any folders we don't already have, and update folder counts for ones we do have
+			//  TODO -- need to handle deleted folders
+			StmtIterator it = model
+					.listStatements(model.createResource(folderName), model.createProperty(Vocabulary.RDF_TYPE),
+							model.createResource(Vocabulary.IMAP_FOLDER));
+
+			if (it.hasNext())
 			{
-				String folderName = encode(folder);
-
-				Model model = context.getModel();
-
-				//  store any folders we don't already have, and update folder counts for ones we do have
-				//  TODO -- need to handle deleted folders
-				StmtIterator it = model
-						.listStatements(model.createResource(folderName), model.createProperty(Vocabulary.RDF_TYPE),
-								model.createResource(Vocabulary.IMAP_FOLDER));
-
-				if (it.hasNext())
-				{
-					//  TODO -- should really check that the validity hasn't changed
-					assert JenaUtils.checkUnique(it);
-					//	folder counts may have changed
-					DStore.folderCounts(model, this, folder);
-				}
-				else
-				{
-					System.err.println("ADDING FOLDER " + folder.getName());
-					store(model, folder);
-				}
+				//  TODO -- should really check that the validity hasn't changed
+				assert JenaUtils.checkUnique(it);
+				//	folder counts may have changed
+				DStore.folderCounts(model, this, folder);
 			}
-
-			context.succeed();
-		} catch (MessagingException ex)
-		{
-			context.fail(ex);
+			else
+			{
+				DStore.folder(model, this, folder);
+			}
 		}
+
+		update(model);
 	}
 
 	//  get the ids of those org.knowtiphy.pinkpigmail.messages stored in the database that match the query
@@ -1059,20 +1003,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.fetch(msgs, fp);
 
 			//  fetch headers we don't have
-			WriteContext context = getWriteContext();
-			context.startTransaction(recorder);
-			try
+			Model toAdd = ModelFactory.createDefaultModel();
+			for (Message msg : msgs)
 			{
-				for (Message msg : msgs)
-				{
-					DStore.messageHeaders(messageDatabase.getDefaultModel(), msg, encode(msg));
-				}
-
-				context.succeed();
-			} catch (MessagingException ex)
-			{
-				context.fail(ex);
+				DStore.messageHeaders(toAdd, msg, encode(msg));
 			}
+			update(toAdd);
 		}
 	}
 

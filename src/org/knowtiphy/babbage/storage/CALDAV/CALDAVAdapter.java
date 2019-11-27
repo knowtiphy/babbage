@@ -19,7 +19,6 @@ import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IReadContext;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
-import org.knowtiphy.babbage.storage.ReadContext;
 import org.knowtiphy.babbage.storage.TransactionRecorder;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.babbage.storage.WriteContext;
@@ -43,8 +42,19 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CTAG;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATEEND;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATESTART;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DESCRIPTION;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.ETAG;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.EVENTRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.NAME;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.PRIORITY;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.SUMMARY;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.L;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.P;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -76,8 +86,9 @@ public class CALDAVAdapter extends BaseAdapter
 	private Thread synchThread;
 
 	public CALDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
+						 BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
 	{
+		super(messageDatabase, listenerManager, notificationQ);
 		System.out.println("CALDAVAdapter INSTANTIATED");
 		// Query for serverName, emailAdress, and password
 
@@ -122,12 +133,14 @@ public class CALDAVAdapter extends BaseAdapter
 		return ZonedDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
 	}
 
-	@Override public String getId()
+	@Override
+	public String getId()
 	{
 		return id;
 	}
 
-	@Override public void close()
+	@Override
+	public void close()
 	{
 		try
 		{
@@ -187,11 +200,6 @@ public class CALDAVAdapter extends BaseAdapter
 		notifyListeners(rec2);
 	}
 	// @formatter:on
-
-	private void notifyListeners(TransactionRecorder recorder)
-	{
-		notificationQ.addLast(() -> listenerManager.notifyChangeListeners(recorder));
-	}
 
 	protected String encodeCalendar(DavResource calendar)
 	{
@@ -611,7 +619,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 
 									TransactionRecorder recorder1 = new TransactionRecorder();
-									WriteContext context1 =  getWriteContext();
+									WriteContext context1 = getWriteContext();
 									context1.startTransaction(recorder1);
 
 									try
@@ -630,7 +638,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 										context1.succeed();
 										notifyListeners(recorder1);
-									}catch (Exception ex)
+									} catch (Exception ex)
 									{
 										context1.fail(ex);
 									}
@@ -656,7 +664,8 @@ public class CALDAVAdapter extends BaseAdapter
 		synchThread.start();
 	}
 
-	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	@Override
+	public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		return new FutureTask<Void>(() -> {
 			startSynchThread();
@@ -664,16 +673,6 @@ public class CALDAVAdapter extends BaseAdapter
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
 			return null;
 		});
-	}
-
-	private WriteContext getWriteContext()
-	{
-		return new WriteContext(messageDatabase);
-	}
-
-	private ReadContext getReadContext()
-	{
-		return new ReadContext(messageDatabase);
 	}
 
 	// Factor this out to its own class eventually, since all Adapters will use
@@ -692,7 +691,8 @@ public class CALDAVAdapter extends BaseAdapter
 			this.queue = queue;
 		}
 
-		@Override public void run()
+		@Override
+		public void run()
 		{
 			while (true)
 			{
