@@ -16,6 +16,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.IMAP.DStore;
 import org.knowtiphy.babbage.storage.IReadContext;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
@@ -162,7 +163,7 @@ public class CALDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 		if (nickName != null)
 		{
-			accountTriples.add(org.knowtiphy.babbage.storage.IMAP.DStore.R(accountTriples, id), org.knowtiphy.babbage.storage.IMAP.DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+			accountTriples.add(DStore.R(accountTriples, id), DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
 		// Notify the client of the account triples
 		TransactionRecorder accountRec = new TransactionRecorder();
@@ -433,7 +434,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 									try
 									{
-										DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
+										org.knowtiphy.babbage.storage.CALDAV.DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
 
 										context.succeed();
 										notifyListeners(recorder);
@@ -458,7 +459,7 @@ public class CALDAVAdapter extends BaseAdapter
 											//System.err.println("FOR CALENDER URI :: " + serverCalURI);
 											try
 											{
-												DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
+												org.knowtiphy.babbage.storage.CALDAV.DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
 														encodeEvent(serverCal, event), vEvent, event);
 											} catch (Throwable ex)
 											{
@@ -548,7 +549,7 @@ public class CALDAVAdapter extends BaseAdapter
 										{
 											for (String event : removeEvent)
 											{
-												DStore.unstoreRes(messageDatabase.getDefaultModel(), serverCalURI,
+												org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes(messageDatabase.getDefaultModel(), serverCalURI,
 														event);
 											}
 											for (DavResource event : addEvents)
@@ -558,7 +559,7 @@ public class CALDAVAdapter extends BaseAdapter
 														.first().getEvents().get(0);
 												try
 												{
-													DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
+													org.knowtiphy.babbage.storage.CALDAV.DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
 															encodeEvent(serverCal, event), vEvent, event);
 												} catch (Throwable ex)
 												{
@@ -598,7 +599,7 @@ public class CALDAVAdapter extends BaseAdapter
 										// Dftech of current events for that calender
 										for (String eventURI : currStoredEvents)
 										{
-											DStore.unstoreRes(context.getModel(), storedCalURI, eventURI);
+											org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes(context.getModel(), storedCalURI, eventURI);
 										}
 
 										context.succeed();
@@ -615,7 +616,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 									try
 									{
-										DStore.unstoreRes(context.getModel(), getId(), storedCalURI);
+										org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes(context.getModel(), getId(), storedCalURI);
 
 										if (m_PerCalendarEvents.get(storedCalURI) != null)
 										{

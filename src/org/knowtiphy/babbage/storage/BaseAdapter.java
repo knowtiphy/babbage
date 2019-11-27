@@ -129,6 +129,7 @@ public abstract class BaseAdapter implements IAdapter
 		{
 			messageDatabase.getDefaultModel().remove(deletes);
 		}
+		messageDatabase.commit();
 		messageDatabase.end();
 		notifyListeners(adds, deletes);
 	}

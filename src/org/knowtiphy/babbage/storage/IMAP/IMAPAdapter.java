@@ -6,7 +6,6 @@ import com.sun.mail.util.MailConnectException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ReadWrite;
-import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
@@ -303,9 +302,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			for (Folder folder : m_folder.values())
 			{
-				TransactionRecorder recorder1 = new TransactionRecorder();
-				synchMessageIdsAndHeaders(folder, recorder1);
-				notifyListeners(recorder1);
+				synchMessageIdsAndHeaders(folder);
 			}
 
 			startPingThread();
@@ -336,12 +333,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		notifyListeners(accountTriples);
 
 		messageDatabase.begin(ReadWrite.READ);
-		Model mFD = QueryExecutionFactory.create(Fetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct();
+		Model mFD = QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct();
 		messageDatabase.end();
 		notifyListeners(mFD);
 
 		messageDatabase.begin(ReadWrite.READ);
-		Model mMH = QueryExecutionFactory.create(Fetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct();
+		Model mMH = QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct();
 		messageDatabase.end();
 		notifyListeners(mMH);
 	}
@@ -662,7 +659,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			openFolder(folder);
 			TransactionRecorder recorder = new TransactionRecorder();
 			m_PerFolderMessage.remove(folder);
-			synchMessageIdsAndHeaders(folder, recorder);
+			synchMessageIdsAndHeaders(folder);
 			notifyListeners(recorder);
 		} finally
 		{
@@ -833,15 +830,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
-	//  get the ids of those org.knowtiphy.pinkpigmail.messages stored in the database that match the query
-	private Set<String> getStoredMessageIDs(Model model, String query)
-	{
-		Set<String> stored = new HashSet<>(1000);
-		ResultSet resultSet = QueryExecutionFactory.create(query, model).execSelect();
-		stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("message").asResource().toString()));
-		return stored;
-	}
-
 	//	synch methods
 
 	private void synchronizeFolders() throws MessagingException
@@ -861,7 +849,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				String folderId = encode(folder);
 
-				StmtIterator storedFolder = Fetch.folder(messageDatabase.getDefaultModel(), folderId);
+				StmtIterator storedFolder = DFetch.folder(messageDatabase.getDefaultModel(), folderId);
 				boolean isStored = storedFolder.hasNext();
 				assert !isStored || JenaUtils.checkUnique(storedFolder);
 
@@ -888,7 +876,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		update(adds, deletes);
 	}
 
-	private void synchMessageIds(Folder folder, TransactionRecorder recorder) throws MessagingException
+	private void synchMessageIds(Folder folder) throws MessagingException
 	{
 		LOGGER.log(Level.INFO, "synchMessageIds {0}", folder.getName());
 
@@ -897,7 +885,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//  get the stored message IDs
 
 		messageDatabase.begin(ReadWrite.READ);
-		Set<String> stored = getStoredMessageIDs(messageDatabase.getDefaultModel(), Fetch.messageUIDs(folderId));
+		Set<String> stored = DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId));
 		messageDatabase.end();
 
 		//  get the set of message IDst that IMAP reports
@@ -946,18 +934,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		Model deletes = ModelFactory.createDefaultModel();
 		removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), deletes, folderId, message));
 		Model adds = ModelFactory.createDefaultModel();
-		addUID.forEach(message -> DStore.addMessageID(adds, folderId, message));
+		addUID.forEach(message -> DStore.addMessage(adds, folderId, message));
 		update(adds, deletes);
 	}
 
-	private void synchMessageHeaders(Folder folder, TransactionRecorder recorder) throws MessagingException
+	private void synchMessageHeaders(Folder folder) throws MessagingException
 	{
 		String folderId = encode(folder);
 
 		messageDatabase.begin(ReadWrite.READ);
-		Set<String> stored = getStoredMessageIDs(messageDatabase.getDefaultModel(), Fetch.messageUIDs(folderId));
+		Set<String> stored = DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId));
 		//  get the stored message IDs for those org.knowtiphy.pinkpigmail.messages for which we have headers
-		Set<String> withHeaders = getStoredMessageIDs(messageDatabase.getDefaultModel(), Fetch.messageUIDsWithHeaders(id, folderId));
+		Set<String> withHeaders = DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDsWithHeaders(id, folderId));
 		//  get message headers for message ids that we don't have headers for
 		messageDatabase.end();
 
@@ -992,10 +980,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	//	TODO -- should combine methods
-	private void synchMessageIdsAndHeaders(Folder folder, TransactionRecorder recorder) throws MessagingException
+	private void synchMessageIdsAndHeaders(Folder folder) throws MessagingException
 	{
-		synchMessageIds(folder, recorder);
-		synchMessageHeaders(folder, recorder);
+		synchMessageIds(folder);
+		synchMessageHeaders(folder);
 	}
 
 	// Handles incoming org.knowtiphy.pinkpigmail.messages from the IMAP org.knowtiphy.pinkpigmail.server, new ones not caught in the synch of initial start up state
@@ -1047,7 +1035,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						String messageId = encode(message);
 						if (m_PerFolderMessage.get(folder).containsKey(messageId))
 						{
-							DStore.addFlags(adds, messageId, message);
+							DStore.addMessageFlags(adds, messageId, message);
 							deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
 						}
 						else
@@ -1138,7 +1126,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				for (Message message : e.getMessages())
 				{
 					String messageId = encode(message);
-					DStore.addMessageID(adds, folderId, messageId);
+					DStore.addMessage(adds, folderId, messageId);
 					deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
 					addMessageHeaders(adds, message, messageId);
 					m_PerFolderMessage.get(folder).put(messageId, message);

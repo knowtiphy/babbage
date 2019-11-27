@@ -1,9 +1,15 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
+import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
+import org.knowtiphy.utils.JenaUtils;
+
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
@@ -11,9 +17,8 @@ import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
 /**
  * @author graham
  */
-public interface Fetch
+public interface DFetch
 {
-	//private final static Pattern MSG_NOT_JUNK_PATTERN = Pattern.compile("(\\$NotJunk)", Pattern.CASE_INSENSITIVE);
 	static String skeleton(String id)
 	{
 		return String.format("CONSTRUCT { ?%s <%s> <%s> . " +
@@ -108,15 +113,6 @@ public interface Fetch
 				+ "      }";
 	}
 
-	static String eventURIs(String calURI)
-	{
-		return "SELECT ?event "
-				+ "WHERE {"
-				+ "      ?event <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
-				+ "      <" + calURI + "> <" + Vocabulary.CONTAINS + "> ?event.\n"
-				+ "      }";
-	}
-
 	static String messageUIDsWithHeaders(String accountId, String folderId)
 	{
 		return "SELECT ?message\n"
@@ -130,28 +126,38 @@ public interface Fetch
 				+ "}";
 	}
 
-	static String outboxMessage(String accountId, String messageId)
+	//  get the ids messages stored in the database that match the query
+	public static Set<String> messageIds(Model model, String query)
 	{
-		return "SELECT ?subject ?content ?to ?cc ?bcc\n"
-				+ "WHERE \n"
-				+ "{\n"
-				+ "      <" + messageId + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.DRAFT_MESSAGE + ">.\n"
-				+ "      <" + accountId + "> <" + Vocabulary.CONTAINS + "> <" + messageId + ">.\n"
-				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_SUBJECT + "> ?subject }\n"
-				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_CONTENT + "> ?content } \n"
-				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.TO + "> ?to } \n"
-				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_CC + "> ?cc } \n"
-				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_BCC + "> ?bcc } \n"
-				+ "}";
+		Set<String> stored = new HashSet<>(1000);
+		ResultSet resultSet = QueryExecutionFactory.create(query, model).execSelect();
+		stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("message").asResource().toString()));
+		return stored;
 	}
 
-	static String outboxMessageIds(String accountId)
-	{
-		return "SELECT ?messageId\n"
-				+ "WHERE \n"
-				+ "{\n"
-				+ "      ?messageId <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.DRAFT_MESSAGE + ">.\n"
-				+ "      <" + accountId + "> <" + Vocabulary.CONTAINS + "> ?messageId.\n"
-				+ "}";
-	}
+//
+//	static String outboxMessage(String accountId, String messageId)
+//	{
+//		return "SELECT ?subject ?content ?to ?cc ?bcc\n"
+//				+ "WHERE \n"
+//				+ "{\n"
+//				+ "      <" + messageId + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.DRAFT_MESSAGE + ">.\n"
+//				+ "      <" + accountId + "> <" + Vocabulary.CONTAINS + "> <" + messageId + ">.\n"
+//				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_SUBJECT + "> ?subject }\n"
+//				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_CONTENT + "> ?content } \n"
+//				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.TO + "> ?to } \n"
+//				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_CC + "> ?cc } \n"
+//				+ "      OPTIONAL { <" + messageId + "> <" + Vocabulary.HAS_BCC + "> ?bcc } \n"
+//				+ "}";
+//	}
+//
+//	static String outboxMessageIds(String accountId)
+//	{
+//		return "SELECT ?messageId\n"
+//				+ "WHERE \n"
+//				+ "{\n"
+//				+ "      ?messageId <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.DRAFT_MESSAGE + ">.\n"
+//				+ "      <" + accountId + "> <" + Vocabulary.CONTAINS + "> ?messageId.\n"
+//				+ "}";
+//	}
 }

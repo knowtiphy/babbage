@@ -9,15 +9,15 @@ import java.util.logging.Logger;
  */
 public class PingServer implements Runnable
 {
-	private static final Logger logger = Logger.getLogger(PingServer.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(PingServer.class.getName());
 
-	private final org.knowtiphy.babbage.storage.IMAP.IMAPAdapter IMAPAdapter;
+	private final IMAPAdapter adapter;
 	private final Folder folder;
 	private final long frequency;
 
-	public PingServer(IMAPAdapter IMAPAdapter, Folder folder, long frequency)
+	public PingServer(IMAPAdapter adapter, Folder folder, long frequency)
 	{
-		this.IMAPAdapter = IMAPAdapter;
+		this.adapter = adapter;
 		this.folder = folder;
 		this.frequency = frequency;
 	}
@@ -29,19 +29,18 @@ public class PingServer implements Runnable
 		{
 			try
 			{
-				//noinspection BusyWait
 				Thread.sleep(frequency);
-				logger.info("Pinging server");
+				LOGGER.info("Pinging server");
 				folder.getMessageCount();
 			} catch (InterruptedException ex)
 			{
 				return;
 			} catch (MessagingException ex)
 			{
-				logger.warning("Pinging server failed :: " + ex.getLocalizedMessage());
-				IMAPAdapter.addWork(() ->
+				LOGGER.warning(() -> "Pinging server failed :: " + ex.getLocalizedMessage());
+				adapter.addWork(() ->
 				{
-					IMAPAdapter.reStartPingThread();
+					adapter.reStartPingThread();
 					return null;
 				});
 			}

@@ -25,15 +25,12 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 
 /**
  * @author graham
  */
 public interface DStore
 {
-	Pattern MSG_JUNK_PATTERN = Pattern.compile("\\$?Junk", Pattern.CASE_INSENSITIVE);
-
 	//	helper methods
 	static Resource R(Model model, String uri)
 	{
@@ -52,7 +49,7 @@ public interface DStore
 
 	//	ADD methods -- these methods MUST only add triples to a model
 
-	//	store a non-null attribute
+	//	add an attribute (so subject predicate literal) triple as long as the attribute value is not null
 	static <S> void addAttribute(Model model, Resource subject, String predicate, S value, Function<S, ? extends Literal> fn)
 	{
 		if (value != null)
@@ -67,10 +64,18 @@ public interface DStore
 		{
 			for (Address address : addresses)
 			{
-				assert address != null;
-				model.add(messageId, P(model, predicate), L(model, address.toString()));
+				addAttribute(model, messageId, predicate, address, x -> L(model, x.toString()));
 			}
 		}
+	}
+
+	static void addFolder(Model model, IAdapter account, Folder folder) throws MessagingException
+	{
+		Resource fRes = R(model, account.encode(folder));
+		model.add(fRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
+		model.add(R(model, account.getId()), P(model, Vocabulary.CONTAINS), fRes);
+		model.add(fRes, P(model, Vocabulary.HAS_UID_VALIDITY), L(model, ((UIDFolder) folder).getUIDValidity()));
+		model.add(fRes, P(model, Vocabulary.HAS_NAME), L(model, folder.getName()));
 	}
 
 	static void addFolderCounts(Model model, IAdapter account, Folder folder) throws MessagingException
@@ -80,7 +85,7 @@ public interface DStore
 		model.add(fRes, P(model, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), L(model, folder.getUnreadMessageCount()));
 	}
 
-	static void addMessageID(Model model, String folderId, String messageId)
+	static void addMessage(Model model, String folderId, String messageId)
 	{
 		Resource mRes = R(model, messageId);
 		model.add(mRes, P(model, Vocabulary.RDF_TYPE), R(model, Vocabulary.IMAP_MESSAGE));
@@ -118,7 +123,7 @@ public interface DStore
 		}
 	}
 
-	static void addFlags(Model model, String messageId, Message message) throws MessagingException
+	static void addMessageFlags(Model model, String messageId, Message message) throws MessagingException
 	{
 		Resource mRes = R(model, messageId);
 		model.add(mRes, P(model, Vocabulary.IS_READ), L(model, message.isSet(Flags.Flag.SEEN)));
@@ -131,21 +136,12 @@ public interface DStore
 			//                junk = false;
 			//                break;
 			//            }
-			if (MSG_JUNK_PATTERN.matcher(flag).matches())
+			if (org.knowtiphy.babbage.storage.IMAP.Pattern.MSG_JUNK_PATTERN.matcher(flag).matches())
 			{
 				junk = true;
 			}
 		}
 		model.add(mRes, P(model, Vocabulary.IS_JUNK), L(model, junk));
-	}
-
-	static void addFolder(Model model, IAdapter account, Folder folder) throws MessagingException
-	{
-		Resource fRes = R(model, account.encode(folder));
-		model.add(fRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
-		model.add(R(model, account.getId()), P(model, Vocabulary.CONTAINS), fRes);
-		model.add(fRes, P(model, Vocabulary.HAS_UID_VALIDITY), L(model, ((UIDFolder) folder).getUIDValidity()));
-		model.add(fRes, P(model, Vocabulary.HAS_NAME), L(model, folder.getName()));
 	}
 
 	static void addMessageHeaders(Model model, Message message, String messageId) throws MessagingException
@@ -160,7 +156,7 @@ public interface DStore
 		addAddresses(model, messageRes, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));
 		addAddresses(model, messageRes, Vocabulary.HAS_CC, message.getRecipients(Message.RecipientType.CC));
 		addAddresses(model, messageRes, Vocabulary.HAS_BCC, message.getRecipients(Message.RecipientType.BCC));
-		addFlags(model, messageId, message);
+		addMessageFlags(model, messageId, message);
 	}
 
 	//	DELETE methods -- these methods MUST only add triples to a model (of deletes)
