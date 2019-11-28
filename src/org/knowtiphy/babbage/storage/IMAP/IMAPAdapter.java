@@ -14,7 +14,6 @@ import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.StorageException;
-import org.knowtiphy.babbage.storage.TransactionRecorder;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
@@ -649,10 +648,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		try
 		{
 			openFolder(folder);
-			TransactionRecorder recorder = new TransactionRecorder();
+//			TransactionRecorder recorder = new TransactionRecorder();
 			m_PerFolderMessage.remove(folder);
 			synchMessageIdsAndHeaders(folder);
-			notifyListeners(recorder);
+//			notifyListeners(recorder);
 		} finally
 		{
 			accountLock.unlock();

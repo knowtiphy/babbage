@@ -6,6 +6,7 @@ import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.IProcedure;
+import org.knowtiphy.utils.LoggerUtils;
 
 import javax.mail.Folder;
 import javax.mail.Message;
@@ -16,11 +17,14 @@ import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.function.Supplier;
+import java.util.logging.Logger;
 
 // Actual adapters will override the methods that they actually use
 
 public abstract class BaseAdapter implements IAdapter
 {
+	private static final Logger LOGGER = Logger.getLogger(BaseAdapter.class.getName());
+
 	protected final Dataset messageDatabase;
 	protected final ListenerManager listenerManager;
 	protected final BlockingDeque<Runnable> notificationQ;
@@ -105,21 +109,24 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
-	protected void notifyListeners(TransactionRecorder recorder)
-	{
-		notificationQ.add(() -> listenerManager.notifyChangeListeners(recorder));
-	}
+//	protected void notifyListeners(TransactionRecorder recorder)
+//	{
+//		notificationQ.add(() -> listenerManager.notifyChangeListeners(recorder));
+//	}
 
+	//	this needs to go -- use Deltas
 	protected void notifyListeners(Model model)
 	{
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(model));
 	}
 
+	//	this needs to go -- use Deltas
 	protected void notifyListeners(Model adds, Model deletes)
 	{
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(adds, deletes));
 	}
 
+	//	this needs to go -- use Deltas everywhere
 	protected void update(Model adds, Model deletes)
 	{
 		assert adds != null;
@@ -177,17 +184,12 @@ public abstract class BaseAdapter implements IAdapter
 		try
 		{
 			query.call();
-		}
-		catch (Exception ex)
+		} catch (Exception ex)
 		{
 			messageDatabase.abort();
-			//	TODO -- log it
-			ex.printStackTrace(System.err);
+			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
 			throw ex;
 		}
 		messageDatabase.end();
 	}
-
-
-
 }

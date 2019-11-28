@@ -42,13 +42,4 @@ public class ListenerManager
 	{
 		notifyChangeListeners(model, ModelFactory.createDefaultModel());
 	}
-
-	public void notifyChangeListeners(TransactionRecorder recorder)
-	{
-		Model added = ModelFactory.createDefaultModel();
-		added.add(recorder.getAdded());
-		Model removed = ModelFactory.createDefaultModel();
-		removed.add(recorder.getRemoved());
-		notifyChangeListeners(added, removed);
-	}
 }

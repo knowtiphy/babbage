@@ -191,7 +191,7 @@ public class LocalStorage implements IStorage
 		// Notify the client of the account triples
 		TransactionRecorder accountRec = new TransactionRecorder();
 		accountRec.addedStatements(accountTriples);
-		listenerManager.notifyChangeListeners(accountRec);
+		//listenerManager.notifyChangeListeners(accountRec);
 
 		IReadContext context = getReadContext();
 		context.start();
@@ -232,7 +232,7 @@ public class LocalStorage implements IStorage
 
 		TransactionRecorder rec = new TransactionRecorder();
 		rec.addedStatements(mFD);
-		listenerManager.notifyChangeListeners(rec);
+		//listenerManager.notifyChangeListeners(rec);
 
 		String constructQueryMH = String.format(
 				"CONSTRUCT { ?%s <%s> ?%s . ?%s <%s> <%s> . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . ?%s <%s> ?%s . "
@@ -284,7 +284,7 @@ public class LocalStorage implements IStorage
 		recMH.addedStatements(mMH);
 		context.end();
 
-		listenerManager.notifyChangeListeners(recMH);
+		//listenerManager.notifyChangeListeners(recMH);
 
 		// Start the synching of the IMAP org.knowtiphy.pinkpigmail.server, adds its work to the front of the Queue
 		// but need to put these account of the Queue
