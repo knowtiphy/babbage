@@ -170,27 +170,27 @@ public class LocalStorage implements IStorage
 	{
 		listenerManager.addListener(listener);
 
-		Model accountTriples = ModelFactory.createDefaultModel();
-		for (IMAPAdapter IMAPAdapter : m_account.values())
-		{
-			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.RDF_TYPE), P(accountTriples, Vocabulary.IMAP_ACCOUNT));
-			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_SERVER_NAME), IMAPAdapter
-					.getServerName());
-			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), IMAPAdapter
-					.getEmailAddress());
-			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_PASSWORD), IMAPAdapter
-					.getPassword());
-			IMAPAdapter.getTrustedSenders().forEach(
-					x -> accountTriples.add(R(accountTriples, IMAPAdapter.getId()),
-							P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
-			IMAPAdapter.getTrustedContentProviders().forEach(
-					x -> accountTriples.add(R(accountTriples, IMAPAdapter.getId()),
-							P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
-		}
+//		Model accountTriples = ModelFactory.createDefaultModel();
+//		for (IMAPAdapter IMAPAdapter : m_account.values())
+//		{
+//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.RDF_TYPE), P(accountTriples, Vocabulary.IMAP_ACCOUNT));
+//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_SERVER_NAME), IMAPAdapter
+//					.getServerName());
+//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), IMAPAdapter
+//					.getEmailAddress());
+//			accountTriples.add(R(accountTriples, IMAPAdapter.getId()), P(accountTriples, Vocabulary.HAS_PASSWORD), IMAPAdapter
+//					.getPassword());
+//			IMAPAdapter.getTrustedSenders().forEach(
+//					x -> accountTriples.add(R(accountTriples, IMAPAdapter.getId()),
+//							P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
+//			IMAPAdapter.getTrustedContentProviders().forEach(
+//					x -> accountTriples.add(R(accountTriples, IMAPAdapter.getId()),
+//							P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
+//		}
 
 		// Notify the client of the account triples
 		TransactionRecorder accountRec = new TransactionRecorder();
-		accountRec.addedStatements(accountTriples);
+//		accountRec.addedStatements(accountTriples);
 		//listenerManager.notifyChangeListeners(accountRec);
 
 		IReadContext context = getReadContext();

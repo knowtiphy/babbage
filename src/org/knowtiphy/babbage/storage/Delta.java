@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage;
+package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;

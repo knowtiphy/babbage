@@ -2,15 +2,13 @@ package org.knowtiphy.babbage.storage.IMAP;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
-import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
-import org.knowtiphy.babbage.Delta;
-import org.knowtiphy.babbage.storage.IAdapter;
+import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -43,11 +41,6 @@ public interface DStore
 		return model.createProperty(uri);
 	}
 
-	static <T> Literal L(Model model, T value)
-	{
-		return model.createTypedLiteral(value);
-	}
-
 	//	ADD methods -- these methods MUST only add triples to a model
 
 	//	add an attribute (so subject predicate literal) triple as long as the attribute value is not null
@@ -65,12 +58,12 @@ public interface DStore
 		{
 			for (Address address : addresses)
 			{
-				addAttribute(delta, messageId, predicate, address, x -> x.toString());
+				addAttribute(delta, messageId, predicate, address, Address::toString);
 			}
 		}
 	}
 
-	static void addFolder(Delta delta, IAdapter account, Folder folder) throws MessagingException
+	static void addFolder(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
 	{
 		String folderId = account.encode(folder);
 		delta.addR(folderId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER);
@@ -79,7 +72,7 @@ public interface DStore
 		delta.addL(folderId, Vocabulary.HAS_NAME, folder.getName());
 	}
 
-	static void addFolderCounts(Delta delta, IAdapter account, Folder folder) throws MessagingException
+	static void addFolderCounts(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
 	{
 		String folderId = account.encode(folder);
 		delta.addL(folderId, Vocabulary.HAS_MESSAGE_COUNT, folder.getMessageCount());

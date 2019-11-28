@@ -2,8 +2,6 @@ package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.query.Dataset;
 
-import javax.mail.Folder;
-import javax.mail.MessagingException;
 import java.util.concurrent.BlockingDeque;
 
 public class CARDDAVAdapter extends BaseAdapter
@@ -15,14 +13,13 @@ public class CARDDAVAdapter extends BaseAdapter
 		super(messageDatabase, listenerManager, notificationQ);
 	}
 
+	public void close()
+	{
+
+	}
+	
 	@Override
 	public String getId()
-	{
-		return null;
-	}
-
-	@Override
-	public String encode(Folder folder) throws MessagingException
 	{
 		return null;
 	}

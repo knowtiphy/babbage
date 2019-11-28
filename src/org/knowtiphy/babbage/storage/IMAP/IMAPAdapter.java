@@ -6,9 +6,8 @@ import com.sun.mail.util.MailConnectException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
-import org.knowtiphy.babbage.Delta;
+import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
@@ -95,14 +94,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private static final Runnable POISON_PILL = () -> {
 	};
 
+	private final String id;
 	private final String serverName;
 	private final String emailAddress;
 	private final String password;
 	private String nickName;
-	private final String id;
 	private final Set<String> trustedSenders, trustedContentProviders;
 
-	//	RDF ids to Java folder and message objects
+	//	RDF ids to javax mail folder and message objects
 	private final Map<String, Folder> m_folder = new HashMap<>(100);
 	private final Map<Folder, Map<String, Message>> m_PerFolderMessage = new HashMap<>(1000);
 
@@ -129,7 +128,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_PASSWORD));
 
-		// Query for these with the passed in model
 		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
@@ -190,106 +188,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		props1.put("mail.event.executor", es);
 	}
 
-	private static void openFolder(Folder folder) throws StorageException
-	{
-		for (int i = 0; i < NUM_ATTEMPTS; i++)
-		{
-			try
-			{
-				folder.open(Folder.READ_WRITE);
-				return;
-			} catch (IllegalStateException e)
-			{
-				//	the folder is already open
-				return;
-			} catch (MessagingException e)
-			{
-				//	ignore and try again
-			}
-		}
-
-		throw new StorageException("Failed to re-open folder");
-	}
-
-	private static UIDFolder U(Folder folder)
-	{
-		return (UIDFolder) folder;
-	}
-
-	//	Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
-	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
-	{
-		assert messages.length > 0;
-		messages[0].getFolder().setFlags(messages, flags, value);
-	}
-
-	private static List<Address> toList(String raw, boolean ignoreAddr) throws AddressException
-	{
-		if (raw == null)
-		{
-			return new LinkedList<>();
-		}
-
-		String trim = raw.trim();
-		if (trim.isEmpty())
-		{
-			return new LinkedList<>();
-		}
-
-		String[] tos = trim.split(",");
-		List<Address> result = new ArrayList<>(10);
-		for (String to : tos)
-		{
-			try
-			{
-				result.add(new InternetAddress(to.trim()));
-			} catch (AddressException ex)
-			{
-				if (!ignoreAddr)
-				{
-					throw (ex);
-				}
-			}
-		}
-
-		return result;
-	}
-
 	@Override
 	public String getId()
 	{
 		return id;
-	}
-
-	public String getServerName()
-	{
-		return serverName;
-	}
-
-	public String getEmailAddress()
-	{
-		return emailAddress;
-	}
-
-	public String getPassword()
-	{
-		return password;
-	}
-
-	public Set<String> getTrustedSenders()
-	{
-		return trustedSenders;
-	}
-
-	public Set<String> getTrustedContentProviders()
-	{
-		return trustedContentProviders;
-	}
-
-	private void ensureMapsLoaded() throws InterruptedException
-	{
-		accountLock.lock();
-		accountLock.unlock();
 	}
 
 	public FutureTask<?> getSynchTask()
@@ -314,24 +216,28 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	@Override
 	public void addListener()
 	{
-		Model actTriple = ModelFactory.createDefaultModel();
-
-		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.RDF_TYPE), P(actTriple, Vocabulary.IMAP_ACCOUNT));
-		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_SERVER_NAME), serverName);
-		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
-		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_PASSWORD), password);
+		Delta delta = new Delta();
+		delta.addR(id, Vocabulary.RDF_TYPE, Vocabulary.IMAP_ACCOUNT);
+		delta.addL(id, Vocabulary.HAS_SERVER_NAME, serverName);
+		delta.addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
+		delta.addL(id, Vocabulary.HAS_PASSWORD, password);
 		if (nickName != null)
 		{
-			actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_NICK_NAME), nickName);
+			delta.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
-		trustedSenders.forEach(x -> actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_TRUSTED_SENDER), x));
-		trustedContentProviders.forEach(x -> actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
-		notifyListeners(actTriple);
+		trustedSenders.forEach(x -> delta.addL(id, Vocabulary.HAS_TRUSTED_SENDER, x));
+		trustedContentProviders.forEach(x -> delta.addL(id, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, x));
+		notifyListeners(delta);
 
-		Model skeleton = runQuery(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct());
-		notifyListeners(skeleton);
-		Model initialState = runQuery(() -> QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct());
-		notifyListeners(initialState);
+		Delta delta1 = new Delta();
+		delta1.getToAdd().add(
+				runQuery(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct()));
+		notifyListeners(delta1);
+
+		Delta delta2 = new Delta();
+		delta2.getToAdd().add(runQuery(() ->
+				QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct()));
+		notifyListeners(delta2);
 	}
 
 	public void close()
@@ -523,8 +429,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//				context.end();
 		//			}
 
-		message.setFrom(new InternetAddress(getEmailAddress()));
-		message.setReplyTo(new Address[]{new InternetAddress(getEmailAddress())});
+		message.setFrom(new InternetAddress(emailAddress));
+		message.setReplyTo(new Address[]{new InternetAddress(emailAddress)});
 		//  TODO -- get rid of the toList stuff
 		if (model.getTo() != null)
 		{
@@ -614,6 +520,79 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}));
 	}
 
+	//	private methods start here
+
+	private void ensureMapsLoaded() throws InterruptedException
+	{
+		accountLock.lock();
+		accountLock.unlock();
+	}
+
+	private static void openFolder(Folder folder) throws StorageException
+	{
+		for (int i = 0; i < NUM_ATTEMPTS; i++)
+		{
+			try
+			{
+				folder.open(Folder.READ_WRITE);
+				return;
+			} catch (IllegalStateException e)
+			{
+				//	the folder is already open
+				return;
+			} catch (MessagingException e)
+			{
+				//	ignore and try again
+			}
+		}
+
+		throw new StorageException("Failed to re-open folder");
+	}
+
+	private static UIDFolder U(Folder folder)
+	{
+		return (UIDFolder) folder;
+	}
+
+	//	Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
+	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
+	{
+		assert messages.length > 0;
+		messages[0].getFolder().setFlags(messages, flags, value);
+	}
+
+	private static List<Address> toList(String raw, boolean ignoreAddr) throws AddressException
+	{
+		if (raw == null)
+		{
+			return new LinkedList<>();
+		}
+
+		String trim = raw.trim();
+		if (trim.isEmpty())
+		{
+			return new LinkedList<>();
+		}
+
+		String[] tos = trim.split(",");
+		List<Address> result = new ArrayList<>(10);
+		for (String to : tos)
+		{
+			try
+			{
+				result.add(new InternetAddress(to.trim()));
+			} catch (AddressException ex)
+			{
+				if (!ignoreAddr)
+				{
+					throw (ex);
+				}
+			}
+		}
+
+		return result;
+	}
+
 	private void startPingThread()
 	{
 		if (inbox != null)
@@ -677,23 +656,23 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//		}
 	}
 
-	public String encode(Folder folder) throws MessagingException
+	//	methods to encode javax mail objects as URIs
+
+	String encode(Folder folder) throws MessagingException
 	{
-		return Vocabulary.E(Vocabulary.IMAP_FOLDER, getEmailAddress(), U(folder).getUIDValidity());
+		return Vocabulary.E(Vocabulary.IMAP_FOLDER, emailAddress, U(folder).getUIDValidity());
 	}
 
-	//	open a folder -- try multiple times just in case it doesn't work
-
-	protected String encode(Message message) throws MessagingException
+	String encode(Message message) throws MessagingException
 	{
 		UIDFolder folder = U(message.getFolder());
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, getEmailAddress(), folder.getUIDValidity(), folder.getUID(message));
+		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, emailAddress, folder.getUIDValidity(), folder.getUID(message));
 	}
 
-	protected String encode(Message message, String cidName) throws MessagingException
+	String encode(Message message, String cidName) throws MessagingException
 	{
 		UIDFolder folder = U(message.getFolder());
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE_CID_PART, getEmailAddress(), folder.getUIDValidity(), folder.getUID(message), cidName);
+		return Vocabulary.E(Vocabulary.IMAP_MESSAGE_CID_PART, emailAddress, folder.getUIDValidity(), folder.getUID(message), cidName);
 	}
 
 	private void reWatchFolder(Folder folder) throws StorageException
@@ -741,7 +720,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return messages;
 	}
 
-	public <T> Future<T> addWork(Callable<T> operation)
+	protected <T> Future<T> addWork(Callable<T> operation)
 	{
 		FutureTask<T> task = new FutureTask<>(operation);
 		workQ.add(task);
@@ -767,7 +746,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication()
 			{
-				return new PasswordAuthentication(getEmailAddress(), getPassword());
+				return new PasswordAuthentication(emailAddress, password);
 			}
 		});
 
@@ -896,10 +875,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		Delta delta = new Delta();
-		removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, message));
-		addUID.forEach(message -> DStore.addMessage(delta, folderId, message));
-		update(delta);
+		update(() ->
+		{
+			Delta delta = new Delta();
+			removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, message));
+			addUID.forEach(message -> DStore.addMessage(delta, folderId, message));
+			return delta;
+		});
 	}
 
 	private void synchMessageHeaders(Folder folder) throws MessagingException
@@ -948,10 +930,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	// handle incoming messages from the IMAP server, new ones not caught in the synch of initial start up state
 	private class WatchMessageChanges implements MessageChangedListener
 	{
-		private final IAdapter account;
+		private final IMAPAdapter account;
 		private final Folder folder;
 
-		WatchMessageChanges(IAdapter account, Folder folder)
+		WatchMessageChanges(IMAPAdapter account, Folder folder)
 		{
 			this.account = account;
 			this.folder = folder;
@@ -977,19 +959,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			Message message = messageChangedEvent.getMessage();
 
-			System.out.println("CHANGED MESSAGE");
-
 			addWork(new MessageWork(() -> {
 				if (messageChangedEvent.getMessageChangeType() == MessageChangedEvent.FLAGS_CHANGED)
 				{
-					System.out.println("CHANGE");
 					//	deletes are handled elsewhere
 					if (!isDeleted(message))
 					{
 						update(() ->
 						{
 							Delta delta = new Delta();
-							System.out.println("NOT A DELETE");
+
 							String folderId = encode(folder);
 							String messageId = encode(message);
 
@@ -1008,11 +987,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 							return delta;
 						});
 					}
-					else
-					{
-						System.out.println("IS A DELETE");
-					}
-
 				}
 				else
 				{
@@ -1026,10 +1000,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private class WatchCountChanges extends MessageCountAdapter
 	{
-		private final IAdapter account;
+		private final IMAPAdapter account;
 		private final Folder folder;
 
-		WatchCountChanges(IAdapter account, Folder folder)
+		WatchCountChanges(IMAPAdapter account, Folder folder)
 		{
 			this.account = account;
 			this.folder = folder;
@@ -1039,7 +1013,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		public void messagesRemoved(MessageCountEvent e)
 		{
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
-			LOGGER.log(Level.INFO, "{0}THREAD  = ", Thread.currentThread().getId());
 
 			addWork(new MessageWork(() -> {
 				update(() -> {
@@ -1075,8 +1048,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			addWork(new MessageWork(() -> {
 				update(() ->
 				{
-					Delta delta = new Delta();
 					String folderId = encode(folder);
+
+					Delta delta = new Delta();
 					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
 					DStore.addFolderCounts(delta, account, folder);
 

@@ -3,13 +3,11 @@ package org.knowtiphy.babbage.storage;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
-import org.knowtiphy.babbage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.LoggerUtils;
 import org.knowtiphy.utils.ThrowingSupplier;
 
-import javax.mail.Folder;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import java.io.IOException;
@@ -36,25 +34,12 @@ public abstract class BaseAdapter implements IAdapter
 		this.notificationQ = notificationQ;
 	}
 
-	public void close()
-	{
-		throw new UnsupportedOperationException();
-	}
+	public abstract void close();
 
 	public void addListener()
 	{
 		throw new UnsupportedOperationException();
 	}
-
-	public String encode(Folder folder) throws MessagingException
-	{
-		throw new UnsupportedOperationException();
-	}
-
-//	public String encode(DavResource res)
-//	{
-//		throw new UnsupportedOperationException();
-//	}
 
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
 	{
@@ -103,27 +88,20 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
-
 	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
 	{
 		throw new UnsupportedOperationException();
 	}
 
-//	protected void notifyListeners(TransactionRecorder recorder)
-//	{
-//		notificationQ.add(() -> listenerManager.notifyChangeListeners(recorder));
-//	}
+	protected void notifyListeners(Delta delta)
+	{
+		notificationQ.add(() -> listenerManager.notifyChangeListeners(delta));
+	}
 
 	//	this needs to go -- use Deltas
 	protected void notifyListeners(Model model)
 	{
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(model));
-	}
-
-	//	this needs to go -- use Deltas
-	protected void notifyListeners(Model adds, Model deletes)
-	{
-		notificationQ.add(() -> listenerManager.notifyChangeListeners(adds, deletes));
 	}
 
 	//	this needs to go -- use Deltas everywhere
@@ -134,6 +112,7 @@ public abstract class BaseAdapter implements IAdapter
 		update(new Delta(adds, deletes));
 	}
 
+	//	update based on a delta
 	protected void update(Delta delta)
 	{
 		messageDatabase.begin(ReadWrite.WRITE);
@@ -141,39 +120,16 @@ public abstract class BaseAdapter implements IAdapter
 		messageDatabase.getDefaultModel().add(delta.getToAdd());
 		messageDatabase.commit();
 		messageDatabase.end();
-		notifyListeners(delta.getToAdd(), delta.getToDelete());
+		notifyListeners(delta);
 	}
 
+	//	update based on the delta produced by a supplier
 	public <E extends Exception> void update(ThrowingSupplier<Delta, E> query) throws E
 	{
 		update(runQuery(query));
 	}
 
-//	public enum DBWriteEvent{
-//		ADD, DELETE;
-//	}
-
-//	protected void update(Model model, DBWriteEvent type)
-//	{
-//		messageDatabase.begin(ReadWrite.WRITE);
-//		if (type == DBWriteEvent.ADD)
-//		{
-//			messageDatabase.getDefaultModel().add(model);
-//		}
-//
-//		if (type == DBWriteEvent.DELETE)
-//		{
-//			messageDatabase.getDefaultModel().remove(model);
-//		}
-//
-//		messageDatabase.commit();
-//		messageDatabase.end();
-//		notifyListeners(model);
-//
-//	}
-
-	//	run a query on the database in a read transaction and returns T
-
+	//	run a query returning T on the database inside a read transaction
 	public <T, E extends Exception> T runQuery(ThrowingSupplier<T, E> query) throws E
 	{
 		messageDatabase.begin(ReadWrite.READ);
@@ -182,7 +138,7 @@ public abstract class BaseAdapter implements IAdapter
 		return result;
 	}
 
-	//	run a query on the database in a read transaction
+	//	run a query on the database inside a read transaction
 	public <E extends Exception> void runQuery(IProcedure<E> query) throws E
 	{
 		messageDatabase.begin(ReadWrite.READ);

@@ -7,7 +7,6 @@ package org.knowtiphy.babbage.storage;
 
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
-import javax.mail.Folder;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import java.io.IOException;
@@ -23,10 +22,7 @@ import java.util.concurrent.FutureTask;
 // TODO: Will likely need to make this IAdapter and change around the methods, or just add more
 public interface IAdapter
 {
-
 	String getId();
-
-	String encode(Folder folder) throws MessagingException;
 
 	void close();
 
@@ -52,17 +48,4 @@ public interface IAdapter
 	FutureTask<?> getSynchTask();
 
 	Future<?> ensureMessageContentLoaded(String messageId, String folderId);
-
-	//	public default boolean equals(IAccount acc)
-//	{
-//		return this.getId().equals(acc.getId());
-//	}
-
-	/*String getServerName();
-
-	String getEmailAddress();
-
-	String getPassword();
-
-	String encode(Folder folder) throws MessagingException;*/
 }

@@ -21,15 +21,15 @@ public class ListenerManager
 		listeners.add(listener);
 	}
 
-	public void notifyChangeListeners(Model added, Model removed)
+	public void notifyChangeListeners(Delta delta)
 	{
-		if (!added.isEmpty() || !removed.isEmpty())
+		if (!delta.getToAdd().isEmpty() || !delta.getToDelete().isEmpty())
 		{
 			for (IStorageListener listener : listeners)
 			{
 				try
 				{
-					listener.delta(added, removed);
+					listener.delta(delta.getToAdd(), delta.getToDelete());
 				} catch (RuntimeException ex)
 				{
 					logger.warning("Notifying change listener failed :: " + ex.getLocalizedMessage());
@@ -38,6 +38,13 @@ public class ListenerManager
 		}
 	}
 
+	//	got to go
+	public void notifyChangeListeners(Model added, Model removed)
+	{
+		notifyChangeListeners(new Delta(added, removed));
+	}
+
+	//	got to go
 	public void notifyChangeListeners(Model model)
 	{
 		notifyChangeListeners(model, ModelFactory.createDefaultModel());
