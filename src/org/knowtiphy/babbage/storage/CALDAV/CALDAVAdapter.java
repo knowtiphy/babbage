@@ -387,17 +387,16 @@ public class CALDAVAdapter extends BaseAdapter
 
 									Model addVEvents = ModelFactory.createDefaultModel();
 
-									for (DavResource event : addEvent)
-									{
-										// Parse out event and pass it through
-										VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first()
-												.getEvents().get(0);
-										//System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
-										//System.err.println("FOR CALENDER URI :: " + serverCalURI);
-
-										storeEvent(addVEvents, serverCalURI, encodeEvent(serverCal, event), vEvent,
-												event);
-									}
+									addEvent.forEach(event -> {
+										try
+										{
+											storeEvent(addVEvents, serverCalURI, encodeEvent(serverCal, event), Biweekly.parse(sardine.get(serverHeader + event)).first()
+													.getEvents().get(0), event);
+										} catch (IOException e)
+										{
+											e.printStackTrace();
+										}
+									});
 
 									update(addVEvents, ModelFactory.createDefaultModel());
 
@@ -510,7 +509,7 @@ public class CALDAVAdapter extends BaseAdapter
 													storedCalURI, eventURI));
 									messageDatabase.end();
 
-									update(null, deleteEvent);
+									update(ModelFactory.createDefaultModel(), deleteEvent);
 
 									Model deleteCalendar = ModelFactory.createDefaultModel();
 									messageDatabase.begin(ReadWrite.READ);
@@ -528,7 +527,7 @@ public class CALDAVAdapter extends BaseAdapter
 										m_Calendar.remove(storedCalURI);
 									}
 
-									update(null, deleteCalendar);
+									update(ModelFactory.createDefaultModel(), deleteCalendar);
 								}
 							}
 
