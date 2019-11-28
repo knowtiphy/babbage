@@ -3,6 +3,7 @@ package org.knowtiphy.babbage.storage;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
+import org.knowtiphy.babbage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.IProcedure;
 
@@ -123,36 +124,41 @@ public abstract class BaseAdapter implements IAdapter
 	{
 		assert adds != null;
 		assert deletes != null;
-		messageDatabase.begin(ReadWrite.WRITE);
-		messageDatabase.getDefaultModel().remove(deletes);
-		messageDatabase.getDefaultModel().add(adds);
-		messageDatabase.commit();
-		messageDatabase.end();
-		notifyListeners(adds, deletes);
+		update(new Delta(adds, deletes));
 	}
 
-	public enum DBWriteEvent{
-		ADD, DELETE;
-	}
-
-	protected void update(Model model, DBWriteEvent type)
+	protected void update(Delta delta)
 	{
 		messageDatabase.begin(ReadWrite.WRITE);
-		if (type == DBWriteEvent.ADD)
-		{
-			messageDatabase.getDefaultModel().add(model);
-		}
-
-		if (type == DBWriteEvent.DELETE)
-		{
-			messageDatabase.getDefaultModel().remove(model);
-		}
-
+		messageDatabase.getDefaultModel().remove(delta.getToDelete());
+		messageDatabase.getDefaultModel().add(delta.getToAdd());
 		messageDatabase.commit();
 		messageDatabase.end();
-		notifyListeners(model);
-
+		notifyListeners(delta.getToAdd(), delta.getToDelete());
 	}
+
+//	public enum DBWriteEvent{
+//		ADD, DELETE;
+//	}
+
+//	protected void update(Model model, DBWriteEvent type)
+//	{
+//		messageDatabase.begin(ReadWrite.WRITE);
+//		if (type == DBWriteEvent.ADD)
+//		{
+//			messageDatabase.getDefaultModel().add(model);
+//		}
+//
+//		if (type == DBWriteEvent.DELETE)
+//		{
+//			messageDatabase.getDefaultModel().remove(model);
+//		}
+//
+//		messageDatabase.commit();
+//		messageDatabase.end();
+//		notifyListeners(model);
+//
+//	}
 
 	//	run a query on the database in a read transaction, where the query can't throw an exception, and returns
 	//	a T

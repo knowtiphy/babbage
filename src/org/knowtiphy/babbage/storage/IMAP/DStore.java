@@ -9,6 +9,7 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.knowtiphy.babbage.Delta;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
@@ -50,60 +51,59 @@ public interface DStore
 	//	ADD methods -- these methods MUST only add triples to a model
 
 	//	add an attribute (so subject predicate literal) triple as long as the attribute value is not null
-	static <S> void addAttribute(Model model, Resource subject, String predicate, S value, Function<S, ? extends Literal> fn)
+	static <S, T> void addAttribute(Delta delta, String subject, String predicate, S value, Function<S, T> fn)
 	{
 		if (value != null)
 		{
-			model.add(subject, P(model, predicate), fn.apply(value));
+			delta.addL(subject, predicate, L(delta.getToAdd(), fn.apply(value)));
 		}
 	}
 
-	static void addAddresses(Model model, Resource messageId, String predicate, Address[] addresses)
+	static void addAddresses(Delta delta, String messageId, String predicate, Address[] addresses)
 	{
 		if (addresses != null)
 		{
 			for (Address address : addresses)
 			{
-				addAttribute(model, messageId, predicate, address, x -> L(model, x.toString()));
+				addAttribute(delta, messageId, predicate, address, x -> L(delta.getToAdd(), x.toString()));
 			}
 		}
 	}
 
-	static void addFolder(Model model, IAdapter account, Folder folder) throws MessagingException
+	static void addFolder(Delta delta, IAdapter account, Folder folder) throws MessagingException
 	{
-		Resource fRes = R(model, account.encode(folder));
-		model.add(fRes, model.createProperty(Vocabulary.RDF_TYPE), model.createResource(Vocabulary.IMAP_FOLDER));
-		model.add(R(model, account.getId()), P(model, Vocabulary.CONTAINS), fRes);
-		model.add(fRes, P(model, Vocabulary.HAS_UID_VALIDITY), L(model, ((UIDFolder) folder).getUIDValidity()));
-		model.add(fRes, P(model, Vocabulary.HAS_NAME), L(model, folder.getName()));
+		String folderId = account.encode(folder);
+		delta.addR(folderId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER);
+		delta.addR(account.getId(), Vocabulary.CONTAINS, folderId);
+		delta.addL(folderId, Vocabulary.HAS_UID_VALIDITY, ((UIDFolder) folder).getUIDValidity());
+		delta.addL(folderId, Vocabulary.HAS_NAME, folder.getName());
 	}
 
-	static void addFolderCounts(Model model, IAdapter account, Folder folder) throws MessagingException
+	static void addFolderCounts(Delta delta, IAdapter account, Folder folder) throws MessagingException
 	{
-		Resource fRes = R(model, account.encode(folder));
-		model.add(fRes, P(model, Vocabulary.HAS_MESSAGE_COUNT), L(model, folder.getMessageCount()));
-		model.add(fRes, P(model, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), L(model, folder.getUnreadMessageCount()));
+		String folderId = account.encode(folder);
+		delta.addL(folderId, Vocabulary.HAS_MESSAGE_COUNT, folder.getMessageCount());
+		delta.addL(folderId, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, folder.getUnreadMessageCount());
 	}
 
-	static void addMessage(Model model, String folderId, String messageId)
+	static void addMessage(Delta delta, String folderId, String messageId)
 	{
-		Resource mRes = R(model, messageId);
-		model.add(mRes, P(model, Vocabulary.RDF_TYPE), R(model, Vocabulary.IMAP_MESSAGE));
-		model.add(R(model, folderId), P(model, Vocabulary.CONTAINS), mRes);
+		delta.addR(messageId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE);
+		delta.addR(folderId, Vocabulary.CONTAINS, messageId);
 	}
 
-	static void addMessageContent(Model model, IMAPAdapter IMAPAdapter, Message message, MessageContent messageContent) throws MessagingException, IOException
+	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent) throws MessagingException, IOException
 	{
-		Resource mRes = model.createResource(IMAPAdapter.encode(message));
-		model.add(mRes, P(model, Vocabulary.HAS_CONTENT), L(model, messageContent.getContent().getContent().toString()));
-		model.add(mRes, P(model, Vocabulary.HAS_MIME_TYPE), L(model, mimeType(messageContent.getContent())));
+		String messageId = adapter.encode(message);
+		delta.addL(messageId, Vocabulary.HAS_CONTENT, messageContent.getContent().getContent().toString());
+		delta.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(messageContent.getContent()));
 		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
 		{
-			Resource cidRes = R(model, IMAPAdapter.encode(message, entry.getKey()));
-			model.add(mRes, P(model, Vocabulary.HAS_CID_PART), cidRes);
-			model.add(cidRes, P(model, Vocabulary.HAS_CONTENT), L(model, IOUtils.toByteArray(entry.getValue().getInputStream())));
-			model.add(cidRes, P(model, Vocabulary.HAS_MIME_TYPE), L(model, mimeType(entry.getValue())));
-			model.add(cidRes, P(model, Vocabulary.HAS_LOCAL_CID), R(model, entry.getKey()));
+			String cidId = adapter.encode(message, entry.getKey());
+			delta.addR(messageId, Vocabulary.HAS_CID_PART, cidId);
+			delta.addL(cidId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(entry.getValue().getInputStream()));
+			delta.addL(cidId, Vocabulary.HAS_MIME_TYPE, mimeType(entry.getValue()));
+			delta.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
 		}
 
 		int i = 0;
@@ -113,21 +113,20 @@ public interface DStore
 			//  TODO -- what do we do if we have no filename?
 			if (fileName != null)
 			{
-				Resource aRes = R(model, IMAPAdapter.encode(message, String.valueOf(i)));
-				model.add(mRes, P(model, Vocabulary.HAS_ATTACHMENT), aRes);
-				model.add(aRes, P(model, Vocabulary.HAS_CONTENT), L(model, IOUtils.toByteArray(part.getInputStream())));
-				model.add(aRes, P(model, Vocabulary.HAS_MIME_TYPE), L(model, mimeType(part)));
-				model.add(aRes, P(model, Vocabulary.HAS_FILE_NAME), L(model, fileName));
+				String attachmentId = adapter.encode(message, String.valueOf(i));
+				delta.addR(messageId, Vocabulary.HAS_ATTACHMENT, attachmentId);
+				delta.addL(attachmentId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(part.getInputStream()));
+				delta.addL(attachmentId, Vocabulary.HAS_MIME_TYPE, mimeType(part));
+				delta.addL(attachmentId, Vocabulary.HAS_FILE_NAME, fileName);
 				i++;
 			}
 		}
 	}
 
-	static void addMessageFlags(Model model, String messageId, Message message) throws MessagingException
+	static void addMessageFlags(Delta delta, Message message, String messageId) throws MessagingException
 	{
-		Resource mRes = R(model, messageId);
-		model.add(mRes, P(model, Vocabulary.IS_READ), L(model, message.isSet(Flags.Flag.SEEN)));
-		model.add(mRes, P(model, Vocabulary.IS_ANSWERED), L(model, message.isSet(Flags.Flag.ANSWERED)));
+		delta.addL(messageId, Vocabulary.IS_READ, message.isSet(Flags.Flag.SEEN));
+		delta.addL(messageId, Vocabulary.IS_ANSWERED,  message.isSet(Flags.Flag.ANSWERED));
 		boolean junk = false;
 		for (String flag : message.getFlags().getUserFlags())
 		{
@@ -141,43 +140,42 @@ public interface DStore
 				junk = true;
 			}
 		}
-		model.add(mRes, P(model, Vocabulary.IS_JUNK), L(model, junk));
+		delta.addL(messageId, Vocabulary.IS_JUNK, junk);
 	}
 
-	static void addMessageHeaders(Model model, Message message, String messageId) throws MessagingException
+	static void addMessageHeaders(Delta delta, Message message, String messageId) throws MessagingException
 	{
-		Resource messageRes = R(model, messageId);
-		addAttribute(model, messageRes, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> L(model, x));
-		addAttribute(model, messageRes, Vocabulary.RECEIVED_ON, message.getReceivedDate(),
-				x -> L(model, new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())))));
-		addAttribute(model, messageRes, Vocabulary.SENT_ON, message.getSentDate(),
-				x -> L(model, new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())))));
-		addAddresses(model, messageRes, Vocabulary.FROM, message.getFrom());
-		addAddresses(model, messageRes, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));
-		addAddresses(model, messageRes, Vocabulary.HAS_CC, message.getRecipients(Message.RecipientType.CC));
-		addAddresses(model, messageRes, Vocabulary.HAS_BCC, message.getRecipients(Message.RecipientType.BCC));
-		addMessageFlags(model, messageId, message);
+		addAttribute(delta, messageId, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> x);
+		addAttribute(delta, messageId, Vocabulary.RECEIVED_ON, message.getReceivedDate(),
+				x -> new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault()))));
+		addAttribute(delta, messageId, Vocabulary.SENT_ON, message.getSentDate(),
+				x -> new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault()))));
+		addAddresses(delta, messageId, Vocabulary.FROM, message.getFrom());
+		addAddresses(delta, messageId, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));
+		addAddresses(delta, messageId, Vocabulary.HAS_CC, message.getRecipients(Message.RecipientType.CC));
+		addAddresses(delta, messageId, Vocabulary.HAS_BCC, message.getRecipients(Message.RecipientType.BCC));
+		addMessageFlags(delta, message, messageId);
 	}
 
 	//	DELETE methods -- these methods MUST only add triples to a model (of deletes)
 
-	static void deleteMessageFlags(Model dbase, Model deletes, String messageId)
+	static void deleteMessageFlags(Model dbase, Delta delta, String messageId)
 	{
-		Resource mRes = R(deletes, messageId);
-		deletes.add(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_READ), (RDFNode) null));
-		deletes.add(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_ANSWERED), (RDFNode) null));
-		deletes.add(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_JUNK), (RDFNode) null));
+		Resource mRes = R(dbase, messageId);
+		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_READ), (RDFNode) null));
+		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_ANSWERED), (RDFNode) null));
+		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_JUNK), (RDFNode) null));
 	}
 
-	static void deleteFolderCounts(Model dbase, Model deletes, String folderId)
+	static void deleteFolderCounts(Model dbase, Delta delta, String folderId)
 	{
 		Resource fRes = R(dbase, folderId);
-		deletes.add(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_MESSAGE_COUNT), (RDFNode) null));
-		deletes.add(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), (RDFNode) null));
+		delta.delete(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_MESSAGE_COUNT), (RDFNode) null));
+		delta.delete(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), (RDFNode) null));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
-	static void deleteMessage(Model dbase, Model deletes, String folderId, String messageId)
+	static void deleteMessage(Model dbase, Delta delta, String folderId, String messageId)
 	{
 		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
 		Resource mRes = R(dbase, messageId);
@@ -188,11 +186,11 @@ public interface DStore
 			Statement stmt = it.next();
 			if (stmt.getObject().isResource())
 			{
-				deletes.add(dbase.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+				delta.delete(dbase.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
 		}
-		deletes.add(dbase.listStatements(mRes, null, (RDFNode) null));
-		deletes.add(dbase.listStatements(R(dbase, folderId), P(dbase, Vocabulary.CONTAINS), mRes));
+		delta.delete(dbase.listStatements(mRes, null, (RDFNode) null));
+		delta.delete(dbase.listStatements(R(dbase, folderId), P(dbase, Vocabulary.CONTAINS), mRes));
 	}
 
 	//  methods to access message content

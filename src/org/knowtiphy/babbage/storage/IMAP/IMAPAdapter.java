@@ -8,6 +8,7 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.knowtiphy.babbage.Delta;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
@@ -73,7 +74,13 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-import static org.knowtiphy.babbage.storage.IMAP.DStore.*;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolder;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolderCounts;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageContent;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageHeaders;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.deleteMessageFlags;
 
 /**
  * @author graham
@@ -596,12 +603,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				//				folder.fetch(msgs, fp);
 
 				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-				Model adds = ModelFactory.createDefaultModel();
+				Delta delta = new Delta();
 				for (Message message : msgs)
 				{
-					addMessageContent(adds, this, message, new MessageContent(message, true).process());
+					addMessageContent(delta, this, message, new MessageContent(message, true).process());
 				}
-				update(adds, ModelFactory.createDefaultModel());
+				update(delta);
 				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
 				return folder;
 			}
@@ -811,8 +818,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//  store any folders we don't already have, and update folder counts for ones we do have
 		//  TODO -- need to handle deleted folders
 
-		Model adds = ModelFactory.createDefaultModel();
-		Model deletes = ModelFactory.createDefaultModel();
+		Delta delta = new Delta();
 
 		runQuery(() -> {
 			for (Folder folder : m_folder.values())
@@ -828,19 +834,19 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				if (isStored)
 				{
 					//  TODO -- should really check that the validity hasn't changed
-					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
+					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
 				}
 				//	add a new folder
 				else
 				{
-					addFolder(adds, this, folder);
+					addFolder(delta, this, folder);
 				}
 
-				addFolderCounts(adds, this, folder);
+				addFolderCounts(delta, this, folder);
 			}
 		});
 
-		update(adds, deletes);
+		update(delta);
 	}
 
 	private void synchMessageIds(Folder folder) throws MessagingException
@@ -896,11 +902,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		Model deletes = ModelFactory.createDefaultModel();
-		removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), deletes, folderId, message));
-		Model adds = ModelFactory.createDefaultModel();
-		addUID.forEach(message -> DStore.addMessage(adds, folderId, message));
-		update(adds, deletes);
+		Delta delta = new Delta();
+		removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, message));
+		addUID.forEach(message -> DStore.addMessage(delta, folderId, message));
+		update(delta);
 	}
 
 	private void synchMessageHeaders(Folder folder) throws MessagingException
@@ -925,19 +930,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.fetch(msgs, fp);
 
 			//  fetch headers we don't have
-			Model adds = ModelFactory.createDefaultModel();
-			Model deletes = ModelFactory.createDefaultModel();
 
+			Delta delta = new Delta();
 			runQuery(() -> {
 				for (Message msg : msgs)
 				{
 					String messageId = encode(msg);
-					addMessageHeaders(adds, msg, messageId);
-					deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
+					addMessageHeaders(delta, msg, messageId);
+					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
 				}
 			});
 
-			update(adds, deletes);
+			update(delta);
 		}
 	}
 
@@ -987,18 +991,17 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					//	deletes are handled elsewhere
 					if (!isDeleted(message))
 					{
-						Model adds = ModelFactory.createDefaultModel();
-						Model deletes = ModelFactory.createDefaultModel();
+						Delta delta = new Delta();
 
 						String folderId = encode(folder);
 
-						addFolderCounts(adds, account, folder);
-						DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
+						addFolderCounts(delta, account, folder);
+						DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
 						String messageId = encode(message);
 						if (m_PerFolderMessage.get(folder).containsKey(messageId))
 						{
-							deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
-							DStore.addMessageFlags(adds, messageId, message);
+							deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+							DStore.addMessageFlags(delta, message, messageId);
 						}
 						else
 						{
@@ -1006,7 +1009,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 							LOGGER.info("OUT OF ORDER CHANGE");
 						}
 
-						update(adds, deletes);
+						update(delta);
 					}
 				}
 				else
@@ -1038,8 +1041,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			addWork(new MessageWork(() -> {
 
-				Model deletes = ModelFactory.createDefaultModel();
 
+				Delta delta = new Delta();
 //					folderCounts(context.getModel(), account, folder);
 
 				String folderId = encode(folder);
@@ -1056,11 +1059,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						}
 						//						else
 						//						{
-						DStore.deleteMessage(messageDatabase.getDefaultModel(), deletes, folderId, encode(message));
+						DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, encode(message));
 					}
 				});
 
-				update(null, deletes);
+				update(delta);
 				return folder;
 
 			}));
@@ -1074,19 +1077,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			addWork(new MessageWork(() -> {
 
-				Model adds = ModelFactory.createDefaultModel();
-				Model deletes = ModelFactory.createDefaultModel();
+				Delta delta = new Delta();
 
 				String folderId = encode(folder);
-				DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
-				DStore.addFolderCounts(adds, account, folder);
+				DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
+				DStore.addFolderCounts(delta, account, folder);
 
 				for (Message message : e.getMessages())
 				{
 					String messageId = encode(message);
-					DStore.addMessage(adds, folderId, messageId);
-					deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
-					addMessageHeaders(adds, message, messageId);
+					DStore.addMessage(delta, folderId, messageId);
+					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+					addMessageHeaders(delta, message, messageId);
 					m_PerFolderMessage.get(folder).put(messageId, message);
 				}
 
