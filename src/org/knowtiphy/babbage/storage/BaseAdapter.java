@@ -118,6 +118,7 @@ public abstract class BaseAdapter implements IAdapter
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(adds, deletes));
 	}
 
+
 	protected void update(Model adds, Model deletes)
 	{
 		messageDatabase.begin(ReadWrite.WRITE);
@@ -132,6 +133,29 @@ public abstract class BaseAdapter implements IAdapter
 		messageDatabase.commit();
 		messageDatabase.end();
 		notifyListeners(adds, deletes);
+	}
+
+	public enum DBWriteEvent{
+		ADD, DELETE;
+	}
+
+	protected void update(Model model, DBWriteEvent type)
+	{
+		messageDatabase.begin(ReadWrite.WRITE);
+		if (type == DBWriteEvent.ADD)
+		{
+			messageDatabase.getDefaultModel().add(model);
+		}
+
+		if (type == DBWriteEvent.DELETE)
+		{
+			messageDatabase.getDefaultModel().remove(model);
+		}
+
+		messageDatabase.commit();
+		messageDatabase.end();
+		notifyListeners(model);
+
 	}
 
 	protected WriteContext getWriteContext()

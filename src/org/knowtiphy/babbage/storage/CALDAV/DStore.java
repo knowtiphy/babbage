@@ -75,50 +75,50 @@ public interface DStore
 				model.createTypedLiteral(calendar.getCustomProps().get("getctag")));
 	}
 
-	static void storeEvent(Model model, String calendarName, String eventName, VEvent vEvent, DavResource event)
+	static void storeEvent(Model addModel, String calendarName, String eventName, VEvent vEvent, DavResource event)
 	{
-		Resource eventRes = R(model, eventName);
-		model.add(eventRes, P(model, Vocabulary.RDF_TYPE), model.createResource(Vocabulary.CALDAV_EVENT));
-		model.add(R(model, calendarName), P(model, Vocabulary.CONTAINS), eventRes);
+		Resource eventRes = R(addModel, eventName);
+		addModel.add(eventRes, P(addModel, Vocabulary.RDF_TYPE), addModel.createResource(Vocabulary.CALDAV_EVENT));
+		addModel.add(R(addModel, calendarName), P(addModel, Vocabulary.CONTAINS), eventRes);
 
-		attr(model, eventRes, Vocabulary.HAS_ETAG, event.getEtag(), x -> L(model, x));
+		attr(addModel, eventRes, Vocabulary.HAS_ETAG, event.getEtag(), x -> L(addModel, x));
 
-		attr(model, eventRes, Vocabulary.HAS_SUMMARY, vEvent.getSummary().getValue(), x -> L(model, x));
+		attr(addModel, eventRes, Vocabulary.HAS_SUMMARY, vEvent.getSummary().getValue(), x -> L(addModel, x));
 
-		attr(model, eventRes, Vocabulary.HAS_DATE_START, CALDAVAdapter.fromDate(vEvent.getDateStart().getValue()),
-				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
+		attr(addModel, eventRes, Vocabulary.HAS_DATE_START, CALDAVAdapter.fromDate(vEvent.getDateStart().getValue()),
+				x -> L(addModel, new XSDDateTime(GregorianCalendar.from(x))));
 
-		attr(model, eventRes, Vocabulary.HAS_DATE_END, vEvent.getDateEnd() != null ?
+		attr(addModel, eventRes, Vocabulary.HAS_DATE_END, vEvent.getDateEnd() != null ?
 						CALDAVAdapter.fromDate(vEvent.getDateEnd().getValue()) :
 						CALDAVAdapter.fromDate(vEvent.getDateStart().getValue())
 								.plus(Duration.parse(vEvent.getDuration().getValue().toString())),
-				x -> L(model, new XSDDateTime(GregorianCalendar.from(x))));
+				x -> L(addModel, new XSDDateTime(GregorianCalendar.from(x))));
 
-		attr(model, eventRes, Vocabulary.HAS_DESCRIPTION,
+		attr(addModel, eventRes, Vocabulary.HAS_DESCRIPTION,
 				optionalAttr(vEvent, x -> x.getDescription() != null, y -> y.getDescription().getValue()),
-				x -> L(model, x));
+				x -> L(addModel, x));
 
-		attr(model, eventRes, Vocabulary.HAS_PRIORITY,
-				optionalAttr(vEvent, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(model, x));
+		attr(addModel, eventRes, Vocabulary.HAS_PRIORITY,
+				optionalAttr(vEvent, x -> x.getPriority() != null, y -> y.getPriority().getValue()), x -> L(addModel, x));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
-	static void unstoreRes(Model model, String containerName, String resName)
+	static void unstoreRes(Model messageDB, Model deletes, String containerName, String resName)
 	{
 		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
-		Resource res = R(model, resName);
+		Resource res = R(messageDB, resName);
 		//  TODO -- delete everything reachable from messageName
-		StmtIterator it = model.listStatements(res, null, (RDFNode) null);
+		StmtIterator it = messageDB.listStatements(res, null, (RDFNode) null);
 		while (it.hasNext())
 		{
 			Statement stmt = it.next();
 			if (stmt.getObject().isResource())
 			{
-				model.remove(model.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+				deletes.add(messageDB.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
 		}
-		model.remove(model.listStatements(res, null, (RDFNode) null));
-		model.remove(model.listStatements(R(model, containerName), P(model, Vocabulary.CONTAINS), res));
+		deletes.add(messageDB.listStatements(res, null, (RDFNode) null));
+		deletes.add(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res));
 	}
 
 }

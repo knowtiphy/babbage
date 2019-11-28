@@ -74,13 +74,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolder;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolderCounts;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageContent;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageHeaders;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.deleteMessageFlags;
+import static org.knowtiphy.babbage.storage.IMAP.DStore.*;
 
 /**
  * @author graham
@@ -616,7 +610,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				{
 					addMessageContent(adds, this, message, new MessageContent(message, true).process());
 				}
-				update(adds, null);
+				update(adds, DBWriteEvent.ADD);
 				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
 				return folder;
 			}

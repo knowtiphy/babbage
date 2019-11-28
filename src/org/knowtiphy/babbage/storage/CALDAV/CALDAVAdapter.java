@@ -17,14 +17,12 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.IMAP.DStore;
-import org.knowtiphy.babbage.storage.IReadContext;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
-import org.knowtiphy.babbage.storage.TransactionRecorder;
 import org.knowtiphy.babbage.storage.Vocabulary;
-import org.knowtiphy.babbage.storage.WriteContext;
 import org.knowtiphy.utils.JenaUtils;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -43,19 +41,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CTAG;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATEEND;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATESTART;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DESCRIPTION;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.ETAG;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.EVENTRES;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.NAME;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.PRIORITY;
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.SUMMARY;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.L;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.P;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
+import static org.knowtiphy.babbage.storage.CALDAV.Fetch.*;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -83,7 +70,7 @@ public class CALDAVAdapter extends BaseAdapter
 	private Thread synchThread;
 
 	public CALDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-						 BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
+			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
 	{
 		super(messageDatabase, listenerManager, notificationQ);
 		System.out.println("CALDAVAdapter INSTANTIATED");
@@ -125,14 +112,12 @@ public class CALDAVAdapter extends BaseAdapter
 		return ZonedDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
 	}
 
-	@Override
-	public String getId()
+	@Override public String getId()
 	{
 		return id;
 	}
 
-	@Override
-	public void close()
+	@Override public void close()
 	{
 		try
 		{
@@ -149,9 +134,7 @@ public class CALDAVAdapter extends BaseAdapter
 		}
 	}
 
-	// @formatter:off
-	@Override
-	public void addListener()
+	@Override public void addListener()
 	{
 		Model accountTriples = ModelFactory.createDefaultModel();
 
@@ -163,35 +146,25 @@ public class CALDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 		if (nickName != null)
 		{
-			accountTriples.add(DStore.R(accountTriples, id), DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+			accountTriples
+					.add(DStore.R(accountTriples, id), DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
 		// Notify the client of the account triples
-		TransactionRecorder accountRec = new TransactionRecorder();
-		accountRec.addedStatements(accountTriples);
-		notifyListeners(accountRec);
+		notifyListeners(accountTriples);
 
-		IReadContext context = getReadContext();
-		context.start();
+		messageDatabase.begin(ReadWrite.READ);
+		Model mCalendarDetails = QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel())
+				.execConstruct();
+		messageDatabase.end();
+		notifyListeners(mCalendarDetails);
 
-		String construtCalendarDetails = DFetch.skeleton();
+		messageDatabase.begin(ReadWrite.READ);
+		Model mEventDetails = QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel())
+				.execConstruct();
+		messageDatabase.end();
+		notifyListeners(mEventDetails);
 
-		Model mCalendarDetails = QueryExecutionFactory.create(construtCalendarDetails, context.getModel()).execConstruct();
-
-		TransactionRecorder rec1 = new TransactionRecorder();
-		rec1.addedStatements(mCalendarDetails);
-		notifyListeners(rec1);
-
-		String constructEventDetails = DFetch.initialState();
-
-		Model mEventDetails = QueryExecutionFactory.create(constructEventDetails, context.getModel()).execConstruct();
-
-		TransactionRecorder rec2 = new TransactionRecorder();
-		rec2.addedStatements(mEventDetails);
-		context.end();
-
-		notifyListeners(rec2);
 	}
-	// @formatter:on
 
 	protected String encodeCalendar(DavResource calendar)
 	{
@@ -208,133 +181,113 @@ public class CALDAVAdapter extends BaseAdapter
 		return emailAddress;
 	}
 
-	private <T> void updateTriple(Model model, String resURI, String hasProp, T updated)
+	private <T> void updateTriple(Model messageDB, Model adds, Model deletes, String resURI, String hasProp, T updated)
 	{
-		model.remove(model.listStatements(R(model, resURI), P(model, hasProp), (RDFNode) null));
-		model.add(R(model, resURI), P(model, hasProp), model.createTypedLiteral(updated));
+		deletes.add(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
+		adds.add(R(messageDB, resURI), P(messageDB, hasProp), messageDB.createTypedLiteral(updated));
 	}
 
 	private void storeCalendarDiffs(String calURI, DavResource cal) throws Exception
 	{
 		messageDatabase.begin(ReadWrite.READ);
-		Model model = messageDatabase.getDefaultModel();
-		ResultSet rs;
+		Model messageDB = messageDatabase.getDefaultModel();
+		Model adds = ModelFactory.createDefaultModel();
+		Model deletes = ModelFactory.createDefaultModel();
+
 		try
 		{
-			rs = QueryExecutionFactory.create(DFetch.calendarProperties(calURI), model).execSelect();
+			ResultSet rs = QueryExecutionFactory.create(calendarProperties(calURI), messageDB).execSelect();
+			updateTriple(messageDB, adds, deletes, calURI, Vocabulary.HAS_CTAG, cal.getCustomProps().get("getctag"));
+
+			while (rs.hasNext())
+			{
+				QuerySolution soln = rs.next();
+				if (!soln.getLiteral(NAME).equals(L(messageDB, cal.getDisplayName())))
+				{
+					updateTriple(messageDB, adds, deletes, calURI, Vocabulary.HAS_NAME, cal.getDisplayName());
+				}
+			}
 		} finally
 		{
 			messageDatabase.end();
 		}
 
-		TransactionRecorder recorder = new TransactionRecorder();
-		WriteContext context = getWriteContext();
-		context.startTransaction(recorder);
-
-		updateTriple(model, calURI, Vocabulary.HAS_CTAG, cal.getCustomProps().get("getctag"));
-
-		try
-		{
-			while (rs.hasNext())
-			{
-				QuerySolution soln = rs.next();
-				if (!soln.getLiteral(NAME).equals(L(model, cal.getDisplayName())))
-				{
-					updateTriple(model, calURI, Vocabulary.HAS_NAME, cal.getDisplayName());
-				}
-			}
-
-			context.succeed();
-			notifyListeners(recorder);
-		} catch (Exception ex)
-		{
-			context.fail(ex);
-		}
+		update(adds, deletes);
 	}
 
 	private void storeEventDiffs(String eventURI, DavResource serverEvent) throws Exception
 	{
-		messageDatabase.begin(ReadWrite.READ);
-		Model model = messageDatabase.getDefaultModel();
-		ResultSet rs;
-		try
-		{
-			rs = QueryExecutionFactory.create(DFetch.eventProperties(eventURI), model).execSelect();
-		} finally
-		{
-			messageDatabase.end();
-		}
-
 		VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + serverEvent)).first().getEvents().get(0);
 
-		TransactionRecorder recorder = new TransactionRecorder();
-		WriteContext context = getWriteContext();
-		context.startTransaction(recorder);
-
-		updateTriple(model, eventURI, Vocabulary.HAS_ETAG, serverEvent.getEtag());
+		messageDatabase.begin(ReadWrite.READ);
+		Model messageDB = messageDatabase.getDefaultModel();
+		Model adds = ModelFactory.createDefaultModel();
+		Model deletes = ModelFactory.createDefaultModel();
 
 		try
 		{
+			updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_ETAG, serverEvent.getEtag());
+			ResultSet rs = QueryExecutionFactory.create(eventProperties(eventURI), messageDB).execSelect();
 			while (rs.hasNext())
 			{
 				QuerySolution soln = rs.next();
 
 				if (vEvent.getDateEnd() != null)
 				{
-					if (!soln.getLiteral(DATEEND).equals(L(model,
+					if (!soln.getLiteral(DATEEND).equals(L(messageDB,
 							new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateEnd().getValue()))))))
 					{
-						updateTriple(model, eventURI, Vocabulary.HAS_DATE_END,
+						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DATE_END,
 								new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateEnd().getValue()))));
 					}
 				}
 				else
 				{
-					if (!soln.getLiteral(DATEEND).equals(L(model, new XSDDateTime(GregorianCalendar
+					if (!soln.getLiteral(DATEEND).equals(L(messageDB, new XSDDateTime(GregorianCalendar
 							.from(fromDate(vEvent.getDateStart().getValue())
 									.plus(Duration.parse(vEvent.getDuration().getValue().toString())))))))
 					{
-						updateTriple(model, eventURI, Vocabulary.HAS_DATE_END, new XSDDateTime(GregorianCalendar
-								.from(fromDate(vEvent.getDateStart().getValue())
+						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DATE_END, new XSDDateTime(
+								GregorianCalendar.from(fromDate(vEvent.getDateStart().getValue())
 										.plus(Duration.parse(vEvent.getDuration().getValue().toString())))));
 					}
 				}
 
-				if (!soln.getLiteral(SUMMARY).equals(L(model, vEvent.getSummary().getValue())))
+				if (!soln.getLiteral(SUMMARY).equals(L(messageDB, vEvent.getSummary().getValue())))
 				{
-					updateTriple(model, eventURI, Vocabulary.HAS_SUMMARY, vEvent.getSummary().getValue());
+					updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_SUMMARY,
+							vEvent.getSummary().getValue());
 				}
-				else if (!soln.getLiteral(DATESTART).equals(L(model,
+				else if (!soln.getLiteral(DATESTART).equals(L(messageDB,
 						new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateStart().getValue()))))))
 				{
-					updateTriple(model, eventURI, Vocabulary.HAS_DATE_START,
+					updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DATE_START,
 							new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateStart().getValue()))));
 				}
 				else if (vEvent.getDescription() != null && soln.getLiteral(DESCRIPTION) != null)
 				{
-					if (!soln.getLiteral(DESCRIPTION).equals(L(model, vEvent.getDescription().getValue())))
+					if (!soln.getLiteral(DESCRIPTION).equals(L(messageDB, vEvent.getDescription().getValue())))
 					{
-						updateTriple(model, eventURI, Vocabulary.HAS_DESCRIPTION, vEvent.getDescription().getValue());
+						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DESCRIPTION,
+								vEvent.getDescription().getValue());
 					}
 				}
 				else if (vEvent.getPriority() != null && soln.getLiteral(PRIORITY) != null)
 				{
-					if (!soln.getLiteral(PRIORITY).equals(L(model, vEvent.getPriority().getValue())))
+					if (!soln.getLiteral(PRIORITY).equals(L(messageDB, vEvent.getPriority().getValue())))
 					{
-						updateTriple(model, eventURI, Vocabulary.HAS_PRIORITY, vEvent.getPriority().getValue());
+						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_PRIORITY,
+								vEvent.getPriority().getValue());
 					}
 				}
 
 			}
-
-			context.succeed();
-			notifyListeners(recorder);
-		} catch (Exception ex)
+		} finally
 		{
-			ex.printStackTrace();
-			context.fail(ex);
+			messageDatabase.end();
 		}
-		// Calculate difference, unstore, restore, store new ETAG
+
+		update(adds, deletes);
 
 	}
 
@@ -384,9 +337,10 @@ public class CALDAVAdapter extends BaseAdapter
 
 							accountLock.lock();
 
-							System.out.println(":::::::::::::::::::::::::: IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+							System.out.println(
+									":::::::::::::::::::::::::: IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
 
-							Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
+							Set<String> storedCalendars = getStored(calendarURIs(getId()), CALRES);
 
 							Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
 							// 1st iteration is not a calendar, just the enclosing directory
@@ -412,8 +366,7 @@ public class CALDAVAdapter extends BaseAdapter
 									m_Calendar.put(serverCalURI, serverCal);
 
 									// Add Events
-									Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal)
-											.iterator();
+									Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
 									// 1st iteration is the calendar uri, so skip
 									davEvents.next();
 
@@ -428,57 +381,31 @@ public class CALDAVAdapter extends BaseAdapter
 
 									m_PerCalendarEvents.put(serverCalURI, eventURIToRes);
 
-									TransactionRecorder recorder = new TransactionRecorder();
-									WriteContext context = getWriteContext();
-									context.startTransaction(recorder);
+									Model addCalendar = ModelFactory.createDefaultModel();
+									storeCalendar(addCalendar, getId(), serverCalURI, serverCal);
+									update(addCalendar, DBWriteEvent.ADD);
 
-									try
-									{
-										org.knowtiphy.babbage.storage.CALDAV.DStore.storeCalendar(context.getModel(), getId(), serverCalURI, serverCal);
+									Model addVEvents = ModelFactory.createDefaultModel();
 
-										context.succeed();
-										notifyListeners(recorder);
-									} catch (Exception ex)
+									for (DavResource event : addEvent)
 									{
-										context.fail(ex);
+										// Parse out event and pass it through
+										VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event)).first()
+												.getEvents().get(0);
+										//System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
+										//System.err.println("FOR CALENDER URI :: " + serverCalURI);
+
+										storeEvent(addVEvents, serverCalURI, encodeEvent(serverCal, event), vEvent,
+												event);
 									}
 
-									TransactionRecorder recorder2 = new TransactionRecorder();
-									WriteContext context2 = getWriteContext();
-									context2.startTransaction(recorder2);
-
-									try
-									{
-
-										for (DavResource event : addEvent)
-										{
-											// Parse out event and pass it through
-											VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event))
-													.first().getEvents().get(0);
-											//System.err.println("ADDING EVENT :: " + vEvent.getSummary().getValue());
-											//System.err.println("FOR CALENDER URI :: " + serverCalURI);
-											try
-											{
-												org.knowtiphy.babbage.storage.CALDAV.DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
-														encodeEvent(serverCal, event), vEvent, event);
-											} catch (Throwable ex)
-											{
-												ex.printStackTrace();
-											}
-										}
-
-										context2.succeed();
-										notifyListeners(recorder2);
-									} catch (Exception ex)
-									{
-										context2.fail(ex);
-									}
+									update(addVEvents, DBWriteEvent.ADD);
 
 								}
 								// Calendar already exists, check if CTags differ, check if names differ
 								else
 								{
-									if (!getStoredTag(DFetch.calendarCTag(serverCalURI), CTAG)
+									if (!getStoredTag(calendarCTag(serverCalURI), CTAG)
 											.equals(serverCal.getCustomProps().get("getctag")))
 									{
 										System.out.println(
@@ -486,8 +413,7 @@ public class CALDAVAdapter extends BaseAdapter
 										m_Calendar.put(serverCalURI, serverCal);
 										storeCalendarDiffs(serverCalURI, serverCal);
 
-										Set<String> storedEvents = getStored(DFetch.eventURIs(serverCalURI),
-												EVENTRES);
+										Set<String> storedEvents = getStored(eventURIs(serverCalURI), EVENTRES);
 										Set<DavResource> addEvents = new HashSet<>();
 										Set<String> serverEventURIs = new HashSet<>();
 
@@ -510,18 +436,16 @@ public class CALDAVAdapter extends BaseAdapter
 											// New Event, store it
 											if (!storedEvents.contains(serverEventURI))
 											{
-												m_PerCalendarEvents.get(serverCalURI)
-														.put(serverEventURI, serverEvent);
+												m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
 												addEvents.add(serverEvent);
 											}
 											// Not new event, compare ETAGS
 											else
 											{
-												m_PerCalendarEvents.get(serverCalURI)
-														.put(serverEventURI, serverEvent);
+												m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
 
-												String storedTAG = getStoredTag(DFetch.eventETag(serverEventURI),
-														ETAG).replace("\\", "");
+												String storedTAG = getStoredTag(eventETag(serverEventURI), ETAG)
+														.replace("\\", "");
 
 												if (!storedTAG.equals(serverEvent.getEtag()))
 												{
@@ -542,37 +466,27 @@ public class CALDAVAdapter extends BaseAdapter
 											}
 										}
 
-										TransactionRecorder recorder = new TransactionRecorder();
-										WriteContext context = getWriteContext();
-										context.startTransaction(recorder);
-										try
-										{
-											for (String event : removeEvent)
-											{
-												org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes(messageDatabase.getDefaultModel(), serverCalURI,
-														event);
-											}
-											for (DavResource event : addEvents)
-											{
-												// Parse out event and pass it through
-												VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + event))
-														.first().getEvents().get(0);
-												try
-												{
-													org.knowtiphy.babbage.storage.CALDAV.DStore.storeEvent(messageDatabase.getDefaultModel(), serverCalURI,
-															encodeEvent(serverCal, event), vEvent, event);
-												} catch (Throwable ex)
-												{
-													ex.printStackTrace();
-												}
-											}
+										messageDatabase.begin(ReadWrite.READ);
+										Model deletes = ModelFactory.createDefaultModel();
+										removeEvent.forEach(
+												event -> unstoreRes(messageDatabase.getDefaultModel(), deletes,
+														serverCalURI, event));
+										messageDatabase.end();
 
-											context.succeed();
-											notifyListeners(recorder);
-										} catch (Exception ex)
-										{
-											context.fail(ex);
-										}
+										Model adds = ModelFactory.createDefaultModel();
+										addEvents.forEach(event -> {
+											try
+											{
+												storeEvent(adds, serverCalURI, encodeEvent(serverCal, event),
+														Biweekly.parse(sardine.get(serverHeader + event)).first()
+																.getEvents().get(0), event);
+											} catch (IOException e)
+											{
+												e.printStackTrace();
+											}
+										});
+
+										update(adds, deletes);
 
 									}
 								}
@@ -587,53 +501,34 @@ public class CALDAVAdapter extends BaseAdapter
 
 								if (!serverCalURIs.contains(storedCalURI))
 								{
-									Set<String> currStoredEvents = getStored(DFetch.eventURIs(storedCalURI), EVENTRES);
+									Set<String> currStoredEvents = getStored(eventURIs(storedCalURI), EVENTRES);
 
-									TransactionRecorder recorder = new TransactionRecorder();
-									WriteContext context = getWriteContext();
-									context.startTransaction(recorder);
+									Model deleteEvent = ModelFactory.createDefaultModel();
+									messageDatabase.begin(ReadWrite.READ);
+									currStoredEvents.forEach(
+											eventURI -> unstoreRes(messageDatabase.getDefaultModel(), deleteEvent,
+													storedCalURI, eventURI));
+									messageDatabase.end();
 
-									try
+									update(deleteEvent, DBWriteEvent.DELETE);
+
+									Model deleteCalendar = ModelFactory.createDefaultModel();
+									messageDatabase.begin(ReadWrite.READ);
+									unstoreRes(messageDatabase.getDefaultModel(), deleteCalendar, getId(),
+											storedCalURI);
+									messageDatabase.end();
+
+									if (m_PerCalendarEvents.get(storedCalURI) != null)
 									{
-
-										// Dftech of current events for that calender
-										for (String eventURI : currStoredEvents)
-										{
-											org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes(context.getModel(), storedCalURI, eventURI);
-										}
-
-										context.succeed();
-										notifyListeners(recorder);
-									} catch (Exception ex)
-									{
-										context.fail(ex);
+										m_PerCalendarEvents.remove(storedCalURI);
 									}
 
-
-									TransactionRecorder recorder1 = new TransactionRecorder();
-									WriteContext context1 = getWriteContext();
-									context1.startTransaction(recorder1);
-
-									try
+									if (m_Calendar.get(storedCalURI) != null)
 									{
-										org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes(context.getModel(), getId(), storedCalURI);
-
-										if (m_PerCalendarEvents.get(storedCalURI) != null)
-										{
-											m_PerCalendarEvents.remove(storedCalURI);
-										}
-
-										if (m_Calendar.get(storedCalURI) != null)
-										{
-											m_Calendar.remove(storedCalURI);
-										}
-
-										context1.succeed();
-										notifyListeners(recorder1);
-									} catch (Exception ex)
-									{
-										context1.fail(ex);
+										m_Calendar.remove(storedCalURI);
 									}
+
+									update(deleteCalendar, DBWriteEvent.DELETE);
 								}
 							}
 
@@ -656,8 +551,7 @@ public class CALDAVAdapter extends BaseAdapter
 		synchThread.start();
 	}
 
-	@Override
-	public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		return new FutureTask<Void>(() -> {
 			startSynchThread();
@@ -683,8 +577,7 @@ public class CALDAVAdapter extends BaseAdapter
 			this.queue = queue;
 		}
 
-		@Override
-		public void run()
+		@Override public void run()
 		{
 			while (true)
 			{
