@@ -5,7 +5,6 @@ import com.sun.mail.imap.IdleManager;
 import com.sun.mail.util.MailConnectException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
-import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
@@ -310,31 +309,25 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	@Override
 	public void addListener()
 	{
-		Model accountTriples = ModelFactory.createDefaultModel();
+		Model actTriple = ModelFactory.createDefaultModel();
 
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE), P(accountTriples, Vocabulary.IMAP_ACCOUNT));
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME), serverName);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
+		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.RDF_TYPE), P(actTriple, Vocabulary.IMAP_ACCOUNT));
+		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_SERVER_NAME), serverName);
+		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
+		actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_PASSWORD), password);
 		if (nickName != null)
 		{
-			accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+			actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_NICK_NAME), nickName);
 		}
-		trustedSenders.forEach(x -> accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_SENDER), x));
-		trustedContentProviders.forEach(x -> accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
+		trustedSenders.forEach(x -> actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_TRUSTED_SENDER), x));
+		trustedContentProviders.forEach(x -> actTriple.add(R(actTriple, id), P(actTriple, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER), x));
+		notifyListeners(actTriple);
 
-		// Notify the client of the account triples
-		notifyListeners(accountTriples);
+		Model skeleton = runQuery(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct());
+		notifyListeners(skeleton);
 
-		messageDatabase.begin(ReadWrite.READ);
-		Model mFD = QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct();
-		messageDatabase.end();
-		notifyListeners(mFD);
-
-		messageDatabase.begin(ReadWrite.READ);
-		Model mMH = QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct();
-		messageDatabase.end();
-		notifyListeners(mMH);
+		Model initialState = runQuery(() -> QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct());
+		notifyListeners(initialState);
 	}
 
 	public void close()
@@ -365,7 +358,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.info(emailAddress + " :: " + folder.getName() + " :: closing ");
 			try
 			{
-				LOGGER.log(Level.INFO, "{0}:{1} :: closing", new Object[]{emailAddress, folder.getName()});
 				folder.close();
 			} catch (Exception $)
 			{
@@ -587,10 +579,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			ensureMapsLoaded();
 
 			//	check if the content is not already in the database
-			messageDatabase.begin(ReadWrite.READ);
-			Model dbase = messageDatabase.getDefaultModel();
-			boolean stored = dbase.listObjectsOfProperty(R(dbase, messageId), P(dbase, Vocabulary.HAS_CONTENT)).hasNext();
-			messageDatabase.end();
+			boolean stored = runQuery(() -> messageDatabase.getDefaultModel().
+					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
+							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
 			System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
 
 			if (!stored)
@@ -786,7 +777,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return message;
 	}
 
-	private void startFolderWatchers() throws MessagingException
+	private void startFolderWatchers() throws MessagingException, StorageException
 	{
 		// Each account needs to have its folders now
 		// start a watcher for each one
@@ -794,18 +785,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		for (Folder folder : store.getDefaultFolder().list())//"*"))
 		{
-			try
+			openFolder(folder);
+			m_folder.put(encode(folder), folder);
+			if (INBOX.matcher(folder.getName()).matches())
 			{
-				openFolder(folder);
-				m_folder.put(encode(folder), folder);
-				if (INBOX.matcher(folder.getName()).matches())
-				{
-					inbox = folder;
-				}
-			} catch (MessagingException | StorageException ex)
-			{
-				//ex.printStackTrace();
-				LOGGER.info(folder.getName());
+				inbox = folder;
 			}
 		}
 
@@ -814,13 +798,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "Starting watcher for {0}", folder.getName());
 			folder.addMessageCountListener(new WatchCountChanges(this, folder));
 			folder.addMessageChangedListener(new WatchMessageChanges(this, folder));
-			try
-			{
-				idleManager.watch(folder);
-			} catch (MessagingException e)
-			{
-				LOGGER.warning(e.getLocalizedMessage());
-			}
+			idleManager.watch(folder);
 		}
 	}
 
@@ -836,12 +814,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		Model adds = ModelFactory.createDefaultModel();
 		Model deletes = ModelFactory.createDefaultModel();
 
-		messageDatabase.begin(ReadWrite.READ);
-		try
-		{
+		runQuery(() -> {
 			for (Folder folder : m_folder.values())
 			{
 				String folderId = encode(folder);
+				//System.err.println("SYNCH " + folder.getName());
 
 				StmtIterator storedFolder = DFetch.folder(messageDatabase.getDefaultModel(), folderId);
 				boolean isStored = storedFolder.hasNext();
@@ -861,12 +838,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				addFolderCounts(adds, this, folder);
 			}
-		} catch (MessagingException ex)
-		{
-			abort(ex);
-		}
+		});
 
-		messageDatabase.end();
 		update(adds, deletes);
 	}
 
@@ -878,9 +851,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		//  get the stored message IDs
 
-		messageDatabase.begin(ReadWrite.READ);
-		Set<String> stored = DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId));
-		messageDatabase.end();
+		Set<String> stored = runQuery(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
 
 		//  get the set of message IDst that IMAP reports
 		//  TODO -- this is dumb, sequence is bad
@@ -936,12 +907,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		String folderId = encode(folder);
 
-		messageDatabase.begin(ReadWrite.READ);
-		Set<String> stored = DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId));
-		//  get the stored message IDs for those org.knowtiphy.pinkpigmail.messages for which we have headers
-		Set<String> withHeaders = DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDsWithHeaders(id, folderId));
+		//  get the stored message IDs for those messages for which we have headers
+		Set<String> stored = runQuery(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
 		//  get message headers for message ids that we don't have headers for
-		messageDatabase.end();
+		Set<String> withHeaders = runQuery(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDsWithHeaders(id, folderId)));
 
 		stored.removeAll(withHeaders);
 
@@ -959,16 +928,15 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			Model adds = ModelFactory.createDefaultModel();
 			Model deletes = ModelFactory.createDefaultModel();
 
-			messageDatabase.begin(ReadWrite.READ);
+			runQuery(() -> {
+				for (Message msg : msgs)
+				{
+					String messageId = encode(msg);
+					addMessageHeaders(adds, msg, messageId);
+					deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
+				}
+			});
 
-			for (Message msg : msgs)
-			{
-				String messageId = encode(msg);
-				addMessageHeaders(adds, msg, messageId);
-				deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
-			}
-
-			messageDatabase.end();
 			update(adds, deletes);
 		}
 	}
@@ -1071,12 +1039,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			addWork(new MessageWork(() -> {
 
 				Model deletes = ModelFactory.createDefaultModel();
-				try
-				{
-//					folderCounts(context.getModel(), account, folder);
-					messageDatabase.begin(ReadWrite.READ);
 
-					String folderId = encode(folder);
+//					folderCounts(context.getModel(), account, folder);
+
+				String folderId = encode(folder);
+				runQuery(() -> {
 					for (Message message : e.getMessages())
 					{
 						//	delete event for a delete message that a client connected to this org.knowtiphy.pinkpigmail.server initiated
@@ -1091,15 +1058,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						{
 						DStore.deleteMessage(messageDatabase.getDefaultModel(), deletes, folderId, encode(message));
 					}
+				});
 
-					messageDatabase.end();
-					update(null, deletes);
-					return folder;
-				} catch (MessagingException ex)
-				{
-					abort(ex);
-					return null;
-				}
+				update(null, deletes);
+				return folder;
+
 			}));
 		}
 
