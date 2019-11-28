@@ -17,6 +17,7 @@ import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
+import org.knowtiphy.utils.LoggerUtils;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
@@ -71,7 +72,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 
 import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
@@ -94,7 +94,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private static final int NUM_ATTEMPTS = 5;
 	private static final Runnable POISON_PILL = () -> {
 	};
-	private static final Pattern INBOX = Pattern.compile("INBOX");
 
 	private final String serverName;
 	private final String emailAddress;
@@ -331,7 +330,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		Model skeleton = runQuery(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct());
 		notifyListeners(skeleton);
-
 		Model initialState = runQuery(() -> QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct());
 		notifyListeners(initialState);
 	}
@@ -648,10 +646,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		try
 		{
 			openFolder(folder);
-//			TransactionRecorder recorder = new TransactionRecorder();
 			m_PerFolderMessage.remove(folder);
 			synchMessageIdsAndHeaders(folder);
-//			notifyListeners(recorder);
 		} finally
 		{
 			accountLock.unlock();
@@ -793,7 +789,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			openFolder(folder);
 			m_folder.put(encode(folder), folder);
-			if (INBOX.matcher(folder.getName()).matches())
+			if (Pattern.INBOX.matcher(folder.getName()).matches())
 			{
 				inbox = folder;
 			}
@@ -817,9 +813,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//  store any folders we don't already have, and update folder counts for ones we do have
 		//  TODO -- need to handle deleted folders
 
-		Delta delta = new Delta();
-
-		runQuery(() -> {
+		update(() -> {
+			Delta delta = new Delta();
 			for (Folder folder : m_folder.values())
 			{
 				String folderId = encode(folder);
@@ -843,9 +838,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				addFolderCounts(delta, this, folder);
 			}
-		});
 
-		update(delta);
+			return delta;
+		});
 	}
 
 	private void synchMessageIds(Folder folder) throws MessagingException
@@ -930,17 +925,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			//  fetch headers we don't have
 
-			Delta delta = new Delta();
-			runQuery(() -> {
+			update(() -> {
+				Delta delta = new Delta();
 				for (Message msg : msgs)
 				{
 					String messageId = encode(msg);
 					addMessageHeaders(delta, msg, messageId);
 					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
 				}
+				return delta;
 			});
-
-			update(delta);
 		}
 	}
 
@@ -951,7 +945,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		synchMessageHeaders(folder);
 	}
 
-	// Handles incoming org.knowtiphy.pinkpigmail.messages from the IMAP org.knowtiphy.pinkpigmail.server, new ones not caught in the synch of initial start up state
+	// handle incoming messages from the IMAP server, new ones not caught in the synch of initial start up state
 	private class WatchMessageChanges implements MessageChangedListener
 	{
 		private final IAdapter account;
@@ -980,36 +974,45 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		public void messageChanged(MessageChangedEvent messageChangedEvent)
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE CHANGED {0}", messageChangedEvent);
-			LOGGER.log(Level.INFO, "{0}THREAD IS = ", Thread.currentThread().getId());
 
 			Message message = messageChangedEvent.getMessage();
+
+			System.out.println("CHANGED MESSAGE");
 
 			addWork(new MessageWork(() -> {
 				if (messageChangedEvent.getMessageChangeType() == MessageChangedEvent.FLAGS_CHANGED)
 				{
+					System.out.println("CHANGE");
 					//	deletes are handled elsewhere
 					if (!isDeleted(message))
 					{
-						Delta delta = new Delta();
-
-						String folderId = encode(folder);
-
-						addFolderCounts(delta, account, folder);
-						DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
-						String messageId = encode(message);
-						if (m_PerFolderMessage.get(folder).containsKey(messageId))
+						update(() ->
 						{
-							deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
-							DStore.addMessageFlags(delta, message, messageId);
-						}
-						else
-						{
-							//  not sure if this is possible -- probably not
-							LOGGER.info("OUT OF ORDER CHANGE");
-						}
+							Delta delta = new Delta();
+							System.out.println("NOT A DELETE");
+							String folderId = encode(folder);
+							String messageId = encode(message);
 
-						update(delta);
+							addFolderCounts(delta, account, folder);
+							DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
+							if (m_PerFolderMessage.get(folder).containsKey(messageId))
+							{
+								deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+								DStore.addMessageFlags(delta, message, messageId);
+							}
+							else
+							{
+								//  not sure if this is possible -- probably not
+								LOGGER.info("OUT OF ORDER CHANGE");
+							}
+							return delta;
+						});
 					}
+					else
+					{
+						System.out.println("IS A DELETE");
+					}
+
 				}
 				else
 				{
@@ -1039,15 +1042,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "{0}THREAD  = ", Thread.currentThread().getId());
 
 			addWork(new MessageWork(() -> {
-
-
-				Delta delta = new Delta();
-//					folderCounts(context.getModel(), account, folder);
-
-				String folderId = encode(folder);
-				runQuery(() -> {
+				update(() -> {
+					Delta delta = new Delta();
 					for (Message message : e.getMessages())
 					{
+						String folderId = encode(folder);
 						//	delete event for a delete message that a client connected to this org.knowtiphy.pinkpigmail.server initiated
 						//						if (m_toDelete.containsKey(message))
 						//						{
@@ -1060,9 +1059,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						{
 						DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, encode(message));
 					}
+					return delta;
 				});
 
-				update(delta);
 				return folder;
 
 			}));
@@ -1072,24 +1071,26 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		public void messagesAdded(MessageCountEvent e)
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
-			LOGGER.log(Level.INFO, "THREAD IS = {0}", Thread.currentThread().getId());
 
 			addWork(new MessageWork(() -> {
-
-				Delta delta = new Delta();
-
-				String folderId = encode(folder);
-				DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
-				DStore.addFolderCounts(delta, account, folder);
-
-				for (Message message : e.getMessages())
+				update(() ->
 				{
-					String messageId = encode(message);
-					DStore.addMessage(delta, folderId, messageId);
-					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
-					addMessageHeaders(delta, message, messageId);
-					m_PerFolderMessage.get(folder).put(messageId, message);
-				}
+					Delta delta = new Delta();
+					String folderId = encode(folder);
+					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
+					DStore.addFolderCounts(delta, account, folder);
+
+					for (Message message : e.getMessages())
+					{
+						String messageId = encode(message);
+						DStore.addMessage(delta, folderId, messageId);
+						deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+						addMessageHeaders(delta, message, messageId);
+						m_PerFolderMessage.get(folder).put(messageId, message);
+					}
+
+					return delta;
+				});
 
 				return folder;
 			}));
@@ -1130,6 +1131,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					//  TODO -- timeout -- not really sure what this does
 					LOGGER.info("TIMEOUT -- adapting timeout");
 					//timeout = timeout * 2;
+				} catch (Exception ex)
+				{
+					//	usually a silly error where we did a dbase operation outside a transaction
+					LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
+					throw ex;
 				}
 
 				LOGGER.log(Level.INFO, "MessageWork::call RE-ATTEMPT {0}", attempts);

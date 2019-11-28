@@ -6,6 +6,10 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.knowtiphy.utils.JenaUtils;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
 
 /**
  * @author graham
@@ -83,5 +87,15 @@ public class Delta
 	public void delete(StmtIterator stmts)
 	{
 		stmts.forEachRemaining(toDelete::add);
+	}
+
+	public String toString()
+	{
+		StringWriter sw = new StringWriter();
+		PrintWriter pw = new PrintWriter(sw);
+		StringBuilder builder = new StringBuilder();
+		JenaUtils.printModel(toAdd.listStatements(), "+", pw);
+		JenaUtils.printModel(toDelete.listStatements(), "-", pw);
+		return builder.toString();
 	}
 }

@@ -7,6 +7,7 @@ import org.knowtiphy.babbage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.LoggerUtils;
+import org.knowtiphy.utils.ThrowingSupplier;
 
 import javax.mail.Folder;
 import javax.mail.Message;
@@ -16,7 +17,6 @@ import java.util.Collection;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
-import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 // Actual adapters will override the methods that they actually use
@@ -144,6 +144,11 @@ public abstract class BaseAdapter implements IAdapter
 		notifyListeners(delta.getToAdd(), delta.getToDelete());
 	}
 
+	public <E extends Exception> void update(ThrowingSupplier<Delta, E> query) throws E
+	{
+		update(runQuery(query));
+	}
+
 //	public enum DBWriteEvent{
 //		ADD, DELETE;
 //	}
@@ -167,9 +172,9 @@ public abstract class BaseAdapter implements IAdapter
 //
 //	}
 
-	//	run a query on the database in a read transaction, where the query can't throw an exception, and returns
-	//	a T
-	public <T> T runQuery(Supplier<T> query)
+	//	run a query on the database in a read transaction and returns T
+
+	public <T, E extends Exception> T runQuery(ThrowingSupplier<T, E> query) throws E
 	{
 		messageDatabase.begin(ReadWrite.READ);
 		T result = query.get();

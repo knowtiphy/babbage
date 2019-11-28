@@ -55,7 +55,7 @@ public interface DStore
 	{
 		if (value != null)
 		{
-			delta.addL(subject, predicate, L(delta.getToAdd(), fn.apply(value)));
+			delta.addL(subject, predicate, fn.apply(value));
 		}
 	}
 
@@ -65,7 +65,7 @@ public interface DStore
 		{
 			for (Address address : addresses)
 			{
-				addAttribute(delta, messageId, predicate, address, x -> L(delta.getToAdd(), x.toString()));
+				addAttribute(delta, messageId, predicate, address, x -> x.toString());
 			}
 		}
 	}
