@@ -3,6 +3,7 @@ package org.knowtiphy.babbage.storage;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.IProcedure;
 
@@ -134,10 +135,12 @@ public abstract class BaseAdapter implements IAdapter
 		}
 		messageDatabase.commit();
 		messageDatabase.end();
-		notifyListeners(adds, deletes);
+		notifyListeners(adds == null ? ModelFactory.createDefaultModel() : adds,
+				deletes == null ? ModelFactory.createDefaultModel() : deletes);
 	}
 
-	public enum DBWriteEvent{
+	public enum DBWriteEvent
+	{
 		ADD, DELETE;
 	}
 
@@ -157,17 +160,6 @@ public abstract class BaseAdapter implements IAdapter
 		messageDatabase.commit();
 		messageDatabase.end();
 		notifyListeners(model);
-
-	}
-
-	protected WriteContext getWriteContext()
-	{
-		return new WriteContext(messageDatabase);
-	}
-
-	protected ReadContext getReadContext()
-	{
-		return new ReadContext(messageDatabase);
 	}
 
 	//	run a query on the database in a read transaction, where the query can't throw an exception, and returns
@@ -187,8 +179,7 @@ public abstract class BaseAdapter implements IAdapter
 		try
 		{
 			query.call();
-		}
-		catch (Exception ex)
+		} catch (Exception ex)
 		{
 			messageDatabase.abort();
 			//	TODO -- log it
@@ -197,7 +188,6 @@ public abstract class BaseAdapter implements IAdapter
 		}
 		messageDatabase.end();
 	}
-
 
 
 }

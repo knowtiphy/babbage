@@ -997,8 +997,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						String messageId = encode(message);
 						if (m_PerFolderMessage.get(folder).containsKey(messageId))
 						{
-							DStore.addMessageFlags(adds, messageId, message);
 							deleteMessageFlags(messageDatabase.getDefaultModel(), deletes, messageId);
+							DStore.addMessageFlags(adds, messageId, message);
 						}
 						else
 						{
@@ -1080,6 +1080,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				String folderId = encode(folder);
 				DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), deletes, folderId);
 				DStore.addFolderCounts(adds, account, folder);
+
 				for (Message message : e.getMessages())
 				{
 					String messageId = encode(message);
@@ -1090,7 +1091,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				}
 
 				return folder;
-
 			}));
 		}
 	}
