@@ -601,7 +601,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				{
 					addMessageContent(adds, this, message, new MessageContent(message, true).process());
 				}
-				update(adds, null);
+				update(adds, ModelFactory.createDefaultModel());
 				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
 				return folder;
 			}

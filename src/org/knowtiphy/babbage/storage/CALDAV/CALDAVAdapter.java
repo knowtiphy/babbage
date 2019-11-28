@@ -383,7 +383,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 									Model addCalendar = ModelFactory.createDefaultModel();
 									storeCalendar(addCalendar, getId(), serverCalURI, serverCal);
-									update(addCalendar, null);
+									update(addCalendar, ModelFactory.createDefaultModel());
 
 									Model addVEvents = ModelFactory.createDefaultModel();
 
@@ -399,7 +399,7 @@ public class CALDAVAdapter extends BaseAdapter
 												event);
 									}
 
-									update(addVEvents, null);
+									update(addVEvents, ModelFactory.createDefaultModel());
 
 								}
 								// Calendar already exists, check if CTags differ, check if names differ

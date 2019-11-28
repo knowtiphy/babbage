@@ -114,24 +114,18 @@ public abstract class BaseAdapter implements IAdapter
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(model));
 	}
 
-
 	protected void notifyListeners(Model adds, Model deletes)
 	{
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(adds, deletes));
 	}
 
-
 	protected void update(Model adds, Model deletes)
 	{
+		assert adds != null;
+		assert deletes != null;
 		messageDatabase.begin(ReadWrite.WRITE);
-		if (deletes != null)
-		{
-			messageDatabase.getDefaultModel().remove(deletes);
-		}
-		if (adds != null)
-		{
-			messageDatabase.getDefaultModel().add(adds);
-		}
+		messageDatabase.getDefaultModel().remove(deletes);
+		messageDatabase.getDefaultModel().add(adds);
 		messageDatabase.commit();
 		messageDatabase.end();
 		notifyListeners(adds, deletes);
@@ -158,16 +152,6 @@ public abstract class BaseAdapter implements IAdapter
 		messageDatabase.end();
 		notifyListeners(model);
 
-	}
-
-	protected WriteContext getWriteContext()
-	{
-		return new WriteContext(messageDatabase);
-	}
-
-	protected ReadContext getReadContext()
-	{
-		return new ReadContext(messageDatabase);
 	}
 
 	//	run a query on the database in a read transaction, where the query can't throw an exception, and returns
