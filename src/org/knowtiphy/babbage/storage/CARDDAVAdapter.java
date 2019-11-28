@@ -17,7 +17,7 @@ public class CARDDAVAdapter extends BaseAdapter
 	{
 
 	}
-	
+
 	@Override
 	public String getId()
 	{
