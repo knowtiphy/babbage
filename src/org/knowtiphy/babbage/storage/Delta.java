@@ -18,20 +18,21 @@ public class Delta
 {
 	//	the added and deleted triples for the delta
 
-	private Model toAdd = ModelFactory.createDefaultModel();
-	private Model toDelete = ModelFactory.createDefaultModel();
+	private Model adds = ModelFactory.createDefaultModel();
+	private Model deletes = ModelFactory.createDefaultModel();
 
 	public Delta()
 	{
 	}
 
 	//	needs to go
-	public Delta(Model toAdd, Model toDelete)
+	public Delta(Model adds, Model deletes)
 	{
-		this.toAdd = toAdd;
-		this.toDelete = toDelete;
+		this.adds = adds;
+		this.deletes = deletes;
 	}
-//	helper methods
+
+	//	helper methods
 
 	private static Resource R(Model model, String uri)
 	{
@@ -49,29 +50,33 @@ public class Delta
 		return model.createTypedLiteral(value);
 	}
 
-	public Model getToAdd()
+	public Model getAdds()
 	{
-		return toAdd;
+		return adds;
 	}
 
-	public Model getToDelete()
+	public Model getDeletes()
 	{
-		return toDelete;
+		return deletes;
 	}
 
-	public void addR(String subject, String predicate, String object)
+	public Delta addR(String subject, String predicate, String object)
 	{
-		toAdd.add(toAdd.createStatement(R(toAdd, subject), P(toAdd, predicate), R(toAdd, object)));
+		adds.add(adds.createStatement(R(adds, subject), P(adds, predicate), R(adds, object)));
+		return this;
 	}
 
-	public <T> void addL(String subject, String predicate, T object)
+	public <T> Delta addL(String subject, String predicate, T object)
 	{
-		toAdd.add(toAdd.createStatement(R(toAdd, subject), P(toAdd, predicate), L(toAdd, object)));
+		adds.add(adds.createStatement(R(adds, subject), P(adds, predicate), L(adds, object)));
+		return this;
 	}
 
-	public void add(StmtIterator stmts)
+	public Delta add(StmtIterator stmts)
 	{
-		stmts.forEachRemaining(toAdd::add);
+		stmts.forEachRemaining(adds::add);
+		return this;
+
 	}
 
 //	public <T> void deleteR(String subject, String predicate, String object)
@@ -84,9 +89,10 @@ public class Delta
 //		toDelete.add(toDelete.createStatement(R(toDelete, subject), P(toDelete, predicate), L(toDelete, object)));
 //	}
 
-	public void delete(StmtIterator stmts)
+	public Delta delete(StmtIterator stmts)
 	{
-		stmts.forEachRemaining(toDelete::add);
+		stmts.forEachRemaining(deletes::add);
+		return this;
 	}
 
 	public String toString()
@@ -94,8 +100,8 @@ public class Delta
 		StringWriter sw = new StringWriter();
 		PrintWriter pw = new PrintWriter(sw);
 		StringBuilder builder = new StringBuilder();
-		JenaUtils.printModel(toAdd.listStatements(), "+", pw);
-		JenaUtils.printModel(toDelete.listStatements(), "-", pw);
+		JenaUtils.printModel(adds.listStatements(), "+", pw);
+		JenaUtils.printModel(deletes.listStatements(), "-", pw);
 		return builder.toString();
 	}
 }

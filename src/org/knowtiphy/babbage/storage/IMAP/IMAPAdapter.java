@@ -7,8 +7,8 @@ import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.StmtIterator;
-import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
@@ -217,10 +217,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	public void addListener()
 	{
 		Delta delta = new Delta();
-		delta.addR(id, Vocabulary.RDF_TYPE, Vocabulary.IMAP_ACCOUNT);
-		delta.addL(id, Vocabulary.HAS_SERVER_NAME, serverName);
-		delta.addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
-		delta.addL(id, Vocabulary.HAS_PASSWORD, password);
+		delta.addR(id, Vocabulary.RDF_TYPE, Vocabulary.IMAP_ACCOUNT)
+				.addL(id, Vocabulary.HAS_SERVER_NAME, serverName)
+				.addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
+				.addL(id, Vocabulary.HAS_PASSWORD, password);
 		if (nickName != null)
 		{
 			delta.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
@@ -230,12 +230,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		notifyListeners(delta);
 
 		Delta delta1 = new Delta();
-		delta1.getToAdd().add(
-				runQuery(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct()));
+		delta1.getAdds().add(
+				query(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct()));
 		notifyListeners(delta1);
 
 		Delta delta2 = new Delta();
-		delta2.getToAdd().add(runQuery(() ->
+		delta2.getAdds().add(query(() ->
 				QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct()));
 		notifyListeners(delta2);
 	}
@@ -489,7 +489,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			ensureMapsLoaded();
 
 			//	check if the content is not already in the database
-			boolean stored = runQuery(() -> messageDatabase.getDefaultModel().
+			boolean stored = query(() -> messageDatabase.getDefaultModel().
 					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
 							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
 			System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
@@ -506,12 +506,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				//				folder.fetch(msgs, fp);
 
 				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-				Delta delta = new Delta();
-				for (Message message : msgs)
-				{
-					addMessageContent(delta, this, message, new MessageContent(message, true).process());
-				}
-				update(delta);
+				update(() -> {
+					Delta delta = new Delta();
+					for (Message message : msgs)
+					{
+						addMessageContent(delta, this, message, new MessageContent(message, true).process());
+					}
+					return delta;
+				});
 				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
 				return folder;
 			}
@@ -797,8 +799,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			for (Folder folder : m_folder.values())
 			{
 				String folderId = encode(folder);
-				//System.err.println("SYNCH " + folder.getName());
-
 				StmtIterator storedFolder = DFetch.folder(messageDatabase.getDefaultModel(), folderId);
 				boolean isStored = storedFolder.hasNext();
 				assert !isStored || JenaUtils.checkUnique(storedFolder);
@@ -830,7 +830,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		//  get the stored message IDs
 
-		Set<String> stored = runQuery(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
+		Set<String> stored = query(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
 
 		//  get the set of message IDst that IMAP reports
 		//  TODO -- this is dumb, sequence is bad
@@ -889,9 +889,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		String folderId = encode(folder);
 
 		//  get the stored message IDs for those messages for which we have headers
-		Set<String> stored = runQuery(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
+		Set<String> stored = query(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
 		//  get message headers for message ids that we don't have headers for
-		Set<String> withHeaders = runQuery(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDsWithHeaders(id, folderId)));
+		Set<String> withHeaders = query(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDsWithHeaders(id, folderId)));
 
 		stored.removeAll(withHeaders);
 

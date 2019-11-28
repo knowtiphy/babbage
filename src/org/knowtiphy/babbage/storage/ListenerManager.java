@@ -23,14 +23,14 @@ public class ListenerManager
 
 	public void notifyChangeListeners(Delta delta)
 	{
-		if (!delta.getToAdd().isEmpty() || !delta.getToDelete().isEmpty())
+		if (!delta.getAdds().isEmpty() || !delta.getDeletes().isEmpty())
 		{
 			for (IStorageListener listener : listeners)
 			{
 				try
 				{
-					listener.delta(delta.getToAdd(), delta.getToDelete());
-				} catch (RuntimeException ex)
+					listener.delta(delta.getAdds(), delta.getDeletes());
+				} catch (Exception ex)
 				{
 					logger.warning("Notifying change listener failed :: " + ex.getLocalizedMessage());
 				}

@@ -116,8 +116,8 @@ public abstract class BaseAdapter implements IAdapter
 	protected void update(Delta delta)
 	{
 		messageDatabase.begin(ReadWrite.WRITE);
-		messageDatabase.getDefaultModel().remove(delta.getToDelete());
-		messageDatabase.getDefaultModel().add(delta.getToAdd());
+		messageDatabase.getDefaultModel().remove(delta.getDeletes());
+		messageDatabase.getDefaultModel().add(delta.getAdds());
 		messageDatabase.commit();
 		messageDatabase.end();
 		notifyListeners(delta);
@@ -126,20 +126,29 @@ public abstract class BaseAdapter implements IAdapter
 	//	update based on the delta produced by a supplier
 	public <E extends Exception> void update(ThrowingSupplier<Delta, E> query) throws E
 	{
-		update(runQuery(query));
+		update(query(query));
 	}
 
-	//	run a query returning T on the database inside a read transaction
-	public <T, E extends Exception> T runQuery(ThrowingSupplier<T, E> query) throws E
+	//	run a query returning T inside a read transaction on the database
+	public <T, E extends Exception> T query(ThrowingSupplier<T, E> query) throws E
 	{
 		messageDatabase.begin(ReadWrite.READ);
-		T result = query.get();
-		messageDatabase.end();
-		return result;
+		try
+		{
+			return query.get();
+		} catch (Exception ex)
+		{
+			messageDatabase.abort();
+			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
+			throw ex;
+		} finally
+		{
+			messageDatabase.end();
+		}
 	}
 
-	//	run a query on the database inside a read transaction
-	public <E extends Exception> void runQuery(IProcedure<E> query) throws E
+	//	run a query inside a read transaction on the database
+	public <E extends Exception> void query(IProcedure<E> query) throws E
 	{
 		messageDatabase.begin(ReadWrite.READ);
 		try
@@ -150,7 +159,9 @@ public abstract class BaseAdapter implements IAdapter
 			messageDatabase.abort();
 			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
 			throw ex;
+		} finally
+		{
+			messageDatabase.end();
 		}
-		messageDatabase.end();
 	}
 }

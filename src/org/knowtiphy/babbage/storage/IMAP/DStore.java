@@ -66,37 +66,38 @@ public interface DStore
 	static void addFolder(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
 	{
 		String folderId = account.encode(folder);
-		delta.addR(folderId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER);
-		delta.addR(account.getId(), Vocabulary.CONTAINS, folderId);
-		delta.addL(folderId, Vocabulary.HAS_UID_VALIDITY, ((UIDFolder) folder).getUIDValidity());
-		delta.addL(folderId, Vocabulary.HAS_NAME, folder.getName());
+		delta.addR(folderId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER)
+				.addR(account.getId(), Vocabulary.CONTAINS, folderId)
+				.addL(folderId, Vocabulary.HAS_UID_VALIDITY, ((UIDFolder) folder).getUIDValidity())
+				.addL(folderId, Vocabulary.HAS_NAME, folder.getName());
 	}
 
 	static void addFolderCounts(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
 	{
 		String folderId = account.encode(folder);
-		delta.addL(folderId, Vocabulary.HAS_MESSAGE_COUNT, folder.getMessageCount());
-		delta.addL(folderId, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, folder.getUnreadMessageCount());
+		delta.addL(folderId, Vocabulary.HAS_MESSAGE_COUNT, folder.getMessageCount())
+				.addL(folderId, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, folder.getUnreadMessageCount());
 	}
 
 	static void addMessage(Delta delta, String folderId, String messageId)
 	{
-		delta.addR(messageId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE);
-		delta.addR(folderId, Vocabulary.CONTAINS, messageId);
+		delta.addR(messageId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE)
+				.addR(folderId, Vocabulary.CONTAINS, messageId);
 	}
 
-	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent) throws MessagingException, IOException
+	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent)
+			throws MessagingException, IOException
 	{
 		String messageId = adapter.encode(message);
-		delta.addL(messageId, Vocabulary.HAS_CONTENT, messageContent.getContent().getContent().toString());
-		delta.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(messageContent.getContent()));
+		delta.addL(messageId, Vocabulary.HAS_CONTENT, messageContent.getContent().getContent().toString())
+				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(messageContent.getContent()));
 		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
 		{
 			String cidId = adapter.encode(message, entry.getKey());
-			delta.addR(messageId, Vocabulary.HAS_CID_PART, cidId);
-			delta.addL(cidId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(entry.getValue().getInputStream()));
-			delta.addL(cidId, Vocabulary.HAS_MIME_TYPE, mimeType(entry.getValue()));
-			delta.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
+			delta.addR(messageId, Vocabulary.HAS_CID_PART, cidId)
+					.addL(cidId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(entry.getValue().getInputStream()))
+					.addL(cidId, Vocabulary.HAS_MIME_TYPE, mimeType(entry.getValue()))
+					.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
 		}
 
 		int i = 0;
@@ -107,10 +108,10 @@ public interface DStore
 			if (fileName != null)
 			{
 				String attachmentId = adapter.encode(message, String.valueOf(i));
-				delta.addR(messageId, Vocabulary.HAS_ATTACHMENT, attachmentId);
-				delta.addL(attachmentId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(part.getInputStream()));
-				delta.addL(attachmentId, Vocabulary.HAS_MIME_TYPE, mimeType(part));
-				delta.addL(attachmentId, Vocabulary.HAS_FILE_NAME, fileName);
+				delta.addR(messageId, Vocabulary.HAS_ATTACHMENT, attachmentId)
+						.addL(attachmentId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(part.getInputStream()))
+						.addL(attachmentId, Vocabulary.HAS_MIME_TYPE, mimeType(part))
+						.addL(attachmentId, Vocabulary.HAS_FILE_NAME, fileName);
 				i++;
 			}
 		}
@@ -118,8 +119,8 @@ public interface DStore
 
 	static void addMessageFlags(Delta delta, Message message, String messageId) throws MessagingException
 	{
-		delta.addL(messageId, Vocabulary.IS_READ, message.isSet(Flags.Flag.SEEN));
-		delta.addL(messageId, Vocabulary.IS_ANSWERED,  message.isSet(Flags.Flag.ANSWERED));
+		delta.addL(messageId, Vocabulary.IS_READ, message.isSet(Flags.Flag.SEEN))
+				.addL(messageId, Vocabulary.IS_ANSWERED, message.isSet(Flags.Flag.ANSWERED));
 		boolean junk = false;
 		for (String flag : message.getFlags().getUserFlags())
 		{
@@ -155,16 +156,16 @@ public interface DStore
 	static void deleteMessageFlags(Model dbase, Delta delta, String messageId)
 	{
 		Resource mRes = R(dbase, messageId);
-		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_READ), (RDFNode) null));
-		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_ANSWERED), (RDFNode) null));
-		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_JUNK), (RDFNode) null));
+		delta.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_READ), (RDFNode) null))
+				.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_ANSWERED), (RDFNode) null))
+				.delete(dbase.listStatements(mRes, P(dbase, Vocabulary.IS_JUNK), (RDFNode) null));
 	}
 
 	static void deleteFolderCounts(Model dbase, Delta delta, String folderId)
 	{
 		Resource fRes = R(dbase, folderId);
-		delta.delete(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_MESSAGE_COUNT), (RDFNode) null));
-		delta.delete(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), (RDFNode) null));
+		delta.delete(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_MESSAGE_COUNT), (RDFNode) null))
+				.delete(dbase.listStatements(fRes, P(dbase, Vocabulary.HAS_UNREAD_MESSAGE_COUNT), (RDFNode) null));
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
@@ -182,8 +183,8 @@ public interface DStore
 				delta.delete(dbase.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
 		}
-		delta.delete(dbase.listStatements(mRes, null, (RDFNode) null));
-		delta.delete(dbase.listStatements(R(dbase, folderId), P(dbase, Vocabulary.CONTAINS), mRes));
+		delta.delete(dbase.listStatements(mRes, null, (RDFNode) null))
+				.delete(dbase.listStatements(R(dbase, folderId), P(dbase, Vocabulary.CONTAINS), mRes));
 	}
 
 	//  methods to access message content
