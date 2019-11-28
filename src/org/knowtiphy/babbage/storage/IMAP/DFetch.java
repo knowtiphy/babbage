@@ -101,7 +101,7 @@ public interface DFetch
 
 	static StmtIterator folder(Model model, String folderId)
 	{
-		return model.listStatements(model.createResource(folderId), P(model, Vocabulary.RDF_TYPE), R(model, Vocabulary.IMAP_FOLDER));
+		return model.listStatements(R(model, folderId), P(model, Vocabulary.RDF_TYPE), R(model, Vocabulary.IMAP_FOLDER));
 	}
 
 	static String messageUIDs(String folderId)

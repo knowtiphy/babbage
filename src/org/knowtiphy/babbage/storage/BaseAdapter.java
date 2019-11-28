@@ -4,6 +4,7 @@ import org.apache.jena.query.Dataset;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
+import org.knowtiphy.utils.IProcedure;
 
 import javax.mail.Folder;
 import javax.mail.Message;
@@ -13,6 +14,7 @@ import java.util.Collection;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.function.Supplier;
 
 // Actual adapters will override the methods that they actually use
 
@@ -122,13 +124,13 @@ public abstract class BaseAdapter implements IAdapter
 	protected void update(Model adds, Model deletes)
 	{
 		messageDatabase.begin(ReadWrite.WRITE);
-		if (adds != null)
-		{
-			messageDatabase.getDefaultModel().add(adds);
-		}
 		if (deletes != null)
 		{
 			messageDatabase.getDefaultModel().remove(deletes);
+		}
+		if (adds != null)
+		{
+			messageDatabase.getDefaultModel().add(adds);
 		}
 		messageDatabase.commit();
 		messageDatabase.end();
@@ -145,9 +147,34 @@ public abstract class BaseAdapter implements IAdapter
 		return new ReadContext(messageDatabase);
 	}
 
-	public <E extends Exception> void abort(E ex) throws E
+	//	run a query on the database in a read transaction, where the query can't throw an exception, and returns
+	//	a T
+	public <T> T runQuery(Supplier<T> query)
 	{
-		messageDatabase.abort();
-		throw ex;
+		messageDatabase.begin(ReadWrite.READ);
+		T result = query.get();
+		messageDatabase.end();
+		return result;
 	}
+
+	//	run a query on the database in a read transaction
+	public <E extends Exception> void runQuery(IProcedure<E> query) throws E
+	{
+		messageDatabase.begin(ReadWrite.READ);
+		try
+		{
+			query.call();
+		}
+		catch (Exception ex)
+		{
+			messageDatabase.abort();
+			//	TODO -- log it
+			ex.printStackTrace(System.err);
+			throw ex;
+		}
+		messageDatabase.end();
+	}
+
+
+
 }
