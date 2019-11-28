@@ -135,29 +135,6 @@ public abstract class BaseAdapter implements IAdapter
 		notifyListeners(adds, deletes);
 	}
 
-	public enum DBWriteEvent{
-		ADD, DELETE;
-	}
-
-	protected void update(Model model, DBWriteEvent type)
-	{
-		messageDatabase.begin(ReadWrite.WRITE);
-		if (type == DBWriteEvent.ADD)
-		{
-			messageDatabase.getDefaultModel().add(model);
-		}
-
-		if (type == DBWriteEvent.DELETE)
-		{
-			messageDatabase.getDefaultModel().remove(model);
-		}
-
-		messageDatabase.commit();
-		messageDatabase.end();
-		notifyListeners(model);
-
-	}
-
 	protected WriteContext getWriteContext()
 	{
 		return new WriteContext(messageDatabase);

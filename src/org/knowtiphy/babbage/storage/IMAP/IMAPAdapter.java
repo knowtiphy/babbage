@@ -610,7 +610,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				{
 					addMessageContent(adds, this, message, new MessageContent(message, true).process());
 				}
-				update(adds, DBWriteEvent.ADD);
+				update(adds, null);
 				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
 				return folder;
 			}
