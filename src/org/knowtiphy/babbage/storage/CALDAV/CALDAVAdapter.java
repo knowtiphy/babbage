@@ -522,17 +522,13 @@ public class CALDAVAdapter extends BaseAdapter
 						}
 
 						applyAndNotify(delta -> {
-
 							currStoredEvents.forEach(
 									eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta, storedCalURI,
 											eventURI));
-
 						});
 
 						applyAndNotify(delta -> {
-
 							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedCalURI);
-
 						});
 
 					}

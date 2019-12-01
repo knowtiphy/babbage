@@ -114,8 +114,7 @@ public class CARDDAVAdapter extends BaseAdapter
 	{
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		applyAndNotify(() -> {
-			Delta delta = new Delta();
+		applyAndNotify(delta -> {
 
 			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).execSelect();
 			updateTriple(messageDB, delta, addressBookUri, Vocabulary.HAS_CTAG,
@@ -130,7 +129,6 @@ public class CARDDAVAdapter extends BaseAdapter
 				}
 			}
 
-			return delta;
 		});
 
 	}
@@ -141,9 +139,7 @@ public class CARDDAVAdapter extends BaseAdapter
 
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		applyAndNotify(() -> {
-
-			Delta delta = new Delta();
+		applyAndNotify(delta -> {
 
 			updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_ETAG, serverCard.getEtag());
 
@@ -163,7 +159,6 @@ public class CARDDAVAdapter extends BaseAdapter
 
 			}
 
-			return delta;
 		});
 
 	}
@@ -198,14 +193,11 @@ public class CARDDAVAdapter extends BaseAdapter
 
 		notifyListeners(accountInfo);
 
-		Delta skeleton = new Delta();
-		skeleton.getAdds().add(query(
-				() -> QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
-		notifyListeners(skeleton);
+		queryAndNotify(delta -> delta
+				.add(QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
 
-		Delta initialState = new Delta();
-		initialState.getAdds().add(query(
-				() -> QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel()).execConstruct()));
+		queryAndNotify(delta -> delta
+				.add(QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel()).execConstruct()));
 
 	}
 
@@ -350,14 +342,11 @@ public class CARDDAVAdapter extends BaseAdapter
 
 						m_PerBookCards.put(serverBookURI, cardURIToRes);
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
+						applyAndNotify(delta -> {
 							storeAddressBook(delta, getId(), serverBookURI, serverBook);
-							return delta;
 						});
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
+						applyAndNotify(delta -> {
 							addCard.forEach(card -> {
 								try
 								{
@@ -369,7 +358,6 @@ public class CARDDAVAdapter extends BaseAdapter
 								}
 							});
 
-							return delta;
 						});
 
 					}
@@ -388,8 +376,7 @@ public class CARDDAVAdapter extends BaseAdapter
 							Set<DavResource> addCards = new HashSet<>();
 							Set<String> serverCardURIs = new HashSet<>();
 
-							Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook)
-									.iterator();
+							Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
 							// 1st iteration is the addressBook uri, so skip
 							davCards.next();
 
@@ -415,8 +402,7 @@ public class CARDDAVAdapter extends BaseAdapter
 								{
 									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
 
-									String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG)
-											.replace("\\", "");
+									String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG).replace("\\", "");
 
 									if (!storedTAG.equals(serverCard.getEtag()))
 									{
@@ -437,26 +423,23 @@ public class CARDDAVAdapter extends BaseAdapter
 								}
 							}
 
-							applyAndNotify(() -> {
-								Delta delta = new Delta();
+							applyAndNotify(delta -> {
 
 								removeCard.forEach(
-										event -> unstoreRes(messageDatabase.getDefaultModel(), delta,
-												serverBookURI, event));
+										event -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI,
+												event));
 
 								addCards.forEach(event -> {
 									try
 									{
 										storeCard(delta, serverBookURI, encodeCard(serverBook, event),
-												Ezvcard.parse(sardine.get(serverHeader + event)).first(),
-												event);
+												Ezvcard.parse(sardine.get(serverHeader + event)).first(), event);
 									} catch (IOException e)
 									{
 										e.printStackTrace();
 									}
 								});
 
-								return delta;
 							});
 
 						}
@@ -483,19 +466,13 @@ public class CARDDAVAdapter extends BaseAdapter
 							m_addressBook.remove(storedAddressBookURI);
 						}
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
-							currStoredCards.forEach(
-									eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
-											storedAddressBookURI, eventURI));
-							return delta;
+						applyAndNotify(delta -> {
+							currStoredCards.forEach(eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+									storedAddressBookURI, eventURI));
 						});
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
-							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(),
-									storedAddressBookURI);
-							return delta;
+						applyAndNotify(delta -> {
+							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedAddressBookURI);
 						});
 
 					}
