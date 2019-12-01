@@ -198,7 +198,7 @@ public class CARDDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 		if (nickName != null)
 		{
-			accountTriples.add(org.knowtiphy.babbage.storage.IMAP.DStore.R(accountTriples, id),
+			accountTriples.add(R(accountTriples, id),
 					DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
 		// Notify the client of the account triples
