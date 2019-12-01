@@ -65,7 +65,6 @@ public class CARDDAVAdapter extends BaseAdapter
 	private String nickName;
 	private Thread synchThread;
 
-	// Start modeling after what is currently in the IMAPAdpater
 	public CARDDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
 			BlockingDeque<Runnable> notificationQ, Model model)
 	{
