@@ -19,7 +19,7 @@ import java.util.GregorianCalendar;
 import java.util.function.Function;
 
 /**
- * @author graham
+ * @author frank ;D
  */
 public interface DStore
 {

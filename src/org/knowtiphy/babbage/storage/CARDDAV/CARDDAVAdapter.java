@@ -160,8 +160,8 @@ public class CARDDAVAdapter extends BaseAdapter
 
 					updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_SUMMARY, vCard.getFormattedName().getValue());
 				}
-				
 
+				// Questions about checking if numbers and emails are diff, might just have to chuck out?
 
 			}
 
