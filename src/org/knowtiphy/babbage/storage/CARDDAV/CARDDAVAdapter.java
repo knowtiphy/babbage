@@ -3,22 +3,28 @@ package org.knowtiphy.babbage.storage.CARDDAV;
 import com.github.sardine.DavResource;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
+import ezvcard.Ezvcard;
+import ezvcard.VCard;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
+import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.DStore;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 
+import java.io.IOException;
+import java.util.Collection;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -30,10 +36,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.P;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
-import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.initialState;
-import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.skeleton;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.*;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.*;
 
 public class CARDDAVAdapter extends BaseAdapter
 {
@@ -102,55 +106,68 @@ public class CARDDAVAdapter extends BaseAdapter
 
 	protected String encodeAddressBook(DavResource addressBook)
 	{
-		return Vocabulary.E(Vocabulary.CARDDAV_ADDRESSBOOK, getEmailAddress(), addressBook.getHref());
+		return Vocabulary.E(Vocabulary.CARDDAV_ADDRESSBOOK, emailAddress, addressBook.getHref());
 	}
 
 	protected String encodeCard(DavResource addressBook, DavResource card)
 	{
-		return Vocabulary.E(Vocabulary.CARDDAV_CARD, getEmailAddress(), addressBook.getHref(), card.getHref());
+		return Vocabulary.E(Vocabulary.CARDDAV_CARD, emailAddress, addressBook.getHref(), card.getHref());
 	}
 
-	private String getStoredTag(String query, String resType)
+	private void storeAddressBookDiffs(String addressBookUri, DavResource addressBook) throws Exception
 	{
-		String tag;
-		messageDatabase.begin(ReadWrite.READ);
-		try
-		{
-			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			tag = JenaUtils.single(resultSet, soln -> soln.get(resType).toString());
-		} finally
-		{
-			messageDatabase.end();
-		}
+		Model messageDB = messageDatabase.getDefaultModel();
 
-		return tag;
+		update(() -> {
+			Delta delta = new Delta();
+
+			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).execSelect();
+			updateTriple(messageDB, delta, addressBookUri, Vocabulary.HAS_CTAG, addressBook.getCustomProps().get("getctag"));
+
+			while (rs.hasNext())
+			{
+				QuerySolution soln = rs.next();
+				if (!soln.getLiteral(NAME).equals(L(messageDB, addressBook.getDisplayName())))
+				{
+					updateTriple(messageDB, delta, addressBookUri, Vocabulary.HAS_NAME, addressBook.getDisplayName());
+				}
+			}
+
+			return delta;
+		});
+
 	}
 
-	private Set<String> getStored(String query, String resType)
+	private void storeCardDiffs(String cardURI, DavResource serverCard) throws Exception
 	{
-		Set<String> stored = new HashSet<>(1000);
-		messageDatabase.begin(ReadWrite.READ);
-		try
-		{
-			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get(resType).asResource().toString()));
-		} finally
-		{
-			messageDatabase.end();
-		}
+		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverCard)).first();
 
-		return stored;
-	}
+		Model messageDB = messageDatabase.getDefaultModel();
 
-	public String getEmailAddress()
-	{
-		return emailAddress;
-	}
+		update(() -> {
 
-	private <T> void updateTriple(Model messageDB, Model adds, Model deletes, String resURI, String hasProp, T updated)
-	{
-		deletes.add(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
-		adds.add(R(messageDB, resURI), P(messageDB, hasProp), messageDB.createTypedLiteral(updated));
+			Delta delta = new Delta();
+
+			updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_ETAG, serverCard.getEtag());
+
+			ResultSet rs = QueryExecutionFactory.create(cardProperties(cardURI), messageDB).execSelect();
+			while (rs.hasNext())
+			{
+				QuerySolution soln = rs.next();
+
+				if (!soln.getLiteral(FORMATTEDNAME).equals(L(messageDB, vCard.getFormattedName().getValue())))
+				{
+
+					updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_SUMMARY, vCard.getFormattedName().getValue());
+				}
+				
+
+
+			}
+
+			return delta;
+		});
+
 	}
 
 	@Override public void close()
@@ -182,9 +199,8 @@ public class CARDDAVAdapter extends BaseAdapter
 		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
 		if (nickName != null)
 		{
-			accountTriples
-					.add(org.knowtiphy.babbage.storage.IMAP.DStore.R(accountTriples, id), DStore
-							.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+			accountTriples.add(org.knowtiphy.babbage.storage.IMAP.DStore.R(accountTriples, id),
+					DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
 		}
 		// Notify the client of the account triples
 		notifyListeners(accountTriples);
@@ -210,230 +226,232 @@ public class CARDDAVAdapter extends BaseAdapter
 
 	private void startSynchThread()
 	{
-//		synchThread = new Thread(() -> {
-//			while (true)
-//			{
-//				try
-//				{
-//					workQ.add(() -> {
-//
-//						try
-//						{
-//
-//							accountLock.lock();
-//
-//							System.out.println(
-//									":::::::::::::::::::::::::: IN CARDDAV SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
-//
-//							Set<String> storedAddressBooks = getStored(addressBookURIs(getId()), ABOOKRES);
-//
-//							Iterator<DavResource> cardDavResources = sardine.list(serverName).iterator();
-//							// 1st iteration is not a calendar, just the enclosing directory
-//							cardDavResources.next();
-//
-//							Set<String> serverBookURIs = new HashSet<>(10);
-//							// During this loop, I can check the CTAGS, Check if need to be added/deleted
-//							// Maybe all at once later on
-//							while (cardDavResources.hasNext())
-//							{
-//								DavResource serverBook = cardDavResources.next();
-//								String serverBookURI = encodeAddressBook(serverBook);
-//								serverBookURIs.add(serverBookURI);
-//
-//								if (!m_addressBook.containsKey(serverBookURI))
-//								{
-//									m_addressBook.put(serverBookURI, serverBook);
-//								}
-//
-//								// AddressBook not in DB, store it and cards
-//								if (!storedAddressBooks.contains(serverBookURI))
-//								{
-//									m_addressBook.put(serverBookURI, serverBook);
-//
-//									// Add Cards
-//									Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
-//									// 1st iteration is the addressBook uri, so skip
-//									davCards.next();
-//
-//									Collection<DavResource> addCard = new HashSet<>(1000);
-//									Map<String, DavResource> cardURIToRes = new ConcurrentHashMap<>();
-//									while (davCards.hasNext())
-//									{
-//										DavResource serverEvent = davCards.next();
-//										cardURIToRes.put(encodeCard(serverBook, serverEvent), serverEvent);
-//										addCard.add(serverEvent);
-//									}
-//
-//									m_PerBookCards.put(serverBookURI, cardURIToRes);
-//
-//									Model addAddressBook = ModelFactory.createDefaultModel();
-//									storeAddressBook(addAddressBook, getId(), serverBookURI, serverBook);
-//									update(addAddressBook, ModelFactory.createDefaultModel());
-//
-//									Model addVCards = ModelFactory.createDefaultModel();
-//
-//									addCard.forEach(card -> {
-//										try
-//										{
-//											storeCard(addVCards, serverBookURI, encodeCard(serverBook, card),
-//													Ezvcard.parse(sardine.get(serverHeader + card)).first(), card);
-//										} catch (IOException e)
-//										{
-//											e.printStackTrace();
-//										}
-//									});
-//
-//									update(addVCards, ModelFactory.createDefaultModel());
-//
-//								}
-//								// Calendar already exists, check if CTags differ, check if names differ
-//								else
-//								{
-//									if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
-//											.equals(serverBook.getCustomProps().get("getctag")))
-//									{
-//										System.out.println(
-//												":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
-//										m_addressBook.put(serverBookURI, serverBook);
-//										storeCalendarDiffs(serverBookURI, serverBook);
-//
-//										Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
-//										Set<DavResource> addCards = new HashSet<>();
-//										Set<String> serverCardURIs = new HashSet<>();
-//
-//										Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook)
-//												.iterator();
-//										// 1st iteration is the addressBook uri, so skip
-//										davCards.next();
-//
-//										while (davCards.hasNext())
-//										{
-//											DavResource serverCard = davCards.next();
-//											String serverCardURI = encodeCard(serverBook, serverCard);
-//											serverCardURIs.add(serverCardURI);
-//
-//											if (!m_PerBookCards.containsKey(serverBookURI))
-//											{
-//												m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
-//											}
-//
-//											// New Card, store it
-//											if (!storedCards.contains(serverCardURI))
-//											{
-//												m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
-//												addCards.add(serverCard);
-//											}
-//											// Not new event, compare ETAGS
-//											else
-//											{
-//												m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
-//
-//												String storedTAG = getStoredTag(contactETAG(serverCardURI), ETAG)
-//														.replace("\\", "");
-//
-//												if (!storedTAG.equals(serverCard.getEtag()))
-//												{
-//													storeEventDiffs(serverCardURI, serverCard);
-//												}
-//											}
-//
-//										}
-//
-//										// Cards to be removed, this needs to be events in the DB
-//										Collection<String> removeCard = new HashSet<>();
-//										for (String currCardURI : storedCards)
-//										{
-//											if (!serverCardURIs.contains(currCardURI))
-//											{
-//												removeCard.add(currCardURI);
-//												m_PerBookCards.get(serverBookURI).remove(currCardURI);
-//											}
-//										}
-//
-//										messageDatabase.begin(ReadWrite.READ);
-//										Model deletes = ModelFactory.createDefaultModel();
-//										removeCard.forEach(
-//												event -> unstoreRes(messageDatabase.getDefaultModel(), deletes,
-//														serverBookURI, event));
-//										messageDatabase.end();
-//
-//										Model adds = ModelFactory.createDefaultModel();
-//										addCards.forEach(event -> {
-//											try
-//											{
-//												storeCard(adds, serverBookURI, encodeCard(serverBook, event),
-//														Biweekly.parse(sardine.get(serverHeader + event)).first()
-//																.getEvents().get(0), event);
-//											} catch (IOException e)
-//											{
-//												e.printStackTrace();
-//											}
-//										});
-//
-//										update(adds, deletes);
-//
-//									}
-//								}
-//
-//							}
-//
-//							// AddressBooks to be removed
-//							// For every AddressBook URI in m_AddressBook, if server does not contain it, remove it
-//							for (String storedAddressBookURI : storedAddressBooks)
-//							{
-//
-//								if (!serverBookURIs.contains(storedAddressBookURI))
-//								{
-//									Set<String> currStoredCards = getStored(cardURIs(storedAddressBookURI), CARDRES);
-//
-//									Model deleteEvent = ModelFactory.createDefaultModel();
-//									messageDatabase.begin(ReadWrite.READ);
-//									currStoredCards.forEach(
-//											eventURI -> unstoreRes(messageDatabase.getDefaultModel(), deleteEvent,
-//													storedAddressBookURI, eventURI));
-//									messageDatabase.end();
-//
-//									update(ModelFactory.createDefaultModel(), deleteEvent);
-//
-//									Model deleteCalendar = ModelFactory.createDefaultModel();
-//									messageDatabase.begin(ReadWrite.READ);
-//									unstoreRes(messageDatabase.getDefaultModel(), deleteCalendar, getId(),
-//											storedAddressBookURI);
-//									messageDatabase.end();
-//
-//									if (m_PerBookCards.get(storedAddressBookURI) != null)
-//									{
-//										m_addressBook.remove(storedAddressBookURI);
-//									}
-//
-//									if (m_addressBook.get(storedAddressBookURI) != null)
-//									{
-//										m_addressBook.remove(storedAddressBookURI);
-//									}
-//
-//									update(ModelFactory.createDefaultModel(), deleteCalendar);
-//								}
-//							}
-//
-//							accountLock.unlock();
-//						} catch (Exception e)
-//						{
-//							e.printStackTrace();
-//						}
-//
-//					});
-//
-//					Thread.sleep(FREQUENCY);
-//				} catch (InterruptedException ex)
-//				{
-//					return;
-//				}
-//			}
-//		});
+		synchThread = new Thread(() -> {
+			while (true)
+			{
+				try
+				{
+					workQ.add(() -> {
+
+						try
+						{
+
+							accountLock.lock();
+
+							System.out.println(
+									":::::::::::::::::::::::::: IN CARDDAV SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+
+							Set<String> storedAddressBooks = getStored(addressBookURIs(getId()), ABOOKRES);
+
+							Iterator<DavResource> cardDavResources = sardine.list(serverName).iterator();
+							// 1st iteration is not a calendar, just the enclosing directory
+							cardDavResources.next();
+
+							Set<String> serverBookURIs = new HashSet<>(10);
+							// During this loop, I can check the CTAGS, Check if need to be added/deleted
+							// Maybe all at once later on
+							while (cardDavResources.hasNext())
+							{
+								DavResource serverBook = cardDavResources.next();
+								String serverBookURI = encodeAddressBook(serverBook);
+								serverBookURIs.add(serverBookURI);
+
+								if (!m_addressBook.containsKey(serverBookURI))
+								{
+									m_addressBook.put(serverBookURI, serverBook);
+								}
+
+								// AddressBook not in DB, store it and cards
+								if (!storedAddressBooks.contains(serverBookURI))
+								{
+									m_addressBook.put(serverBookURI, serverBook);
+
+									// Add Cards
+									Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
+									// 1st iteration is the addressBook uri, so skip
+									davCards.next();
+
+									Collection<DavResource> addCard = new HashSet<>(1000);
+									Map<String, DavResource> cardURIToRes = new ConcurrentHashMap<>();
+									while (davCards.hasNext())
+									{
+										DavResource serverEvent = davCards.next();
+										cardURIToRes.put(encodeCard(serverBook, serverEvent), serverEvent);
+										addCard.add(serverEvent);
+									}
+
+									m_PerBookCards.put(serverBookURI, cardURIToRes);
+
+									update(() -> {
+										Delta delta = new Delta();
+										storeAddressBook(delta, getId(), serverBookURI, serverBook);
+										return delta;
+									});
+
+									update(() -> {
+										Delta delta = new Delta();
+										addCard.forEach(card -> {
+											try
+											{
+												storeCard(delta, serverBookURI, encodeCard(serverBook, card),
+														Ezvcard.parse(sardine.get(serverHeader + card)).first(), card);
+											} catch (IOException e)
+											{
+												e.printStackTrace();
+											}
+										});
+
+										return delta;
+									});
+
+								}
+								// Calendar already exists, check if CTags differ, check if names differ
+								else
+								{
+									if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
+											.equals(serverBook.getCustomProps().get("getctag")))
+									{
+										System.out.println(
+												":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
+										m_addressBook.put(serverBookURI, serverBook);
+										storeAddressBookDiffs(serverBookURI, serverBook);
+
+										Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
+										Set<DavResource> addCards = new HashSet<>();
+										Set<String> serverCardURIs = new HashSet<>();
+
+										Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook)
+												.iterator();
+										// 1st iteration is the addressBook uri, so skip
+										davCards.next();
+
+										while (davCards.hasNext())
+										{
+											DavResource serverCard = davCards.next();
+											String serverCardURI = encodeCard(serverBook, serverCard);
+											serverCardURIs.add(serverCardURI);
+
+											if (!m_PerBookCards.containsKey(serverBookURI))
+											{
+												m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
+											}
+
+											// New Card, store it
+											if (!storedCards.contains(serverCardURI))
+											{
+												m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
+												addCards.add(serverCard);
+											}
+											// Not new event, compare ETAGS
+											else
+											{
+												m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
+
+												String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG)
+														.replace("\\", "");
+
+												if (!storedTAG.equals(serverCard.getEtag()))
+												{
+													storeCardDiffs(serverCardURI, serverCard);
+												}
+											}
+
+										}
+
+										// Cards to be removed, this needs to be events in the DB
+										Collection<String> removeCard = new HashSet<>();
+										for (String currCardURI : storedCards)
+										{
+											if (!serverCardURIs.contains(currCardURI))
+											{
+												removeCard.add(currCardURI);
+												m_PerBookCards.get(serverBookURI).remove(currCardURI);
+											}
+										}
+
+
+										update(() -> {
+											Delta delta = new Delta();
+
+											removeCard.forEach(
+													event -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+															serverBookURI, event));
+
+											addCards.forEach(event -> {
+												try
+												{
+													storeCard(delta, serverBookURI, encodeCard(serverBook, event),
+															Ezvcard.parse(sardine.get(serverHeader + event)).first(),
+															event);
+												} catch (IOException e)
+												{
+													e.printStackTrace();
+												}
+											});
+
+											return delta;
+										});
+
+									}
+								}
+
+							}
+
+							// AddressBooks to be removed
+							// For every AddressBook URI in m_AddressBook, if server does not contain it, remove it
+							for (String storedAddressBookURI : storedAddressBooks)
+							{
+
+								if (!serverBookURIs.contains(storedAddressBookURI))
+								{
+									Set<String> currStoredCards = getStored(cardURIs(storedAddressBookURI), CARDRES);
+
+									if (m_PerBookCards.get(storedAddressBookURI) != null)
+									{
+										m_addressBook.remove(storedAddressBookURI);
+									}
+
+									if (m_addressBook.get(storedAddressBookURI) != null)
+									{
+										m_addressBook.remove(storedAddressBookURI);
+									}
+
+									update(() -> {
+										Delta delta = new Delta();
+										currStoredCards.forEach(
+												eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+														storedAddressBookURI, eventURI));
+										return delta;
+									});
+
+									update(() -> {
+										Delta delta = new Delta();
+										unstoreRes(messageDatabase.getDefaultModel(), delta, getId(),
+												storedAddressBookURI);
+										return delta;
+									});
+
+								}
+							}
+
+							accountLock.unlock();
+						} catch (Exception e)
+						{
+							e.printStackTrace();
+						}
+
+					});
+
+					Thread.sleep(FREQUENCY);
+				} catch (InterruptedException ex)
+				{
+					return;
+				}
+			}
+		});
 
 		synchThread.start();
 	}
-
 
 	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{

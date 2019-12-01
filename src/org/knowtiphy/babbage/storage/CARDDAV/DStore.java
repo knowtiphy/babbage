@@ -1,11 +1,9 @@
 package org.knowtiphy.babbage.storage.CARDDAV;
 
-import biweekly.component.VEvent;
 import com.github.sardine.DavResource;
 import ezvcard.VCard;
 import ezvcard.property.Email;
 import ezvcard.property.Telephone;
-import org.apache.jena.datatypes.RDFDatatype;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelCon;
@@ -14,10 +12,10 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
 import java.util.function.Function;
-import java.util.function.Predicate;
 
 public interface DStore
 {
@@ -36,76 +34,58 @@ public interface DStore
 		return model.createTypedLiteral(value);
 	}
 
-	static <T> Literal L(Model model, T value, RDFDatatype rdfDatatype)
-	{
-		return model.createTypedLiteral(value, rdfDatatype);
-	}
-
-	static <S> void attr(Model model, Resource subject, String predicate, S value, Function<S, ? extends Literal> fn)
+	static <S, T> void addAttribute(Delta delta, String subject, String predicate, S value, Function<S, T> fn)
 	{
 		if (value != null)
 		{
-			model.add(subject, P(model, predicate), fn.apply(value));
+			delta.addL(subject, predicate, fn.apply(value));
 		}
 	}
 
-	static <S> S optionalAttr(VEvent vEvent, Predicate<VEvent> predicate, Function<VEvent, S> fn)
+
+	static void storeAddressBook(Delta delta, String adapterID, String addressBookId, DavResource addressBook)
 	{
-		if (predicate.test(vEvent))
-		{
-			return fn.apply(vEvent);
-		}
-		else
-		{
-			return null;
-		}
+		delta.addR(addressBookId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ADDRESSBOOK)
+				.addR(adapterID, Vocabulary.CONTAINS, addressBookId);
+
+		addAttribute(delta, addressBookId, Vocabulary.HAS_NAME, addressBook.getDisplayName(), x -> x);
+		addAttribute(delta, addressBookId, Vocabulary.HAS_CTAG, addressBook.getCustomProps().get("getctag"), x -> x);
 	}
 
-	static void storeAddressBook(Model model, String adapterID, String encodedAddressBook, DavResource addressBook)
+	static void storeCard(Delta delta, String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
-		Resource bookRes = model.createResource(encodedAddressBook);
-		model.add(bookRes, model.createProperty(Vocabulary.RDF_TYPE),
-				model.createResource(Vocabulary.CARDDAV_ADDRESSBOOK));
-		model.add(model.createResource(adapterID), model.createProperty(Vocabulary.CONTAINS), bookRes);
-		model.add(bookRes, model.createProperty(Vocabulary.HAS_NAME),
-				model.createTypedLiteral(addressBook.getDisplayName()));
-		model.add(bookRes, model.createProperty(Vocabulary.HAS_CTAG),
-				model.createTypedLiteral(addressBook.getCustomProps().get("getctag")));
-	}
+		delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT)
+				.addR(addressBookId, Vocabulary.CONTAINS, cardId);
 
-	static void storeCard(Model addModel, String addressBookName, String cardName, VCard vCard, DavResource card)
-	{
-		Resource cardRes = R(addModel, cardName);
-		addModel.add(cardRes, P(addModel, Vocabulary.RDF_TYPE), addModel.createResource(Vocabulary.CARDDAV_CARD));
-		addModel.add(R(addModel, addressBookName), P(addModel, Vocabulary.CONTAINS), cardRes);
+		addAttribute(delta, cardId, Vocabulary.HAS_ETAG, card.getEtag(), x -> x);
 
-		attr(addModel, cardRes, Vocabulary.HAS_ETAG, card.getEtag(), x -> L(addModel, x));
+		addAttribute(delta, cardId, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> x);
 
-		attr(addModel, cardRes, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> L(addModel, x));
 
-		for(Telephone telephone : vCard.getTelephoneNumbers())
+		for (Telephone telephone : vCard.getTelephoneNumbers())
 		{
 			String phoneNumber = telephone.getText();
-			Resource phoneNumRes = R(addModel, phoneNumber);
 
-			attr(addModel, cardRes, Vocabulary.HAS_NUMBER, phoneNumber, x -> L(addModel, x));
-			attr(addModel, phoneNumRes, Vocabulary.HAS_NUMBER_TYPE, telephone.getTypes().get(0), x -> L(addModel, x));
+			addAttribute(delta, cardId, Vocabulary.HAS_PHONE_NUMBER, phoneNumber, x -> x);
+
+			// Potentially has 1+ types, such home and pref, can account for if we want to
+			delta.addL(phoneNumber, Vocabulary.HAS_PHONE_TYPE, telephone.getTypes().get(0));
 		}
 
 		for (Email email : vCard.getEmails())
 		{
 			String emailAddress = email.getValue();
-			Resource emailAddressRes = R(addModel, emailAddress);
 
-			attr(addModel, cardRes, Vocabulary.HAS_EMAIL, emailAddress, x -> L(addModel, x));
-			attr(addModel, emailAddressRes, Vocabulary.HAS_EMAIL_TYPE, email.getTypes().get(0), x -> L(addModel, x));
+			addAttribute(delta, cardId, Vocabulary.HAS_EMAIL, emailAddress, x -> x);
+
+			// Potentially has 1+ types, such home and pref, can account for if we want to
+			delta.addL(emailAddress, Vocabulary.HAS_PHONE_TYPE, email.getTypes().get(0));
 		}
-
 
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc
-	static void unstoreRes(Model messageDB, Model deletes, String containerName, String resName)
+	static void unstoreRes(Model messageDB, Delta delta, String containerName, String resName)
 	{
 		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
 		Resource res = R(messageDB, resName);
@@ -116,10 +96,10 @@ public interface DStore
 			Statement stmt = it.next();
 			if (stmt.getObject().isResource())
 			{
-				deletes.add(messageDB.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+				delta.delete(messageDB.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
 		}
-		deletes.add(messageDB.listStatements(res, null, (RDFNode) null));
-		deletes.add(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res));
+		delta.delete(messageDB.listStatements(res, null, (RDFNode) null));
+		delta.delete(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res));
 	}
 }

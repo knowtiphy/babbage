@@ -14,7 +14,6 @@ import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.DStore;
@@ -169,24 +168,14 @@ public class CALDAVAdapter extends BaseAdapter
 
 	protected String encodeCalendar(DavResource calendar)
 	{
-		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, getEmailAddress(), calendar.getHref());
+		return Vocabulary.E(Vocabulary.CALDAV_CALENDAR, emailAddress, calendar.getHref());
 	}
 
 	protected String encodeEvent(DavResource calendar, DavResource event)
 	{
-		return Vocabulary.E(Vocabulary.CALDAV_EVENT, getEmailAddress(), calendar.getHref(), event.getHref());
+		return Vocabulary.E(Vocabulary.CALDAV_EVENT, emailAddress, calendar.getHref(), event.getHref());
 	}
 
-	public String getEmailAddress()
-	{
-		return emailAddress;
-	}
-
-	private <T> void updateTriple(Model messageDB, Delta delta, String resURI, String hasProp, T updated)
-	{
-		delta.delete(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
-		delta.addL(resURI, hasProp, updated);
-	}
 
 	private void storeCalendarDiffs(String calURI, DavResource cal) throws Exception
 	{
@@ -288,38 +277,6 @@ public class CALDAVAdapter extends BaseAdapter
 			return delta;
 		});
 
-	}
-
-	private String getStoredTag(String query, String resType)
-	{
-		String tag;
-		messageDatabase.begin(ReadWrite.READ);
-		try
-		{
-			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			tag = JenaUtils.single(resultSet, soln -> soln.get(resType).toString());
-		} finally
-		{
-			messageDatabase.end();
-		}
-
-		return tag;
-	}
-
-	private Set<String> getStored(String query, String resType)
-	{
-		Set<String> stored = new HashSet<>(1000);
-		messageDatabase.begin(ReadWrite.READ);
-		try
-		{
-			ResultSet resultSet = QueryExecutionFactory.create(query, messageDatabase.getDefaultModel()).execSelect();
-			stored.addAll(JenaUtils.set(resultSet, soln -> soln.get(resType).asResource().toString()));
-		} finally
-		{
-			messageDatabase.end();
-		}
-
-		return stored;
 	}
 
 	private void startSynchThread()

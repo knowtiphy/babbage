@@ -19,7 +19,6 @@ import java.util.concurrent.FutureTask;
  * @author graham
  */
 
-// TODO: Will likely need to make this IAdapter and change around the methods, or just add more
 public interface IAdapter
 {
 	String getId();

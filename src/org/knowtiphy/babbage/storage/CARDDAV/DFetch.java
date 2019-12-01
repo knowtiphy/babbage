@@ -9,6 +9,12 @@ public interface DFetch
 	String ABOOKRES = "addressbook";
 	String ETAG = "etag";
 	String CTAG = "ctag";
+	String FORMATTEDNAME = "formattedName";
+	String PHONENUMBER = "phoneNumber";
+	String PHONETYPE = "phoneType";
+	String EMAIL = "email";
+	String EMAILTYPE = "emailType";
+	String NAME = "name";
 
 	// @formatter:off
 	static String cardURIs(String bookURI)
@@ -38,12 +44,34 @@ public interface DFetch
 				+ "      }";
 	}
 
-	static String contactETAG(String contactURI)
+	static String cardETAG(String contactURI)
 	{
 		return "SELECT ?" + ETAG + " "
 				+ "WHERE {"
 				+ "      <" + contactURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
 				+ "      <" + contactURI + "> <" + Vocabulary.HAS_ETAG + "> ?" + ETAG + ".\n"
+				+ "      }";
+	}
+
+	static String addressBookProperties(String addressBookURI)
+	{
+		return "SELECT ?name"
+				+ " WHERE {"
+				+ "      <" + addressBookURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
+				+ "      <" + addressBookURI + "> <" + Vocabulary.HAS_NAME + "> ?name.\n"
+				+ "      }";
+	}
+
+	static String cardProperties(String cardURI)
+	{
+		return "SELECT ?" + FORMATTEDNAME + " ?" + PHONENUMBER + " ?" + PHONENUMBER + " ?" + EMAIL + " ?" + EMAILTYPE + " "
+				+ " WHERE {"
+				+ "      <" + cardURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
+				+ "      <" + cardURI + "> <" + Vocabulary.HAS_FORMATTED_NAME + "> ?" + FORMATTEDNAME + ".\n"
+				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE_NUMBER + "> ?" + PHONENUMBER + " }\n"
+				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE_TYPE + "> ?" + PHONETYPE + " }\n"
+				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_EMAIL + "> ?" + EMAIL + " }\n"
+				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_EMAIL_TYPE + "> ?" + EMAILTYPE + " }\n"
 				+ "      }";
 	}
 
@@ -81,27 +109,27 @@ public interface DFetch
 								"WHERE {     ?%s <%s> <%s> .  " +
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
-								"?%s <%s> ?%s .   " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								" }",
 						// START OF CONSTRUCT
-						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
-						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
+						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
+						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_FORMATTED_NAME, Vars.VAR_FORMATTED_NAME,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE_NUMBER, Vars.VAR_PHONE_NUMBER,
+						Vars.VAR_PHONE_NUMBER, Vocabulary.HAS_PHONE_TYPE, Vars.VAR_PHONE_TYPE,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL,
+						Vars.VAR_EMAIL, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE,
 						// START OF WHERE
-						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
-						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_END, Vars.VAR_DATE_END,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
-						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY);
+						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
+						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_FORMATTED_NAME, Vars.VAR_FORMATTED_NAME,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE_NUMBER, Vars.VAR_PHONE_NUMBER,
+						Vars.VAR_PHONE_NUMBER, Vocabulary.HAS_PHONE_TYPE, Vars.VAR_PHONE_TYPE,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL,
+						Vars.VAR_EMAIL, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE);
 	}
 
 }
