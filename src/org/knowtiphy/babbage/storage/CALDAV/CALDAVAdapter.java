@@ -40,8 +40,6 @@ import java.util.logging.Logger;
 
 import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
 import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
-import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.initialState;
-import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.skeleton;
 
 public class CALDAVAdapter extends BaseAdapter
 {
