@@ -10,13 +10,10 @@ import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
-import org.apache.jena.query.ReadWrite;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.Delta;
-import org.knowtiphy.babbage.storage.IMAP.DStore;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.Vocabulary;
@@ -43,6 +40,8 @@ import java.util.logging.Logger;
 
 import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
 import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.initialState;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.skeleton;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -136,33 +135,25 @@ public class CALDAVAdapter extends BaseAdapter
 
 	@Override public void addListener()
 	{
-		Model accountTriples = ModelFactory.createDefaultModel();
-
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.RDF_TYPE),
-				P(accountTriples, Vocabulary.CALDAV_ACCOUNT));
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_NAME), serverName);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_EMAIL_ADDRESS), emailAddress);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_PASSWORD), password);
-		accountTriples.add(R(accountTriples, id), P(accountTriples, Vocabulary.HAS_SERVER_HEADER), serverHeader);
+		Delta accountInfo = new Delta();
+		accountInfo.addR(id, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_ACCOUNT)
+				.addL(id, Vocabulary.HAS_SERVER_NAME, serverName).addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
+				.addL(id, Vocabulary.HAS_PASSWORD, password);
 		if (nickName != null)
 		{
-			accountTriples
-					.add(DStore.R(accountTriples, id), DStore.P(accountTriples, Vocabulary.HAS_NICK_NAME), nickName);
+			accountInfo.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
-		// Notify the client of the account triples
-		notifyListeners(accountTriples);
 
-		messageDatabase.begin(ReadWrite.READ);
-		Model mCalendarDetails = QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel())
-				.execConstruct();
-		messageDatabase.end();
-		notifyListeners(mCalendarDetails);
+		notifyListeners(accountInfo);
 
-		messageDatabase.begin(ReadWrite.READ);
-		Model mEventDetails = QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel())
-				.execConstruct();
-		messageDatabase.end();
-		notifyListeners(mEventDetails);
+		Delta skeleton = new Delta();
+		skeleton.getAdds().add(query(
+				() -> QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
+		notifyListeners(skeleton);
+
+		Delta initialState = new Delta();
+		initialState.getAdds().add(query(
+				() -> QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel()).execConstruct()));
 
 	}
 
@@ -175,7 +166,6 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		return Vocabulary.E(Vocabulary.CALDAV_EVENT, emailAddress, calendar.getHref(), event.getHref());
 	}
-
 
 	private void storeCalendarDiffs(String calURI, DavResource cal) throws Exception
 	{
