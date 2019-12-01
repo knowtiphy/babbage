@@ -151,7 +151,7 @@ public class CARDDAVAdapter extends BaseAdapter
 				if (!soln.getLiteral(FORMATTEDNAME).equals(L(messageDB, vCard.getFormattedName().getValue())))
 				{
 
-					updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_SUMMARY,
+					updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_FORMATTED_NAME,
 							vCard.getFormattedName().getValue());
 				}
 
