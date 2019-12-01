@@ -16,6 +16,7 @@ import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.IMAP.DStore;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
@@ -41,8 +42,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
 import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
-import static org.knowtiphy.babbage.storage.CALDAV.Fetch.*;
 
 public class CALDAVAdapter extends BaseAdapter
 {
@@ -181,52 +182,48 @@ public class CALDAVAdapter extends BaseAdapter
 		return emailAddress;
 	}
 
-	private <T> void updateTriple(Model messageDB, Model adds, Model deletes, String resURI, String hasProp, T updated)
+	private <T> void updateTriple(Model messageDB, Delta delta, String resURI, String hasProp, T updated)
 	{
-		deletes.add(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
-		adds.add(R(messageDB, resURI), P(messageDB, hasProp), messageDB.createTypedLiteral(updated));
+		delta.delete(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
+		delta.addL(resURI, hasProp, updated);
 	}
 
 	private void storeCalendarDiffs(String calURI, DavResource cal) throws Exception
 	{
-		messageDatabase.begin(ReadWrite.READ);
 		Model messageDB = messageDatabase.getDefaultModel();
-		Model adds = ModelFactory.createDefaultModel();
-		Model deletes = ModelFactory.createDefaultModel();
 
-		try
-		{
+		update(() -> {
+			Delta delta = new Delta();
+
 			ResultSet rs = QueryExecutionFactory.create(calendarProperties(calURI), messageDB).execSelect();
-			updateTriple(messageDB, adds, deletes, calURI, Vocabulary.HAS_CTAG, cal.getCustomProps().get("getctag"));
+			updateTriple(messageDB, delta, calURI, Vocabulary.HAS_CTAG, cal.getCustomProps().get("getctag"));
 
 			while (rs.hasNext())
 			{
 				QuerySolution soln = rs.next();
 				if (!soln.getLiteral(NAME).equals(L(messageDB, cal.getDisplayName())))
 				{
-					updateTriple(messageDB, adds, deletes, calURI, Vocabulary.HAS_NAME, cal.getDisplayName());
+					updateTriple(messageDB, delta, calURI, Vocabulary.HAS_NAME, cal.getDisplayName());
 				}
 			}
-		} finally
-		{
-			messageDatabase.end();
-		}
 
-		update(adds, deletes);
+			return delta;
+		});
+
 	}
 
 	private void storeEventDiffs(String eventURI, DavResource serverEvent) throws Exception
 	{
 		VEvent vEvent = Biweekly.parse(sardine.get(serverHeader + serverEvent)).first().getEvents().get(0);
 
-		messageDatabase.begin(ReadWrite.READ);
 		Model messageDB = messageDatabase.getDefaultModel();
-		Model adds = ModelFactory.createDefaultModel();
-		Model deletes = ModelFactory.createDefaultModel();
 
-		try
-		{
-			updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_ETAG, serverEvent.getEtag());
+		update(() -> {
+
+			Delta delta = new Delta();
+
+			updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_ETAG, serverEvent.getEtag());
+
 			ResultSet rs = QueryExecutionFactory.create(eventProperties(eventURI), messageDB).execSelect();
 			while (rs.hasNext())
 			{
@@ -237,7 +234,8 @@ public class CALDAVAdapter extends BaseAdapter
 					if (!soln.getLiteral(DATEEND).equals(L(messageDB,
 							new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateEnd().getValue()))))))
 					{
-						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DATE_END,
+
+						updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_DATE_END,
 								new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateEnd().getValue()))));
 					}
 				}
@@ -247,7 +245,8 @@ public class CALDAVAdapter extends BaseAdapter
 							.from(fromDate(vEvent.getDateStart().getValue())
 									.plus(Duration.parse(vEvent.getDuration().getValue().toString())))))))
 					{
-						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DATE_END, new XSDDateTime(
+
+						updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_DATE_END, new XSDDateTime(
 								GregorianCalendar.from(fromDate(vEvent.getDateStart().getValue())
 										.plus(Duration.parse(vEvent.getDuration().getValue().toString())))));
 					}
@@ -255,20 +254,22 @@ public class CALDAVAdapter extends BaseAdapter
 
 				if (!soln.getLiteral(SUMMARY).equals(L(messageDB, vEvent.getSummary().getValue())))
 				{
-					updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_SUMMARY,
-							vEvent.getSummary().getValue());
+
+					updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_SUMMARY, vEvent.getSummary().getValue());
 				}
 				else if (!soln.getLiteral(DATESTART).equals(L(messageDB,
 						new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateStart().getValue()))))))
 				{
-					updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DATE_START,
+
+					updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_DATE_START,
 							new XSDDateTime(GregorianCalendar.from(fromDate(vEvent.getDateStart().getValue()))));
 				}
 				else if (vEvent.getDescription() != null && soln.getLiteral(DESCRIPTION) != null)
 				{
 					if (!soln.getLiteral(DESCRIPTION).equals(L(messageDB, vEvent.getDescription().getValue())))
 					{
-						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_DESCRIPTION,
+
+						updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_DESCRIPTION,
 								vEvent.getDescription().getValue());
 					}
 				}
@@ -276,18 +277,16 @@ public class CALDAVAdapter extends BaseAdapter
 				{
 					if (!soln.getLiteral(PRIORITY).equals(L(messageDB, vEvent.getPriority().getValue())))
 					{
-						updateTriple(messageDB, adds, deletes, eventURI, Vocabulary.HAS_PRIORITY,
+
+						updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_PRIORITY,
 								vEvent.getPriority().getValue());
 					}
 				}
 
 			}
-		} finally
-		{
-			messageDatabase.end();
-		}
 
-		update(adds, deletes);
+			return delta;
+		});
 
 	}
 
@@ -381,24 +380,29 @@ public class CALDAVAdapter extends BaseAdapter
 
 									m_PerCalendarEvents.put(serverCalURI, eventURIToRes);
 
-									Model addCalendar = ModelFactory.createDefaultModel();
-									storeCalendar(addCalendar, getId(), serverCalURI, serverCal);
-									update(addCalendar, ModelFactory.createDefaultModel());
-
-									Model addVEvents = ModelFactory.createDefaultModel();
-
-									addEvent.forEach(event -> {
-										try
-										{
-											storeEvent(addVEvents, serverCalURI, encodeEvent(serverCal, event), Biweekly.parse(sardine.get(serverHeader + event)).first()
-													.getEvents().get(0), event);
-										} catch (IOException e)
-										{
-											e.printStackTrace();
-										}
+									update(() -> {
+										Delta delta = new Delta();
+										storeCalendar(delta, getId(), serverCalURI, serverCal);
+										return delta;
 									});
 
-									update(addVEvents, ModelFactory.createDefaultModel());
+									update(() -> {
+										Delta delta = new Delta();
+
+										addEvent.forEach(event -> {
+											try
+											{
+												storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
+														Biweekly.parse(sardine.get(serverHeader + event)).first()
+																.getEvents().get(0), event);
+											} catch (IOException e)
+											{
+												e.printStackTrace();
+											}
+										});
+
+										return delta;
+									});
 
 								}
 								// Calendar already exists, check if CTags differ, check if names differ
@@ -465,27 +469,27 @@ public class CALDAVAdapter extends BaseAdapter
 											}
 										}
 
-										messageDatabase.begin(ReadWrite.READ);
-										Model deletes = ModelFactory.createDefaultModel();
-										removeEvent.forEach(
-												event -> unstoreRes(messageDatabase.getDefaultModel(), deletes,
-														serverCalURI, event));
-										messageDatabase.end();
+										update(() -> {
+											Delta delta = new Delta();
 
-										Model adds = ModelFactory.createDefaultModel();
-										addEvents.forEach(event -> {
-											try
-											{
-												storeEvent(adds, serverCalURI, encodeEvent(serverCal, event),
-														Biweekly.parse(sardine.get(serverHeader + event)).first()
-																.getEvents().get(0), event);
-											} catch (IOException e)
-											{
-												e.printStackTrace();
-											}
+											removeEvent.forEach(
+													event -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+															serverCalURI, event));
+
+											addEvents.forEach(event -> {
+												try
+												{
+													storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
+															Biweekly.parse(sardine.get(serverHeader + event)).first()
+																	.getEvents().get(0), event);
+												} catch (IOException e)
+												{
+													e.printStackTrace();
+												}
+											});
+
+											return delta;
 										});
-
-										update(adds, deletes);
 
 									}
 								}
@@ -502,21 +506,6 @@ public class CALDAVAdapter extends BaseAdapter
 								{
 									Set<String> currStoredEvents = getStored(eventURIs(storedCalURI), EVENTRES);
 
-									Model deleteEvent = ModelFactory.createDefaultModel();
-									messageDatabase.begin(ReadWrite.READ);
-									currStoredEvents.forEach(
-											eventURI -> unstoreRes(messageDatabase.getDefaultModel(), deleteEvent,
-													storedCalURI, eventURI));
-									messageDatabase.end();
-
-									update(ModelFactory.createDefaultModel(), deleteEvent);
-
-									Model deleteCalendar = ModelFactory.createDefaultModel();
-									messageDatabase.begin(ReadWrite.READ);
-									unstoreRes(messageDatabase.getDefaultModel(), deleteCalendar, getId(),
-											storedCalURI);
-									messageDatabase.end();
-
 									if (m_PerCalendarEvents.get(storedCalURI) != null)
 									{
 										m_PerCalendarEvents.remove(storedCalURI);
@@ -527,7 +516,24 @@ public class CALDAVAdapter extends BaseAdapter
 										m_Calendar.remove(storedCalURI);
 									}
 
-									update(ModelFactory.createDefaultModel(), deleteCalendar);
+									update(() -> {
+										Delta delta = new Delta();
+
+										currStoredEvents.forEach(
+												eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+														storedCalURI, eventURI));
+
+										return delta;
+									});
+
+									update(() -> {
+										Delta delta = new Delta();
+
+										unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedCalURI);
+
+										return delta;
+									});
+
 								}
 							}
 

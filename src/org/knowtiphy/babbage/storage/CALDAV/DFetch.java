@@ -9,7 +9,7 @@ import java.util.Set;
 /**
  * @author frank >=)
  */
-public interface Fetch
+public interface DFetch
 {
 	String EVENTRES = "event";
 	String CALRES = "calendar";

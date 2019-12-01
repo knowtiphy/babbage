@@ -49,4 +49,9 @@ public class Vars
     public static final String VAR_DESCRIPTION = "description";
     public static final String VAR_PRIORITY = "priority";
 
+    // AddressBook VARS
+    public static final String VAR_ADDRESSBOOK_ID = "addressBookId";
+    public static final String VAR_ADDRESSBOOK_NAME = "addressBookName";
+
+    // Card VARs
 }

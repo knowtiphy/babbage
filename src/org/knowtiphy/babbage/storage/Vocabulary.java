@@ -76,6 +76,15 @@ public interface Vocabulary
 
     // Vocabulary for CardDav
     String CARDDAV_ACCOUNT = TBASE + "CARDDAVAccount";
+    String CARDDAV_ADDRESSBOOK = TBASE + "CARDDAVAddressBook";
+    String CARDDAV_CARD = TBASE + "CARDDAVContact";
+
+    String HAS_FORMATTED_NAME = TBASE + "formattedName";
+    String HAS_NUMBER = TBASE + "hasNumber";
+    String HAS_NUMBER_TYPE = TBASE + "hasPhoneType";
+    String HAS_EMAIL = TBASE + "hasEmail";
+    String HAS_EMAIL_TYPE = TBASE + "hasEmailType";
+
 
     static String E(Object... parts)
     {
