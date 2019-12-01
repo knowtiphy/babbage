@@ -160,9 +160,9 @@ public class LocalStorage implements IStorage
 		return new ReadContext(messageDatabase);
 	}
 
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
 	{
-		return getAccount(accountId).ensureMessageContentLoaded(messageId, folderId);
+		return getAccount(accountId).ensureMessageContentLoaded(messageId, folderId, immediate);
 	}
 
 	@Override

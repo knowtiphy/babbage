@@ -169,7 +169,7 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		update(() -> {
+		applyAndNotify(() -> {
 			Delta delta = new Delta();
 
 			ResultSet rs = QueryExecutionFactory.create(calendarProperties(calURI), messageDB).execSelect();
@@ -195,7 +195,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		update(() -> {
+		applyAndNotify(() -> {
 
 			Delta delta = new Delta();
 
@@ -402,13 +402,13 @@ public class CALDAVAdapter extends BaseAdapter
 
 						m_PerCalendarEvents.put(serverCalURI, eventURIToRes);
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 							storeCalendar(delta, getId(), serverCalURI, serverCal);
 							return delta;
 						});
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 
 							addEvent.forEach(event -> {
@@ -489,7 +489,7 @@ public class CALDAVAdapter extends BaseAdapter
 								}
 							}
 
-							update(() -> {
+							applyAndNotify(() -> {
 								Delta delta = new Delta();
 
 								removeEvent.forEach(
@@ -536,7 +536,7 @@ public class CALDAVAdapter extends BaseAdapter
 							m_Calendar.remove(storedCalURI);
 						}
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 
 							currStoredEvents.forEach(
@@ -546,7 +546,7 @@ public class CALDAVAdapter extends BaseAdapter
 							return delta;
 						});
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 
 							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedCalURI);

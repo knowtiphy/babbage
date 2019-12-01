@@ -23,12 +23,18 @@ public class MessageContent
 	private final boolean allowHTML;
 	private final Map<String, Part> cidMap = new HashMap<>(30);
 	private final Collection<Part> attachments = new LinkedList<>();
+	private Part content;
 
 	public MessageContent(Message message, boolean allowHTML)
 	{
 		assert message != null;
 		this.message = message;
 		this.allowHTML = allowHTML;
+	}
+
+	public Part getContent()
+	{
+		return content;
 	}
 
 	public Map<String, Part> getCidMap()
@@ -179,11 +185,6 @@ public class MessageContent
 		}
 	}
 
-	public Part getContent() throws MessagingException, IOException
-	{
-		return getText(message);
-	}
-
 	private void parseAttachments() throws MessagingException, IOException
 	{
 		Collection<Part> inline = new LinkedList<>();
@@ -217,11 +218,10 @@ public class MessageContent
 		}
 	}
 
-	protected MessageContent process() throws MessagingException, IOException
+	protected void process() throws MessagingException, IOException
 	{
-		getContent();
+		content = getText(message);
 		parseAttachments();
-		return this;
 	}
 }
 

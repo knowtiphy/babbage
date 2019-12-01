@@ -17,7 +17,7 @@ public interface IStorage
 	// For time being, stick all extra methods in here
 	Map<String, FutureTask<?>> addListener(IStorageListener listener) throws InterruptedException, StorageException, MessagingException;
 
-	Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId);
+	Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate);
 
 	void send(MessageModel model) throws StorageException;
 

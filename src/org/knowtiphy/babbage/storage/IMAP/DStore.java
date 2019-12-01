@@ -69,7 +69,10 @@ public interface DStore
 		delta.addR(folderId, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER)
 				.addR(account.getId(), Vocabulary.CONTAINS, folderId)
 				.addL(folderId, Vocabulary.HAS_UID_VALIDITY, ((UIDFolder) folder).getUIDValidity())
-				.addL(folderId, Vocabulary.HAS_NAME, folder.getName());
+				.addL(folderId, Vocabulary.HAS_NAME, folder.getName())
+				.addL(folderId, Vocabulary.IS_INBOX, Constants.INBOX_FOLDER_PATTERN.matcher(folder.getName()).matches())
+				.addL(folderId, Vocabulary.IS_TRASH_FOLDER, Constants.TRASH_FOLDER_PATTERN.matcher(folder.getName()).matches())
+				.addL(folderId, Vocabulary.IS_JUNK_FOLDER, Constants.JUNK_FOLDER_PATTERN.matcher(folder.getName()).matches());
 	}
 
 	static void addFolderCounts(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
@@ -88,9 +91,12 @@ public interface DStore
 	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent)
 			throws MessagingException, IOException
 	{
+		System.out.println("START CONTENT FETCH");
 		String messageId = adapter.encode(message);
-		delta.addL(messageId, Vocabulary.HAS_CONTENT, messageContent.getContent().getContent().toString())
-				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(messageContent.getContent()));
+		Part content = messageContent.getContent();
+		delta.addL(messageId, Vocabulary.HAS_CONTENT, content.getContent().toString())
+				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(content));
+		System.out.println("START CONTENT FETCH --- BASIC");
 		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
 		{
 			String cidId = adapter.encode(message, entry.getKey());
@@ -99,6 +105,7 @@ public interface DStore
 					.addL(cidId, Vocabulary.HAS_MIME_TYPE, mimeType(entry.getValue()))
 					.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
 		}
+		System.out.println("START CONTENT FETCH --- CID");
 
 		int i = 0;
 		for (Part part : messageContent.getAttachments())
@@ -115,6 +122,7 @@ public interface DStore
 				i++;
 			}
 		}
+		System.out.println("START CONTENT FETCH --- ATTACHMENTS");
 	}
 
 	static void addMessageFlags(Delta delta, Message message, String messageId) throws MessagingException
@@ -129,7 +137,7 @@ public interface DStore
 			//                junk = false;
 			//                break;
 			//            }
-			if (org.knowtiphy.babbage.storage.IMAP.Pattern.MSG_JUNK_PATTERN.matcher(flag).matches())
+			if (Constants.MSG_JUNK_PATTERN.matcher(flag).matches())
 			{
 				junk = true;
 			}

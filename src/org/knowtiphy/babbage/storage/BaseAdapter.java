@@ -7,9 +7,9 @@ import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
-import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
+import org.knowtiphy.utils.ThrowingConsumer;
 import org.knowtiphy.utils.ThrowingSupplier;
 
 import javax.mail.Message;
@@ -97,7 +97,7 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
-	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
+	public Future<?> ensureMessageContentLoaded(String messageId, String folderId, boolean immediate)
 	{
 		throw new UnsupportedOperationException();
 	}
@@ -107,24 +107,8 @@ public abstract class BaseAdapter implements IAdapter
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(delta));
 	}
 
-	//	update based on a delta
-	protected void update(Delta delta)
-	{
-		messageDatabase.begin(ReadWrite.WRITE);
-		messageDatabase.getDefaultModel().remove(delta.getDeletes());
-		messageDatabase.getDefaultModel().add(delta.getAdds());
-		messageDatabase.commit();
-		messageDatabase.end();
-		notifyListeners(delta);
-	}
+	//	run a query, which returns a value of type T, inside a read transaction on the database
 
-	//	update based on the delta produced by a supplier
-	public <E extends Exception> void update(ThrowingSupplier<Delta, E> query) throws E
-	{
-		update(query(query));
-	}
-
-	//	run a query returning T inside a read transaction on the database
 	public <T, E extends Exception> T query(ThrowingSupplier<T, E> query) throws E
 	{
 		messageDatabase.begin(ReadWrite.READ);
@@ -135,29 +119,83 @@ public abstract class BaseAdapter implements IAdapter
 		{
 			messageDatabase.abort();
 			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
-			throw ex;
+			//noinspection unchecked
+			throw (E) ex;
 		} finally
 		{
 			messageDatabase.end();
 		}
 	}
 
-	//	run a query inside a read transaction on the database
-	public <E extends Exception> void query(IProcedure<E> query) throws E
+	//	run a query, which fills a delta with adds/deletes, inside a read transaction on the database
+
+	public <E extends Exception> Delta query(ThrowingConsumer<Delta, E> computeChanges) throws E
 	{
-		messageDatabase.begin(ReadWrite.READ);
+		return query(() ->
+		{
+			Delta delta = new Delta();
+			computeChanges.apply(delta);
+			return delta;
+		});
+	}
+
+	//	run a query, which fills a delta with adds/deletes, inside a read transaction on the database,
+	//	and notify any listeners
+
+	public <E extends Exception> void queryAndNotify(ThrowingConsumer<Delta, E> computeChanges) throws E
+	{
+		notifyListeners(query(computeChanges));
+	}
+
+	//	apply a change to the database represented by a delta (a collection of adds and deletes)
+
+	protected Delta apply(Delta delta)
+	{
+		messageDatabase.begin(ReadWrite.WRITE);
 		try
 		{
-			query.call();
+			messageDatabase.getDefaultModel().remove(delta.getDeletes());
+			messageDatabase.getDefaultModel().add(delta.getAdds());
+			messageDatabase.commit();
 		} catch (Exception ex)
 		{
-			messageDatabase.abort();
+			//	if this happens were are in deep shit with no real way of recovering
 			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
-			throw ex;
+			messageDatabase.abort();
 		} finally
 		{
 			messageDatabase.end();
 		}
+
+		return delta;
+	}
+
+	//	apply a change to the database represented by the delta computed from a query running insides a read transaction
+
+	public <E extends Exception> Delta apply(ThrowingConsumer<Delta, E> computeChanges) throws E
+	{
+		return apply(query(computeChanges));
+	}
+
+	//	apply a change to the database represented by a delta and notify all listeners
+
+	protected void applyAndNotify(Delta delta)
+	{
+		notifyListeners(apply(delta));
+	}
+
+	//	apply a change to the database represented by the delta computed from a query running insides a read transaction,
+	//	and notify listeners
+
+	public <E extends Exception> void applyAndNotify(ThrowingConsumer<Delta, E> computeChanges) throws E
+	{
+		notifyListeners(apply(computeChanges));
+	}
+
+	//	update based on the delta produced by a supplier -- the consumer approach is cleaner
+	public <E extends Exception> void applyAndNotify(ThrowingSupplier<Delta, E> changes) throws E
+	{
+		applyAndNotify(query(changes));
 	}
 
 	public String getStoredTag(String query, String resType)

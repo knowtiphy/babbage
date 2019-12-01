@@ -21,58 +21,85 @@ public interface DFetch
 {
 	static String skeleton(String id)
 	{
-		return String.format("CONSTRUCT { ?%s <%s> <%s> . " +
-						"    <%s> <%s> ?%s  . " +
-						" ?%s <%s> ?%s   . " +
-						" ?%s <%s> ?%s . " +
-						"?%s <%s> ?%s}\n" +
-						"WHERE \n" + "{\n" + " ?%s <%s> <%s>.\n" + "      "
-						+ "                 <%s> <%s> ?%s.\n"
-						+ "                ?%s <%s> ?%s.\n" + "      "
-						+ "                ?%s <%s> ?%s.\n" + "      "
-						+ "                ?%s <%s> ?%s.\n" + "}",
+		return String.format("CONSTRUCT\n"
+						+ "{\n"
+						+ "?%s <%s> <%s>.\n"
+						+ "<%s> <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s\n"
+						+ "}\n"
+						+ "WHERE\n"
+						+ "{\n"
+						+ " ?%s <%s> <%s>.\n"
+						+ "<%s> <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "}",
 				// START OF CONSTRUCT
 				Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
 				id, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_INBOX, Vars.VAR_IS_INBOX_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_TRASH_FOLDER, Vars.VAR_IS_TRASH_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_JUNK_FOLDER, Vars.VAR_IS_JUNK_FOLDER,
 				// START OF WHERE
 				Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
 				id, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
-				Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT);
+				Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_INBOX, Vars.VAR_IS_INBOX_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_TRASH_FOLDER, Vars.VAR_IS_TRASH_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_JUNK_FOLDER, Vars.VAR_IS_JUNK_FOLDER);
 	}
 
 	static String initialState(String id)
 	{
-		return String.format("CONSTRUCT { ?%s <%s> ?%s . "
-						+ " ?%s <%s> <%s> . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ "?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s . "
-						+ " ?%s <%s> ?%s }\n"
-						+ "WHERE \n" + "{\n" + "      "
-						+ " ?%s <%s> ?%s.\n" + "      "
-						+ " <%s>  <%s> ?%s.\n" + "      "
-						+ " ?%s  <%s> <%s>.\n"
-						+ " ?%s  <%s> ?%s.\n" + "      "
-						+ " ?%s  <%s> ?%s.\n" + "      "
-						+ " ?%s  <%s> ?%s.\n"
-						+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-						+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-						+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "      OPTIONAL { ?%s  <%s> ?%s }\n"
-						+ "      OPTIONAL { ?%s  <%s> ?%s }\n" + "}",
+		return String.format("CONSTRUCT\n" +
+						"{\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> <%s>.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s }\n"
+						+ "WHERE\n"
+						+ "{\n" + "      "
+						+ "?%s <%s> ?%s.\n" + "      "
+						+ "<%s>  <%s> ?%s.\n" + "      "
+						+ "?%s  <%s> <%s>.\n"
+						+ "?%s  <%s> ?%s.\n" + "      "
+						+ "?%s  <%s> ?%s.\n" + "      "
+						+ "?%s  <%s> ?%s.\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "OPTIONAL { ?%s  <%s> ?%s }\n"
+						+ "}",
 				// START OF CONSTRUCT
 				Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
 				Vars.VAR_MESSAGE_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_MESSAGE,
+				Vars.VAR_FOLDER_ID, Vocabulary.CONTAINS, Vars.VAR_MESSAGE_ID,
 				Vars.VAR_MESSAGE_ID, Vocabulary.IS_READ, Vars.VAR_IS_READ,
 				Vars.VAR_MESSAGE_ID, Vocabulary.IS_JUNK, Vars.VAR_IS_JUNK,
 				Vars.VAR_MESSAGE_ID, Vocabulary.IS_ANSWERED, Vars.VAR_IS_ANSWERED,
