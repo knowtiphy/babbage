@@ -141,17 +141,13 @@ public class CALDAVAdapter extends BaseAdapter
 		{
 			accountInfo.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
-
 		notifyListeners(accountInfo);
 
-		Delta skeleton = new Delta();
-		skeleton.getAdds().add(query(
-				() -> QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
-		notifyListeners(skeleton);
+		queryAndNotify(delta -> delta
+				.add(QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
 
-		Delta initialState = new Delta();
-		initialState.getAdds().add(query(
-				() -> QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel()).execConstruct()));
+		queryAndNotify(delta -> delta
+				.add(QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel()).execConstruct()));
 
 	}
 
@@ -169,8 +165,7 @@ public class CALDAVAdapter extends BaseAdapter
 	{
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		applyAndNotify(() -> {
-			Delta delta = new Delta();
+		applyAndNotify(delta -> {
 
 			ResultSet rs = QueryExecutionFactory.create(calendarProperties(calURI), messageDB).execSelect();
 			updateTriple(messageDB, delta, calURI, Vocabulary.HAS_CTAG, cal.getCustomProps().get("getctag"));
@@ -184,7 +179,6 @@ public class CALDAVAdapter extends BaseAdapter
 				}
 			}
 
-			return delta;
 		});
 
 	}
@@ -195,9 +189,7 @@ public class CALDAVAdapter extends BaseAdapter
 
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		applyAndNotify(() -> {
-
-			Delta delta = new Delta();
+		applyAndNotify(delta -> {
 
 			updateTriple(messageDB, delta, eventURI, Vocabulary.HAS_ETAG, serverEvent.getEtag());
 
@@ -262,7 +254,6 @@ public class CALDAVAdapter extends BaseAdapter
 
 			}
 
-			return delta;
 		});
 
 	}
@@ -402,14 +393,11 @@ public class CALDAVAdapter extends BaseAdapter
 
 						m_PerCalendarEvents.put(serverCalURI, eventURIToRes);
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
+						applyAndNotify(delta -> {
 							storeCalendar(delta, getId(), serverCalURI, serverCal);
-							return delta;
 						});
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
+						applyAndNotify(delta -> {
 
 							addEvent.forEach(event -> {
 								try
@@ -423,7 +411,6 @@ public class CALDAVAdapter extends BaseAdapter
 								}
 							});
 
-							return delta;
 						});
 
 					}
@@ -489,8 +476,7 @@ public class CALDAVAdapter extends BaseAdapter
 								}
 							}
 
-							applyAndNotify(() -> {
-								Delta delta = new Delta();
+							applyAndNotify(delta -> {
 
 								removeEvent.forEach(
 										event -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverCalURI,
@@ -508,7 +494,6 @@ public class CALDAVAdapter extends BaseAdapter
 									}
 								});
 
-								return delta;
 							});
 
 						}
@@ -536,22 +521,18 @@ public class CALDAVAdapter extends BaseAdapter
 							m_Calendar.remove(storedCalURI);
 						}
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
+						applyAndNotify(delta -> {
 
 							currStoredEvents.forEach(
 									eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta, storedCalURI,
 											eventURI));
 
-							return delta;
 						});
 
-						applyAndNotify(() -> {
-							Delta delta = new Delta();
+						applyAndNotify(delta -> {
 
 							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedCalURI);
 
-							return delta;
 						});
 
 					}
