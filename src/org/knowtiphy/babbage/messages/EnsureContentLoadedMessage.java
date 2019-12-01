@@ -7,17 +7,19 @@ public class EnsureContentLoadedMessage implements IMessage
 	private final String accountID;
 	private final String folderID;
 	private final String mID;
+	private final boolean immediate;
 
-	public EnsureContentLoadedMessage(String accountID, String folderID, String mID)
+	public EnsureContentLoadedMessage(String accountID, String folderID, String mID, boolean immediate)
 	{
 		this.accountID = accountID;
 		this.folderID = folderID;
 		this.mID = mID;
+		this.immediate = immediate;
 	}
 
 	@Override
 	public void perform(IStorage storage)
 	{
-		storage.ensureMessageContentLoaded(accountID, folderID, mID);
+		storage.ensureMessageContentLoaded(accountID, folderID, mID, immediate);
 	}
 }

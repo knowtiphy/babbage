@@ -39,6 +39,9 @@ public interface Vocabulary
     String HAS_UID_VALIDITY = TBASE + "hasUIDValidity";
     String HAS_MESSAGE_COUNT = TBASE + "hasMessageCount";
     String HAS_UNREAD_MESSAGE_COUNT = TBASE + "hasUnreadMessageCount";
+    String IS_JUNK_FOLDER = TBASE + "isJunkFolder";
+    String IS_INBOX = TBASE + "isInBox";
+    String IS_TRASH_FOLDER = TBASE + "isTrashFolder";
 
     String CONTAINS = TBASE + "contains";
 

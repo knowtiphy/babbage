@@ -3,6 +3,7 @@ package org.knowtiphy.babbage.storage.IMAP;
 import com.sun.mail.imap.IMAPFolder;
 import com.sun.mail.imap.IdleManager;
 import com.sun.mail.util.MailConnectException;
+import org.apache.commons.lang3.concurrent.ConcurrentUtils;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
@@ -17,6 +18,7 @@ import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
+import org.knowtiphy.utils.Pair;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
@@ -61,13 +63,11 @@ import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -87,13 +87,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(IMAPAdapter.class.getName());
 
-	private static final long FREQUENCY = 60000L;
-	private static final String JUNK_FLAG = "Junk";
-
-	private static final int NUM_ATTEMPTS = 5;
-	private static final Runnable POISON_PILL = () -> {
-	};
-
 	private final String id;
 	private final String serverName;
 	private final String emailAddress;
@@ -108,10 +101,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	map org.knowtiphy.pinkpigmail.messages to ids of those org.knowtiphy.pinkpigmail.messages for org.knowtiphy.pinkpigmail.messages being deleted
 	//private final Map<Message, String> m_toDelete = new HashMap<>();
 
-	private final BlockingQueue<Runnable> workQ;
-	//private final BlockingQueue<Runnable> contentQ;
-	private final Thread doWork;
+	//	private final BlockingQueue<Runnable> workQ;
+//	private final Thread doWork;
+	private final ExecutorService doWork;
 	private final ExecutorService doContent;
+	private final ExecutorService doLoahahead;
 	private final Mutex accountLock;
 	private final IdleManager idleManager;
 	private final Store store;
@@ -151,41 +145,41 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		accountLock = new Mutex();
 		accountLock.lock();
 
-		workQ = new LinkedBlockingQueue<>();
-		doWork = new Thread(new Worker(workQ));
+//		workQ = new LinkedBlockingQueue<>();
+//		doWork = new Thread(new Worker(workQ));
+		doWork = Executors.newSingleThreadExecutor();
 		doContent = Executors.newCachedThreadPool();
+		doLoahahead = Executors.newFixedThreadPool(4);
 
-		doWork.start();
+//		doWork.start();
+
+		Properties incoming = new Properties();
+		incoming.put("mail.store.protocol", "imaps");
+		incoming.put("mail.imaps.host", serverName);
+		incoming.put("mail.imaps.usesocketchannels", "true");
+		incoming.put("mail.imaps.peek", "true");
 
 		//	TODO -- all these need to be in RDF
-		Properties incoming = new Properties();
-		incoming.setProperty("mail.store.protocol", "imaps");
-		incoming.setProperty("mail.imaps.host", serverName);
-		incoming.setProperty("mail.imaps.compress.enable", "true");
-		incoming.setProperty("mail.imaps.usesocketchannels", "true");
-		incoming.setProperty("mail.imaps.peek", "true");
-		incoming.setProperty("mail.imaps.connectionpoolsize", "10");
-		//		incoming.setProperty("mail.imaps.fetchsize", "1000000");
-		//		incoming.setProperty("mail.imaps.timeout", timeout + "");
-		//		incoming.setProperty("mail.imaps.connectiontimeout", connectiontimeout + "");
-		//		incoming.setProperty("mail.imaps.writetimeout", writetimeout + "");
-		//		incoming.setProperty("mail.imaps.connectionpooltimeout", connectionpooltimeout + "");
+		incoming.put("mail.imaps.compress.enable", "true");
+		incoming.put("mail.imaps.connectionpoolsize", "10");
+		incoming.put("mail.imaps.fetchsize", "3000000");
 		// incoming.setProperty("mail.imaps.port", "993");
 
 		//	we need system properties to pick up command line flags
 		Properties props = System.getProperties();
 		props.putAll(incoming);
 		Session session = Session.getInstance(props, null);
-		//session.setDebug(true);
-		store = session.getStore("imaps");
+//		session.setDebug(true);
 
+		Properties props1 = session.getProperties();
+		props1.put("mail.event.scope", "session"); // or "application"
+		ExecutorService es = Executors.newCachedThreadPool();
+		props1.put("mail.event.executor", es);
+
+		store = session.getStore("imaps");
 		store.connect(serverName, emailAddress, password);
 		//	we can in fact have one idle manager for all accounts ..
-		ExecutorService es = Executors.newCachedThreadPool();
 		idleManager = new IdleManager(session, es);
-		Properties props1 = session.getProperties();
-		props1.setProperty("mail.event.scope", "session"); // or "application"
-		props1.put("mail.event.executor", es);
 	}
 
 	@Override
@@ -216,28 +210,20 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	@Override
 	public void addListener()
 	{
-		Delta delta = new Delta();
-		delta.addR(id, Vocabulary.RDF_TYPE, Vocabulary.IMAP_ACCOUNT)
+		Delta delta = new Delta()
+				.addR(id, Vocabulary.RDF_TYPE, Vocabulary.IMAP_ACCOUNT)
 				.addL(id, Vocabulary.HAS_SERVER_NAME, serverName)
 				.addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
-				.addL(id, Vocabulary.HAS_PASSWORD, password);
-		if (nickName != null)
-		{
-			delta.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
-		}
+				.addL(id, Vocabulary.HAS_PASSWORD, password)
+				.addLN(id, Vocabulary.HAS_NICK_NAME, nickName);
 		trustedSenders.forEach(x -> delta.addL(id, Vocabulary.HAS_TRUSTED_SENDER, x));
 		trustedContentProviders.forEach(x -> delta.addL(id, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, x));
 		notifyListeners(delta);
 
-		Delta delta1 = new Delta();
-		delta1.getAdds().add(
-				query(() -> QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct()));
-		notifyListeners(delta1);
-
-		Delta delta2 = new Delta();
-		delta2.getAdds().add(query(() ->
-				QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct()));
-		notifyListeners(delta2);
+		queryAndNotify(d ->
+				d.add(QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct()));
+		queryAndNotify(d ->
+				d.add(QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct()));
 	}
 
 	public void close()
@@ -245,10 +231,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		LOGGER.log(Level.INFO, "{0} :: shutting down work queues", emailAddress);
 		try
 		{
-			workQ.add(POISON_PILL);
-			doWork.join();
+//			workQ.add(Constants.POISON_PILL);
+//			doWork.join();
+			doWork.shutdown();
 			doContent.shutdown();
+			doLoahahead.shutdown();
 			doContent.awaitTermination(10_000L, TimeUnit.SECONDS);
+			doLoahahead.awaitTermination(10_000L, TimeUnit.SECONDS);
 		} catch (InterruptedException ex)
 		{
 			//  ignore
@@ -310,7 +299,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		return addWork(new MessageWork(() -> {
 			Message[] messages = U(folderId, messageIds);
-			mark(messages, new Flags(JUNK_FLAG), flag);
+			mark(messages, new Flags(Constants.JUNK_FLAG), flag);
 			return messages[0].getFolder();
 		}));
 	}
@@ -326,7 +315,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			assert sourceFolder != null;
 			Folder targetFolder = m_folder.get(targetFolderId);
 			assert targetFolder != null;
-			mark(messages, new Flags(JUNK_FLAG), true);
+			mark(messages, new Flags(Constants.JUNK_FLAG), true);
 			sourceFolder.copyMessages(messages, targetFolder);
 			if (delete)
 			{
@@ -482,44 +471,57 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	//	AUDIT -- I think this will now work if we have a folder closed exception and we re-run the work.
-	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
+	public Future<?> ensureMessageContentLoaded(String messageId, String folderId, boolean immediate)
 	{
-		System.err.println("ensureMessageContentLoaded : " + messageId);
-		return doContent.submit(new MessageWork(() -> {
-			ensureMapsLoaded();
+//		System.err.println("ensureMessageContentLoaded : " + immediate + " :: " + messageId);
 
-			//	check if the content is not already in the database
-			boolean stored = query(() -> messageDatabase.getDefaultModel().
-					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
-							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
-			System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
+		boolean stored = query(() -> messageDatabase.getDefaultModel().
+				listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
+						P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
+//		System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
 
-			if (!stored)
-			{
-				assert m_folder.containsKey(folderId);
-				Folder folder = m_folder.get(folderId);
-				Message[] msgs = U(encode(folder), List.of(messageId));
+		return stored ?
+				ConcurrentUtils.constantFuture(null) :
+				(immediate ? doContent : doLoahahead).submit(new MessageWork(() -> {
+					ensureMapsLoaded();
 
-				//	how do we set a profile for the actual content?
-				//				FetchProfile fp = new FetchProfile();
-				//				fp.add(FetchProfile.Item.CONTENT_INFO);
-				//				folder.fetch(msgs, fp);
+					//	check if the content is not already in the database
+//			boolean stored = query(() -> messageDatabase.getDefaultModel().
+//					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
+//							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
 
-				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-				update(() -> {
-					Delta delta = new Delta();
-					for (Message message : msgs)
+					//	if (!stored)
 					{
-						addMessageContent(delta, this, message, new MessageContent(message, true).process());
-					}
-					return delta;
-				});
-				System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
-				return folder;
-			}
+						assert m_folder.containsKey(folderId);
+						Folder folder = m_folder.get(folderId);
+						Message[] msgs = U(encode(folder), List.of(messageId));
 
-			return null;
-		}));
+						///how do we set a profile for the actual content?
+//				FetchProfile fp = new FetchProfile();
+//				fp.add(FetchProfile.Item.CONTENT_INFO);
+//				folder.fetch(msgs, fp);
+
+						//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
+						List<Pair<Message, MessageContent>> contents = new LinkedList<>();
+						for (Message message : msgs)
+						{
+							MessageContent content = new MessageContent(message, true);
+							content.process();
+							contents.add(new Pair<>(message, content));
+						}
+
+						applyAndNotify(delta -> {
+							for (Pair<Message, MessageContent> p : contents)
+							{
+								addMessageContent(delta, this, p.fst(), p.snd());
+							}
+						});
+//						System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
+						return folder;
+					}
+
+					//	return null;
+				}));
 	}
 
 	//	private methods start here
@@ -532,7 +534,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private static void openFolder(Folder folder) throws StorageException
 	{
-		for (int i = 0; i < NUM_ATTEMPTS; i++)
+		for (int i = 0; i < Constants.NUM_ATTEMPTS; i++)
 		{
 			try
 			{
@@ -600,7 +602,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		if (inbox != null)
 		{
 			LOGGER.log(Level.INFO, "Starting ping server for {0}", inbox.getName());
-			pingThread = new Thread(new PingServer(this, inbox, FREQUENCY));
+			pingThread = new Thread(new PingServer(this, inbox, Constants.FREQUENCY));
 			pingThread.start();
 		}
 	}
@@ -688,7 +690,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			return;
 		} catch (MessagingException ex)
 		{
-			for (int i = 0; i < NUM_ATTEMPTS; i++)
+			for (int i = 0; i < Constants.NUM_ATTEMPTS; i++)
 			{
 				try
 				{
@@ -724,9 +726,21 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	protected <T> Future<T> addWork(Callable<T> operation)
 	{
-		FutureTask<T> task = new FutureTask<>(operation);
-		workQ.add(task);
-		return task;
+		return doWork.submit(() -> {
+			try
+			{
+				ensureMapsLoaded();
+				return operation.call();
+			} catch (Exception ex)
+			{
+				LOGGER.warning(ex.getLocalizedMessage());
+				return null;
+			}
+		});
+
+//		FutureTask<T> task = new FutureTask<>(operation);
+//		workQ.add(task);
+//		return task;
 	}
 
 	private MimeMessage createMessage() throws MessagingException
@@ -770,7 +784,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			openFolder(folder);
 			m_folder.put(encode(folder), folder);
-			if (Pattern.INBOX.matcher(folder.getName()).matches())
+			if (Constants.INBOX_FOLDER_PATTERN.matcher(folder.getName()).matches())
 			{
 				inbox = folder;
 			}
@@ -794,8 +808,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//  store any folders we don't already have, and update folder counts for ones we do have
 		//  TODO -- need to handle deleted folders
 
-		update(() -> {
-			Delta delta = new Delta();
+		applyAndNotify(delta -> {
 			for (Folder folder : m_folder.values())
 			{
 				String folderId = encode(folder);
@@ -817,8 +830,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				addFolderCounts(delta, this, folder);
 			}
-
-			return delta;
 		});
 	}
 
@@ -875,12 +886,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		update(() ->
+		applyAndNotify(delta ->
 		{
-			Delta delta = new Delta();
 			removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, message));
 			addUID.forEach(message -> DStore.addMessage(delta, folderId, message));
-			return delta;
 		});
 	}
 
@@ -907,15 +916,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			//  fetch headers we don't have
 
-			update(() -> {
-				Delta delta = new Delta();
+			applyAndNotify(delta -> {
 				for (Message msg : msgs)
 				{
 					String messageId = encode(msg);
 					addMessageHeaders(delta, msg, messageId);
 					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
 				}
-				return delta;
 			});
 		}
 	}
@@ -965,10 +972,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					//	deletes are handled elsewhere
 					if (!isDeleted(message))
 					{
-						update(() ->
+						applyAndNotify(delta ->
 						{
-							Delta delta = new Delta();
-
 							String folderId = encode(folder);
 							String messageId = encode(message);
 
@@ -984,7 +989,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								//  not sure if this is possible -- probably not
 								LOGGER.info("OUT OF ORDER CHANGE");
 							}
-							return delta;
 						});
 					}
 				}
@@ -1015,8 +1019,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 
 			addWork(new MessageWork(() -> {
-				update(() -> {
-					Delta delta = new Delta();
+				applyAndNotify(delta -> {
 					for (Message message : e.getMessages())
 					{
 						String folderId = encode(folder);
@@ -1032,7 +1035,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						{
 						DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, encode(message));
 					}
-					return delta;
 				});
 
 				return folder;
@@ -1046,11 +1048,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
 
 			addWork(new MessageWork(() -> {
-				update(() ->
+				applyAndNotify(delta ->
 				{
 					String folderId = encode(folder);
 
-					Delta delta = new Delta();
 					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
 					DStore.addFolderCounts(delta, account, folder);
 
@@ -1062,8 +1063,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						addMessageHeaders(delta, message, messageId);
 						m_PerFolderMessage.get(folder).put(messageId, message);
 					}
-
-					return delta;
 				});
 
 				return folder;
@@ -1083,7 +1082,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		@Override
 		public Folder call() throws Exception
 		{
-			for (int attempts = 0; attempts < NUM_ATTEMPTS; attempts++)
+			for (int attempts = 0; attempts < Constants.NUM_ATTEMPTS; attempts++)
 			{
 				try
 				{
@@ -1120,44 +1119,44 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			throw new StorageException("OPERATION FAILED");
 		}
 	}
-
-	private class Worker implements Runnable
-	{
-		private final BlockingQueue<? extends Runnable> queue;
-
-		Worker(BlockingQueue<? extends Runnable> queue)
-		{
-			this.queue = queue;
-		}
-
-		@Override
-		public void run()
-		{
-			while (true)
-			{
-				try
-				{
-					Runnable task = queue.take();
-					if (task == POISON_PILL)
-					{
-						return;
-					}
-					else
-					{
-						ensureMapsLoaded();
-						try
-						{
-							task.run();
-						} catch (RuntimeException ex)
-						{
-							LOGGER.warning(ex.getLocalizedMessage());
-						}
-					}
-				} catch (InterruptedException e)
-				{
-					return;
-				}
-			}
-		}
-	}
+//
+//	private class Worker implements Runnable
+//	{
+//		private final BlockingQueue<? extends Runnable> queue;
+//
+//		Worker(BlockingQueue<? extends Runnable> queue)
+//		{
+//			this.queue = queue;
+//		}
+//
+//		@Override
+//		public void run()
+//		{
+//			while (true)
+//			{
+//				try
+//				{
+//					Runnable task = queue.take();
+//					if (task == Constants.POISON_PILL)
+//					{
+//						return;
+//					}
+//					else
+//					{
+//						ensureMapsLoaded();
+//						try
+//						{
+//							task.run();
+//						} catch (RuntimeException ex)
+//						{
+//							LOGGER.warning(ex.getLocalizedMessage());
+//						}
+//					}
+//				} catch (InterruptedException e)
+//				{
+//					return;
+//				}
+//			}
+//		}
+//	}
 }

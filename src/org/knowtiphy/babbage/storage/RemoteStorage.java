@@ -56,9 +56,9 @@ public class RemoteStorage implements IStorage
 	}
 
 	@Override
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
 	{
-		return send(new EnsureContentLoadedMessage(accountId, folderId, messageId));
+		return send(new EnsureContentLoadedMessage(accountId, folderId, messageId, immediate));
 	}
 
 	@Override

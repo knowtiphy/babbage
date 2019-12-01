@@ -99,22 +99,13 @@ public class LocalStorageSandBox implements IStorage
 		while (result.hasNext())
 		{
 			QuerySolution soln = result.next();
-			//System.out.println(soln.varNames());
-			//System.out.println(soln.toString());
 			Resource name = soln.getResource("id");
 			Resource type = soln.getResource("type");
-
 			Class<IAdapter> cls = (Class<IAdapter>) m_Class.get(type.toString());
-
 			IAdapter adapter = cls.getConstructor(String.class, Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
 					.newInstance(name.toString(), messageDatabase, listenerManager, notificationQ, accountsModel);
-
 			m_adapter.put(adapter.getId(), adapter);
-
-			System.out.println("NAME :: " + name + " TYPE:: " + type);
 		}
-
-		System.out.println("AFTER RESULT SET");
 
 		//	thread which notifies listeners of changes
 		//noinspection CallToThreadStartDuringObjectConstruction
@@ -169,9 +160,9 @@ public class LocalStorageSandBox implements IStorage
 		return new ReadContext(messageDatabase);
 	}
 
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
 	{
-		return getAccount(accountId).ensureMessageContentLoaded(messageId, folderId);
+		return getAccount(accountId).ensureMessageContentLoaded(messageId, folderId, immediate);
 	}
 
 	// Will call an addListener method in each adapter
@@ -182,7 +173,6 @@ public class LocalStorageSandBox implements IStorage
 		for (IAdapter adapter : m_adapter.values())
 		{
 			// Add relevant triples to the model
-			System.err.println("ADAPTER === " + adapter.getId());
 			adapter.addListener();
 		}
 
@@ -191,10 +181,7 @@ public class LocalStorageSandBox implements IStorage
 		Map<String, FutureTask<?>> accountToFuture = new ConcurrentHashMap<>(100);
 		for (IAdapter adapter : m_adapter.values())
 		{
-			System.out.println("ADAPTER ID :: " + adapter.getId());
 			FutureTask<?> futureTask = adapter.getSynchTask();
-			System.out.println("FUTURE TASK :: " + futureTask);
-
 			accountToFuture.put(adapter.getId(), futureTask);
 			// For each account, spin up a thread that does a sync for it
 			new Thread(futureTask).start();

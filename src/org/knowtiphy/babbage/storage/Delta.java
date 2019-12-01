@@ -72,13 +72,27 @@ public class Delta
 		return this;
 	}
 
+	public <T> Delta addLN(String subject, String predicate, T object)
+	{
+		if (object != null)
+		{
+			adds.add(adds.createStatement(R(adds, subject), P(adds, predicate), L(adds, object)));
+		}
+		return this;
+	}
+
+
 	public Delta add(StmtIterator stmts)
 	{
 		stmts.forEachRemaining(adds::add);
 		return this;
-
 	}
 
+	public Delta add(Model model)
+	{
+		adds.add(model);
+		return this;
+	}
 //	public <T> void deleteR(String subject, String predicate, String object)
 //	{
 //		toDelete.add(toDelete.createStatement(R(toDelete, subject), P(toDelete, predicate), R(toDelete, object)));
@@ -99,9 +113,8 @@ public class Delta
 	{
 		StringWriter sw = new StringWriter();
 		PrintWriter pw = new PrintWriter(sw);
-		StringBuilder builder = new StringBuilder();
 		JenaUtils.printModel(adds.listStatements(), "+", pw);
 		JenaUtils.printModel(deletes.listStatements(), "-", pw);
-		return builder.toString();
+		return sw.toString();
 	}
 }

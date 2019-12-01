@@ -46,5 +46,5 @@ public interface IAdapter
 
 	FutureTask<?> getSynchTask();
 
-	Future<?> ensureMessageContentLoaded(String messageId, String folderId);
+	Future<?> ensureMessageContentLoaded(String messageId, String folderId, boolean immediate);
 }

@@ -114,7 +114,7 @@ public class CARDDAVAdapter extends BaseAdapter
 	{
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		update(() -> {
+		applyAndNotify(() -> {
 			Delta delta = new Delta();
 
 			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).execSelect();
@@ -141,7 +141,7 @@ public class CARDDAVAdapter extends BaseAdapter
 
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		update(() -> {
+		applyAndNotify(() -> {
 
 			Delta delta = new Delta();
 
@@ -350,13 +350,13 @@ public class CARDDAVAdapter extends BaseAdapter
 
 						m_PerBookCards.put(serverBookURI, cardURIToRes);
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 							storeAddressBook(delta, getId(), serverBookURI, serverBook);
 							return delta;
 						});
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 							addCard.forEach(card -> {
 								try
@@ -437,7 +437,7 @@ public class CARDDAVAdapter extends BaseAdapter
 								}
 							}
 
-							update(() -> {
+							applyAndNotify(() -> {
 								Delta delta = new Delta();
 
 								removeCard.forEach(
@@ -483,7 +483,7 @@ public class CARDDAVAdapter extends BaseAdapter
 							m_addressBook.remove(storedAddressBookURI);
 						}
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 							currStoredCards.forEach(
 									eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
@@ -491,7 +491,7 @@ public class CARDDAVAdapter extends BaseAdapter
 							return delta;
 						});
 
-						update(() -> {
+						applyAndNotify(() -> {
 							Delta delta = new Delta();
 							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(),
 									storedAddressBookURI);

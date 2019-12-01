@@ -2,7 +2,11 @@ package org.knowtiphy.babbage.server;
 
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.knowtiphy.babbage.storage.*;
+import org.knowtiphy.babbage.storage.IMAP.MessageModel;
+import org.knowtiphy.babbage.storage.IReadContext;
+import org.knowtiphy.babbage.storage.IStorage;
+import org.knowtiphy.babbage.storage.IStorageListener;
+import org.knowtiphy.babbage.storage.StorageException;
 
 import javax.mail.MessagingException;
 import java.io.DataInputStream;
@@ -15,10 +19,6 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
-
-import org.knowtiphy.babbage.storage.IMAP.MessageModel;
-import org.knowtiphy.babbage.storage.IStorage;
-import org.knowtiphy.babbage.storage.StorageException;
 
 // So this class will turn things into JSON, and it's Delta method will turn things back into JAVA
 // could also have some start method here
@@ -81,7 +81,7 @@ public class ClientStorage implements IStorage
 	}
 
 	@Override
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
 	{
 		return null;
 	}
