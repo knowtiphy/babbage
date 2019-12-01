@@ -322,6 +322,12 @@ public class CALDAVAdapter extends BaseAdapter
 				try
 				{
 					Runnable task = queue.take();
+
+					if (queue.peek() instanceof SyncTask)
+					{
+						queue.take();
+					}
+
 					if (task == POISON_PILL)
 					{
 						return;

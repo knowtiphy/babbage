@@ -266,6 +266,12 @@ public class CARDDAVAdapter extends BaseAdapter
 				try
 				{
 					Runnable task = queue.take();
+
+					if (queue.peek() instanceof CALDAVAdapter.SyncTask)
+					{
+						queue.take();
+					}
+
 					if (task == POISON_PILL)
 					{
 						return;
