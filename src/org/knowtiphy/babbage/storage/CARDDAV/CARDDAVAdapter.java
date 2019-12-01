@@ -221,215 +221,7 @@ public class CARDDAVAdapter extends BaseAdapter
 			{
 				try
 				{
-					workQ.add(() -> {
-
-						try
-						{
-
-							accountLock.lock();
-
-							System.out.println(
-									":::::::::::::::::::::::::: IN CARDDAV SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
-
-							Set<String> storedAddressBooks = getStored(addressBookURIs(getId()), ABOOKRES);
-
-							Iterator<DavResource> cardDavResources = sardine.list(serverName).iterator();
-							// 1st iteration is not a calendar, just the enclosing directory
-							cardDavResources.next();
-
-							Set<String> serverBookURIs = new HashSet<>(10);
-							// During this loop, I can check the CTAGS, Check if need to be added/deleted
-							// Maybe all at once later on
-							while (cardDavResources.hasNext())
-							{
-								DavResource serverBook = cardDavResources.next();
-								String serverBookURI = encodeAddressBook(serverBook);
-								serverBookURIs.add(serverBookURI);
-
-								if (!m_addressBook.containsKey(serverBookURI))
-								{
-									m_addressBook.put(serverBookURI, serverBook);
-								}
-
-								// AddressBook not in DB, store it and cards
-								if (!storedAddressBooks.contains(serverBookURI))
-								{
-									m_addressBook.put(serverBookURI, serverBook);
-
-									// Add Cards
-									Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
-									// 1st iteration is the addressBook uri, so skip
-									davCards.next();
-
-									Collection<DavResource> addCard = new HashSet<>(1000);
-									Map<String, DavResource> cardURIToRes = new ConcurrentHashMap<>();
-									while (davCards.hasNext())
-									{
-										DavResource serverEvent = davCards.next();
-										cardURIToRes.put(encodeCard(serverBook, serverEvent), serverEvent);
-										addCard.add(serverEvent);
-									}
-
-									m_PerBookCards.put(serverBookURI, cardURIToRes);
-
-									update(() -> {
-										Delta delta = new Delta();
-										storeAddressBook(delta, getId(), serverBookURI, serverBook);
-										return delta;
-									});
-
-									update(() -> {
-										Delta delta = new Delta();
-										addCard.forEach(card -> {
-											try
-											{
-												storeCard(delta, serverBookURI, encodeCard(serverBook, card),
-														Ezvcard.parse(sardine.get(serverHeader + card)).first(), card);
-											} catch (IOException e)
-											{
-												e.printStackTrace();
-											}
-										});
-
-										return delta;
-									});
-
-								}
-								// Calendar already exists, check if CTags differ, check if names differ
-								else
-								{
-									if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
-											.equals(serverBook.getCustomProps().get("getctag")))
-									{
-										System.out.println(
-												":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
-										m_addressBook.put(serverBookURI, serverBook);
-										storeAddressBookDiffs(serverBookURI, serverBook);
-
-										Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
-										Set<DavResource> addCards = new HashSet<>();
-										Set<String> serverCardURIs = new HashSet<>();
-
-										Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook)
-												.iterator();
-										// 1st iteration is the addressBook uri, so skip
-										davCards.next();
-
-										while (davCards.hasNext())
-										{
-											DavResource serverCard = davCards.next();
-											String serverCardURI = encodeCard(serverBook, serverCard);
-											serverCardURIs.add(serverCardURI);
-
-											if (!m_PerBookCards.containsKey(serverBookURI))
-											{
-												m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
-											}
-
-											// New Card, store it
-											if (!storedCards.contains(serverCardURI))
-											{
-												m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
-												addCards.add(serverCard);
-											}
-											// Not new event, compare ETAGS
-											else
-											{
-												m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
-
-												String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG)
-														.replace("\\", "");
-
-												if (!storedTAG.equals(serverCard.getEtag()))
-												{
-													storeCardDiffs(serverCardURI, serverCard);
-												}
-											}
-
-										}
-
-										// Cards to be removed, this needs to be events in the DB
-										Collection<String> removeCard = new HashSet<>();
-										for (String currCardURI : storedCards)
-										{
-											if (!serverCardURIs.contains(currCardURI))
-											{
-												removeCard.add(currCardURI);
-												m_PerBookCards.get(serverBookURI).remove(currCardURI);
-											}
-										}
-
-										update(() -> {
-											Delta delta = new Delta();
-
-											removeCard.forEach(
-													event -> unstoreRes(messageDatabase.getDefaultModel(), delta,
-															serverBookURI, event));
-
-											addCards.forEach(event -> {
-												try
-												{
-													storeCard(delta, serverBookURI, encodeCard(serverBook, event),
-															Ezvcard.parse(sardine.get(serverHeader + event)).first(),
-															event);
-												} catch (IOException e)
-												{
-													e.printStackTrace();
-												}
-											});
-
-											return delta;
-										});
-
-									}
-								}
-
-							}
-
-							// AddressBooks to be removed
-							// For every AddressBook URI in m_AddressBook, if server does not contain it, remove it
-							for (String storedAddressBookURI : storedAddressBooks)
-							{
-
-								if (!serverBookURIs.contains(storedAddressBookURI))
-								{
-									Set<String> currStoredCards = getStored(cardURIs(storedAddressBookURI), CARDRES);
-
-									if (m_PerBookCards.get(storedAddressBookURI) != null)
-									{
-										m_addressBook.remove(storedAddressBookURI);
-									}
-
-									if (m_addressBook.get(storedAddressBookURI) != null)
-									{
-										m_addressBook.remove(storedAddressBookURI);
-									}
-
-									update(() -> {
-										Delta delta = new Delta();
-										currStoredCards.forEach(
-												eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
-														storedAddressBookURI, eventURI));
-										return delta;
-									});
-
-									update(() -> {
-										Delta delta = new Delta();
-										unstoreRes(messageDatabase.getDefaultModel(), delta, getId(),
-												storedAddressBookURI);
-										return delta;
-									});
-
-								}
-							}
-
-							accountLock.unlock();
-						} catch (Exception e)
-						{
-							e.printStackTrace();
-						}
-
-					});
+					workQ.add(new SyncTask());
 
 					Thread.sleep(FREQUENCY);
 				} catch (InterruptedException ex)
@@ -494,6 +286,219 @@ public class CARDDAVAdapter extends BaseAdapter
 				{
 					return;
 				}
+			}
+		}
+	}
+
+	public class SyncTask implements Runnable
+	{
+
+		@Override public void run()
+		{
+			try
+			{
+
+				accountLock.lock();
+
+				System.out.println(
+						":::::::::::::::::::::::::: IN CARDDAV SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+
+				Set<String> storedAddressBooks = getStored(addressBookURIs(getId()), ABOOKRES);
+
+				Iterator<DavResource> cardDavResources = sardine.list(serverName).iterator();
+				// 1st iteration is not a calendar, just the enclosing directory
+				cardDavResources.next();
+
+				Set<String> serverBookURIs = new HashSet<>(10);
+				// During this loop, I can check the CTAGS, Check if need to be added/deleted
+				// Maybe all at once later on
+				while (cardDavResources.hasNext())
+				{
+					DavResource serverBook = cardDavResources.next();
+					String serverBookURI = encodeAddressBook(serverBook);
+					serverBookURIs.add(serverBookURI);
+
+					if (!m_addressBook.containsKey(serverBookURI))
+					{
+						m_addressBook.put(serverBookURI, serverBook);
+					}
+
+					// AddressBook not in DB, store it and cards
+					if (!storedAddressBooks.contains(serverBookURI))
+					{
+						m_addressBook.put(serverBookURI, serverBook);
+
+						// Add Cards
+						Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
+						// 1st iteration is the addressBook uri, so skip
+						davCards.next();
+
+						Collection<DavResource> addCard = new HashSet<>(1000);
+						Map<String, DavResource> cardURIToRes = new ConcurrentHashMap<>();
+						while (davCards.hasNext())
+						{
+							DavResource serverEvent = davCards.next();
+							cardURIToRes.put(encodeCard(serverBook, serverEvent), serverEvent);
+							addCard.add(serverEvent);
+						}
+
+						m_PerBookCards.put(serverBookURI, cardURIToRes);
+
+						update(() -> {
+							Delta delta = new Delta();
+							storeAddressBook(delta, getId(), serverBookURI, serverBook);
+							return delta;
+						});
+
+						update(() -> {
+							Delta delta = new Delta();
+							addCard.forEach(card -> {
+								try
+								{
+									storeCard(delta, serverBookURI, encodeCard(serverBook, card),
+											Ezvcard.parse(sardine.get(serverHeader + card)).first(), card);
+								} catch (IOException e)
+								{
+									e.printStackTrace();
+								}
+							});
+
+							return delta;
+						});
+
+					}
+					// Calendar already exists, check if CTags differ, check if names differ
+					else
+					{
+						if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
+								.equals(serverBook.getCustomProps().get("getctag")))
+						{
+							System.out.println(
+									":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
+							m_addressBook.put(serverBookURI, serverBook);
+							storeAddressBookDiffs(serverBookURI, serverBook);
+
+							Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
+							Set<DavResource> addCards = new HashSet<>();
+							Set<String> serverCardURIs = new HashSet<>();
+
+							Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook)
+									.iterator();
+							// 1st iteration is the addressBook uri, so skip
+							davCards.next();
+
+							while (davCards.hasNext())
+							{
+								DavResource serverCard = davCards.next();
+								String serverCardURI = encodeCard(serverBook, serverCard);
+								serverCardURIs.add(serverCardURI);
+
+								if (!m_PerBookCards.containsKey(serverBookURI))
+								{
+									m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
+								}
+
+								// New Card, store it
+								if (!storedCards.contains(serverCardURI))
+								{
+									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
+									addCards.add(serverCard);
+								}
+								// Not new event, compare ETAGS
+								else
+								{
+									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
+
+									String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG)
+											.replace("\\", "");
+
+									if (!storedTAG.equals(serverCard.getEtag()))
+									{
+										storeCardDiffs(serverCardURI, serverCard);
+									}
+								}
+
+							}
+
+							// Cards to be removed, this needs to be events in the DB
+							Collection<String> removeCard = new HashSet<>();
+							for (String currCardURI : storedCards)
+							{
+								if (!serverCardURIs.contains(currCardURI))
+								{
+									removeCard.add(currCardURI);
+									m_PerBookCards.get(serverBookURI).remove(currCardURI);
+								}
+							}
+
+							update(() -> {
+								Delta delta = new Delta();
+
+								removeCard.forEach(
+										event -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+												serverBookURI, event));
+
+								addCards.forEach(event -> {
+									try
+									{
+										storeCard(delta, serverBookURI, encodeCard(serverBook, event),
+												Ezvcard.parse(sardine.get(serverHeader + event)).first(),
+												event);
+									} catch (IOException e)
+									{
+										e.printStackTrace();
+									}
+								});
+
+								return delta;
+							});
+
+						}
+					}
+
+				}
+
+				// AddressBooks to be removed
+				// For every AddressBook URI in m_AddressBook, if server does not contain it, remove it
+				for (String storedAddressBookURI : storedAddressBooks)
+				{
+
+					if (!serverBookURIs.contains(storedAddressBookURI))
+					{
+						Set<String> currStoredCards = getStored(cardURIs(storedAddressBookURI), CARDRES);
+
+						if (m_PerBookCards.get(storedAddressBookURI) != null)
+						{
+							m_addressBook.remove(storedAddressBookURI);
+						}
+
+						if (m_addressBook.get(storedAddressBookURI) != null)
+						{
+							m_addressBook.remove(storedAddressBookURI);
+						}
+
+						update(() -> {
+							Delta delta = new Delta();
+							currStoredCards.forEach(
+									eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
+											storedAddressBookURI, eventURI));
+							return delta;
+						});
+
+						update(() -> {
+							Delta delta = new Delta();
+							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(),
+									storedAddressBookURI);
+							return delta;
+						});
+
+					}
+				}
+
+				accountLock.unlock();
+			} catch (Exception e)
+			{
+				e.printStackTrace();
 			}
 		}
 	}

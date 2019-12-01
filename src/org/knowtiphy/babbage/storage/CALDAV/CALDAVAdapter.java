@@ -51,20 +51,20 @@ public class CALDAVAdapter extends BaseAdapter
 	private static final Runnable POISON_PILL = () -> {
 	};
 
-	private final Sardine sardine;
+	protected final Sardine sardine;
 
-	private final String serverName;
+	protected final String serverName;
+	protected final String serverHeader;
+	//	RDF ids to Java folder and message objects
+	protected final Map<String, DavResource> m_Calendar = new ConcurrentHashMap<>(10);
+	protected final Map<String, Map<String, DavResource>> m_PerCalendarEvents = new ConcurrentHashMap<>(10);
+	protected final Mutex accountLock;
 	private final String emailAddress;
 	private final String password;
-	private final String serverHeader;
 	private final String id;
-	//	RDF ids to Java folder and message objects
-	private final Map<String, DavResource> m_Calendar = new ConcurrentHashMap<>(10);
-	private final Map<String, Map<String, DavResource>> m_PerCalendarEvents = new ConcurrentHashMap<>(10);
 	private final BlockingQueue<Runnable> workQ;
 	//private final BlockingQueue<Runnable> contentQ;
 	private final Thread doWork;
-	private final Mutex accountLock;
 	private String nickName;
 	private Thread synchThread;
 
@@ -276,221 +276,7 @@ public class CALDAVAdapter extends BaseAdapter
 			{
 				try
 				{
-					workQ.add(() -> {
-
-						try
-						{
-
-							accountLock.lock();
-
-							System.out.println(
-									":::::::::::::::::::::::::: IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
-
-							Set<String> storedCalendars = getStored(calendarURIs(getId()), CALRES);
-
-							Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
-							// 1st iteration is not a calendar, just the enclosing directory
-							calDavResources.next();
-
-							Set<String> serverCalURIs = new HashSet<>(10);
-							// During this loop, I can check the CTAGS, Check if need to be added/deleted
-							// Maybe all at once later on
-							while (calDavResources.hasNext())
-							{
-								DavResource serverCal = calDavResources.next();
-								String serverCalURI = encodeCalendar(serverCal);
-								serverCalURIs.add(serverCalURI);
-
-								if (!m_Calendar.containsKey(serverCalURI))
-								{
-									m_Calendar.put(serverCalURI, serverCal);
-								}
-
-								// Calendar not in DB, store it and events
-								if (!storedCalendars.contains(serverCalURI))
-								{
-									m_Calendar.put(serverCalURI, serverCal);
-
-									// Add Events
-									Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
-									// 1st iteration is the calendar uri, so skip
-									davEvents.next();
-
-									Collection<DavResource> addEvent = new HashSet<>(1000);
-									Map<String, DavResource> eventURIToRes = new ConcurrentHashMap<>();
-									while (davEvents.hasNext())
-									{
-										DavResource serverEvent = davEvents.next();
-										eventURIToRes.put(encodeEvent(serverCal, serverEvent), serverEvent);
-										addEvent.add(serverEvent);
-									}
-
-									m_PerCalendarEvents.put(serverCalURI, eventURIToRes);
-
-									update(() -> {
-										Delta delta = new Delta();
-										storeCalendar(delta, getId(), serverCalURI, serverCal);
-										return delta;
-									});
-
-									update(() -> {
-										Delta delta = new Delta();
-
-										addEvent.forEach(event -> {
-											try
-											{
-												storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
-														Biweekly.parse(sardine.get(serverHeader + event)).first()
-																.getEvents().get(0), event);
-											} catch (IOException e)
-											{
-												e.printStackTrace();
-											}
-										});
-
-										return delta;
-									});
-
-								}
-								// Calendar already exists, check if CTags differ, check if names differ
-								else
-								{
-									if (!getStoredTag(calendarCTag(serverCalURI), CTAG)
-											.equals(serverCal.getCustomProps().get("getctag")))
-									{
-										System.out.println(
-												":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
-										m_Calendar.put(serverCalURI, serverCal);
-										storeCalendarDiffs(serverCalURI, serverCal);
-
-										Set<String> storedEvents = getStored(eventURIs(serverCalURI), EVENTRES);
-										Set<DavResource> addEvents = new HashSet<>();
-										Set<String> serverEventURIs = new HashSet<>();
-
-										Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal)
-												.iterator();
-										// 1st iteration is the calendar uri, so skip
-										davEvents.next();
-
-										while (davEvents.hasNext())
-										{
-											DavResource serverEvent = davEvents.next();
-											String serverEventURI = encodeEvent(serverCal, serverEvent);
-											serverEventURIs.add(serverEventURI);
-
-											if (!m_PerCalendarEvents.containsKey(serverCalURI))
-											{
-												m_PerCalendarEvents.put(serverCalURI, new ConcurrentHashMap<>(100));
-											}
-
-											// New Event, store it
-											if (!storedEvents.contains(serverEventURI))
-											{
-												m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
-												addEvents.add(serverEvent);
-											}
-											// Not new event, compare ETAGS
-											else
-											{
-												m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
-
-												String storedTAG = getStoredTag(eventETag(serverEventURI), ETAG)
-														.replace("\\", "");
-
-												if (!storedTAG.equals(serverEvent.getEtag()))
-												{
-													storeEventDiffs(serverEventURI, serverEvent);
-												}
-											}
-
-										}
-
-										// Events to be removed, this needs to be events in the DB
-										Collection<String> removeEvent = new HashSet<>();
-										for (String currEventURI : storedEvents)
-										{
-											if (!serverEventURIs.contains(currEventURI))
-											{
-												removeEvent.add(currEventURI);
-												m_PerCalendarEvents.get(serverCalURI).remove(currEventURI);
-											}
-										}
-
-										update(() -> {
-											Delta delta = new Delta();
-
-											removeEvent.forEach(
-													event -> unstoreRes(messageDatabase.getDefaultModel(), delta,
-															serverCalURI, event));
-
-											addEvents.forEach(event -> {
-												try
-												{
-													storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
-															Biweekly.parse(sardine.get(serverHeader + event)).first()
-																	.getEvents().get(0), event);
-												} catch (IOException e)
-												{
-													e.printStackTrace();
-												}
-											});
-
-											return delta;
-										});
-
-									}
-								}
-
-							}
-
-							// Calendars to be removed
-							// For every Calendar URI in m_Calendar, if server does not contain it, remove it
-							// Maybe do all at once? Or would that be too abrasive to user?
-							for (String storedCalURI : storedCalendars)
-							{
-
-								if (!serverCalURIs.contains(storedCalURI))
-								{
-									Set<String> currStoredEvents = getStored(eventURIs(storedCalURI), EVENTRES);
-
-									if (m_PerCalendarEvents.get(storedCalURI) != null)
-									{
-										m_PerCalendarEvents.remove(storedCalURI);
-									}
-
-									if (m_Calendar.get(storedCalURI) != null)
-									{
-										m_Calendar.remove(storedCalURI);
-									}
-
-									update(() -> {
-										Delta delta = new Delta();
-
-										currStoredEvents.forEach(
-												eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta,
-														storedCalURI, eventURI));
-
-										return delta;
-									});
-
-									update(() -> {
-										Delta delta = new Delta();
-
-										unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedCalURI);
-
-										return delta;
-									});
-
-								}
-							}
-
-							accountLock.unlock();
-						} catch (Exception e)
-						{
-							e.printStackTrace();
-						}
-
-					});
+					workQ.add(new SyncTask());
 
 					Thread.sleep(FREQUENCY);
 				} catch (InterruptedException ex)
@@ -557,6 +343,222 @@ public class CALDAVAdapter extends BaseAdapter
 					return;
 				}
 			}
+		}
+	}
+
+	public class SyncTask implements Runnable
+	{
+		@Override public void run()
+		{
+			try
+			{
+
+				accountLock.lock();
+
+				System.out.println(":::::::::::::::::::::::::: IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
+
+				Set<String> storedCalendars = getStored(calendarURIs(getId()), CALRES);
+
+				Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
+				// 1st iteration is not a calendar, just the enclosing directory
+				calDavResources.next();
+
+				Set<String> serverCalURIs = new HashSet<>(10);
+				// During this loop, I can check the CTAGS, Check if need to be added/deleted
+				// Maybe all at once later on
+				while (calDavResources.hasNext())
+				{
+					DavResource serverCal = calDavResources.next();
+					String serverCalURI = encodeCalendar(serverCal);
+					serverCalURIs.add(serverCalURI);
+
+					if (!m_Calendar.containsKey(serverCalURI))
+					{
+						m_Calendar.put(serverCalURI, serverCal);
+					}
+
+					// Calendar not in DB, store it and events
+					if (!storedCalendars.contains(serverCalURI))
+					{
+						m_Calendar.put(serverCalURI, serverCal);
+
+						// Add Events
+						Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
+						// 1st iteration is the calendar uri, so skip
+						davEvents.next();
+
+						Collection<DavResource> addEvent = new HashSet<>(1000);
+						Map<String, DavResource> eventURIToRes = new ConcurrentHashMap<>();
+						while (davEvents.hasNext())
+						{
+							DavResource serverEvent = davEvents.next();
+							eventURIToRes.put(encodeEvent(serverCal, serverEvent), serverEvent);
+							addEvent.add(serverEvent);
+						}
+
+						m_PerCalendarEvents.put(serverCalURI, eventURIToRes);
+
+						update(() -> {
+							Delta delta = new Delta();
+							storeCalendar(delta, getId(), serverCalURI, serverCal);
+							return delta;
+						});
+
+						update(() -> {
+							Delta delta = new Delta();
+
+							addEvent.forEach(event -> {
+								try
+								{
+									storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
+											Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents()
+													.get(0), event);
+								} catch (IOException e)
+								{
+									e.printStackTrace();
+								}
+							});
+
+							return delta;
+						});
+
+					}
+					// Calendar already exists, check if CTags differ, check if names differ
+					else
+					{
+						if (!getStoredTag(calendarCTag(serverCalURI), CTAG)
+								.equals(serverCal.getCustomProps().get("getctag")))
+						{
+							System.out.println(
+									":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
+							m_Calendar.put(serverCalURI, serverCal);
+							storeCalendarDiffs(serverCalURI, serverCal);
+
+							Set<String> storedEvents = getStored(eventURIs(serverCalURI), EVENTRES);
+							Set<DavResource> addEvents = new HashSet<>();
+							Set<String> serverEventURIs = new HashSet<>();
+
+							Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
+							// 1st iteration is the calendar uri, so skip
+							davEvents.next();
+
+							while (davEvents.hasNext())
+							{
+								DavResource serverEvent = davEvents.next();
+								String serverEventURI = encodeEvent(serverCal, serverEvent);
+								serverEventURIs.add(serverEventURI);
+
+								if (!m_PerCalendarEvents.containsKey(serverCalURI))
+								{
+									m_PerCalendarEvents.put(serverCalURI, new ConcurrentHashMap<>(100));
+								}
+
+								// New Event, store it
+								if (!storedEvents.contains(serverEventURI))
+								{
+									m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
+									addEvents.add(serverEvent);
+								}
+								// Not new event, compare ETAGS
+								else
+								{
+									m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
+
+									String storedTAG = getStoredTag(eventETag(serverEventURI), ETAG).replace("\\", "");
+
+									if (!storedTAG.equals(serverEvent.getEtag()))
+									{
+										storeEventDiffs(serverEventURI, serverEvent);
+									}
+								}
+
+							}
+
+							// Events to be removed, this needs to be events in the DB
+							Collection<String> removeEvent = new HashSet<>();
+							for (String currEventURI : storedEvents)
+							{
+								if (!serverEventURIs.contains(currEventURI))
+								{
+									removeEvent.add(currEventURI);
+									m_PerCalendarEvents.get(serverCalURI).remove(currEventURI);
+								}
+							}
+
+							update(() -> {
+								Delta delta = new Delta();
+
+								removeEvent.forEach(
+										event -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverCalURI,
+												event));
+
+								addEvents.forEach(event -> {
+									try
+									{
+										storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
+												Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents()
+														.get(0), event);
+									} catch (IOException e)
+									{
+										e.printStackTrace();
+									}
+								});
+
+								return delta;
+							});
+
+						}
+					}
+
+				}
+
+				// Calendars to be removed
+				// For every Calendar URI in m_Calendar, if server does not contain it, remove it
+				// Maybe do all at once? Or would that be too abrasive to user?
+				for (String storedCalURI : storedCalendars)
+				{
+
+					if (!serverCalURIs.contains(storedCalURI))
+					{
+						Set<String> currStoredEvents = getStored(eventURIs(storedCalURI), EVENTRES);
+
+						if (m_PerCalendarEvents.get(storedCalURI) != null)
+						{
+							m_PerCalendarEvents.remove(storedCalURI);
+						}
+
+						if (m_Calendar.get(storedCalURI) != null)
+						{
+							m_Calendar.remove(storedCalURI);
+						}
+
+						update(() -> {
+							Delta delta = new Delta();
+
+							currStoredEvents.forEach(
+									eventURI -> unstoreRes(messageDatabase.getDefaultModel(), delta, storedCalURI,
+											eventURI));
+
+							return delta;
+						});
+
+						update(() -> {
+							Delta delta = new Delta();
+
+							unstoreRes(messageDatabase.getDefaultModel(), delta, getId(), storedCalURI);
+
+							return delta;
+						});
+
+					}
+				}
+
+				accountLock.unlock();
+			} catch (Exception e)
+			{
+				e.printStackTrace();
+			}
+
 		}
 	}
 }
