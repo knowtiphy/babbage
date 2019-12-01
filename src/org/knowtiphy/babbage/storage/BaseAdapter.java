@@ -107,20 +107,6 @@ public abstract class BaseAdapter implements IAdapter
 		notificationQ.add(() -> listenerManager.notifyChangeListeners(delta));
 	}
 
-	//	this needs to go -- use Deltas
-	protected void notifyListeners(Model model)
-	{
-		notificationQ.add(() -> listenerManager.notifyChangeListeners(model));
-	}
-
-	//	this needs to go -- use Deltas everywhere
-	protected void update(Model adds, Model deletes)
-	{
-		assert adds != null;
-		assert deletes != null;
-		update(new Delta(adds, deletes));
-	}
-
 	//	update based on a delta
 	protected void update(Delta delta)
 	{
