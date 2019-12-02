@@ -213,7 +213,6 @@ public class CARDDAVAdapter extends BaseAdapter
 			{
 				try
 				{
-					System.out.println("ADDED CARDDAV SYNC TASK");
 					workQ.add(new SyncTask());
 
 					Thread.sleep(FREQUENCY);
