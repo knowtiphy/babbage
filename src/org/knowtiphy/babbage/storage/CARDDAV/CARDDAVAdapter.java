@@ -85,7 +85,7 @@ public class CARDDAVAdapter extends BaseAdapter
 			//	the account doesn't have a nick name
 		}
 
-		this.id = Vocabulary.E(Vocabulary.CALDAV_ACCOUNT, emailAddress);
+		this.id = Vocabulary.E(Vocabulary.CARDDAV_ACCOUNT, emailAddress);
 
 		System.out.println("CALDAV EMAIL :: " + emailAddress);
 		System.out.println("CALDAV PASSWORD :: " + password);
@@ -213,6 +213,7 @@ public class CARDDAVAdapter extends BaseAdapter
 			{
 				try
 				{
+					System.out.println("ADDED CARDDAV SYNC TASK");
 					workQ.add(new SyncTask());
 
 					Thread.sleep(FREQUENCY);
