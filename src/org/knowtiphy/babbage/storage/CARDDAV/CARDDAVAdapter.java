@@ -304,8 +304,6 @@ public class CARDDAVAdapter extends BaseAdapter
 				Set<String> storedAddressBooks = getStored(addressBookURIs(getId()), ABOOKRES);
 
 				Iterator<DavResource> cardDavResources = sardine.list(serverName).iterator();
-				// 1st iteration is not a calendar, just the enclosing directory
-				cardDavResources.next();
 
 				Set<String> serverBookURIs = new HashSet<>(10);
 				// During this loop, I can check the CTAGS, Check if need to be added/deleted
