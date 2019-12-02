@@ -54,7 +54,7 @@ public interface DStore
 
 	static void storeCard(Delta delta, String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
-		delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT)
+		delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD)
 				.addR(addressBookId, Vocabulary.CONTAINS, cardId);
 
 		addAttribute(delta, cardId, Vocabulary.HAS_ETAG, card.getEtag(), x -> x);
