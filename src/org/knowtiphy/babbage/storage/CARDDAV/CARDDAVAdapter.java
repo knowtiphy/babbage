@@ -133,32 +133,14 @@ public class CARDDAVAdapter extends BaseAdapter
 
 	}
 
-	private void storeCardDiffs(String cardURI, DavResource serverCard) throws Exception
+	private void storeCardDiffs(String serverBookURI, String cardURI, DavResource serverCard) throws Exception
 	{
 		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverCard)).first();
-
 		Model messageDB = messageDatabase.getDefaultModel();
 
 		applyAndNotify(delta -> {
-
-			updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_ETAG, serverCard.getEtag());
-
-			ResultSet rs = QueryExecutionFactory.create(cardProperties(cardURI), messageDB).execSelect();
-			while (rs.hasNext())
-			{
-				QuerySolution soln = rs.next();
-
-				if (!soln.getLiteral(FORMATTEDNAME).equals(L(messageDB, vCard.getFormattedName().getValue())))
-				{
-
-					updateTriple(messageDB, delta, cardURI, Vocabulary.HAS_FORMATTED_NAME,
-							vCard.getFormattedName().getValue());
-				}
-
-				// Questions about checking if numbers and emails are diff, might just have to chuck out?
-
-			}
-
+			unstoreRes(messageDB, delta, getId(), cardURI);
+			storeCard(delta, serverBookURI, cardURI, vCard, serverCard);
 		});
 
 	}
@@ -404,7 +386,7 @@ public class CARDDAVAdapter extends BaseAdapter
 
 									if (!storedTAG.equals(serverCard.getEtag()))
 									{
-										storeCardDiffs(serverCardURI, serverCard);
+										storeCardDiffs(serverBookURI, serverCardURI, serverCard);
 									}
 								}
 
