@@ -21,7 +21,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + CARDRES + " "
 				+ "WHERE {"
-				+ "      ?" + CARDRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+				+ "      ?" + CARDRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
 				+ "      <" + bookURI + "> <" + Vocabulary.CONTAINS + "> ?" + CARDRES + ".\n"
 				+ "      }";
 	}
@@ -30,7 +30,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + ABOOKRES + " "
 				+ "WHERE {"
-				+ "      ?" + ABOOKRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
+				+ "      ?" + ABOOKRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
 				+ "          <" + adapterURI + "> <" + Vocabulary.CONTAINS + "> ?" + ABOOKRES + ".\n"
 				+ "          }";
 	}
