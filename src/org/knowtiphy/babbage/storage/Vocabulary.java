@@ -80,8 +80,11 @@ public interface Vocabulary
     // Vocabulary for CardDav
     String CARDDAV_ACCOUNT = TBASE + "CARDDAVAccount";
     String CARDDAV_ADDRESSBOOK = TBASE + "CARDDAVAddressBook";
-    String CARDDAV_CARD = TBASE + "CARDDAVContact";
+    String CARDDAV_GROUP = TBASE + "CARDDAVGroup";
+    String HAS_CARD = TBASE + "hasCard";
+    String CARDDAV_CARD = TBASE + "CARDDAVCard";
 
+    String HAS_UID = TBASE + "hasUID";
     String HAS_FORMATTED_NAME = TBASE + "formattedName";
     String HAS_PHONE_NUMBER = TBASE + "hasNumber";
     String HAS_PHONE_TYPE = TBASE + "hasPhoneType";

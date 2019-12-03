@@ -53,8 +53,8 @@ public class CARDDAVAdapter extends BaseAdapter
 	private final String serverHeader;
 	private final String id;
 	//	RDF ids to Java folder and message objects
-	private final Map<String, DavResource> m_addressBook = new ConcurrentHashMap<>(10);
-	private final Map<String, Map<String, DavResource>> m_PerBookCards = new ConcurrentHashMap<>(10);
+	private final Map<String, DavResource> m_addressBook = new ConcurrentHashMap<>(2);
+	private final Map<String, Map<String, DavResource>> m_PerBookCards = new ConcurrentHashMap<>(2);
 	private final BlockingQueue<Runnable> workQ;
 	//private final BlockingQueue<Runnable> contentQ;
 	private final Thread doWork;
@@ -330,8 +330,9 @@ public class CARDDAVAdapter extends BaseAdapter
 							addCard.forEach(card -> {
 								try
 								{
+									VCard vCard = Ezvcard.parse(sardine.get(serverHeader + card)).first();
 									storeCard(delta, serverBookURI, encodeCard(serverBook, card),
-											Ezvcard.parse(sardine.get(serverHeader + card)).first(), card);
+											vCard, card);
 								} catch (IOException e)
 								{
 									e.printStackTrace();
@@ -371,10 +372,14 @@ public class CARDDAVAdapter extends BaseAdapter
 									m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
 								}
 
+								if (!m_PerBookCards.get(serverBookURI).containsKey(serverBookURI))
+								{
+									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
+								}
+
 								// New Card, store it
 								if (!storedCards.contains(serverCardURI))
 								{
-									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
 									addCards.add(serverCard);
 								}
 								// Not new event, compare ETAGS

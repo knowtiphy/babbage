@@ -3,6 +3,7 @@ package org.knowtiphy.babbage.storage.CARDDAV;
 import com.github.sardine.DavResource;
 import ezvcard.VCard;
 import ezvcard.property.Email;
+import ezvcard.property.RawProperty;
 import ezvcard.property.Telephone;
 import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
@@ -54,33 +55,59 @@ public interface DStore
 
 	static void storeCard(Delta delta, String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
-		delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD)
-				.addR(addressBookId, Vocabulary.CONTAINS, cardId);
+
+		if (!vCard.getExtendedProperties().isEmpty())
+		{
+			// Not sure yet if this list can be any bigger, IE have more than 1 KIND
+			if (vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0).getValue().equals("group"))
+			{
+				delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP)
+						.addR(addressBookId, Vocabulary.CONTAINS, cardId);
+
+				for (RawProperty member : vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-MEMBER"))
+				{
+					addAttribute(delta, cardId, Vocabulary.HAS_CARD, member.getValue(), x -> x);
+				}
+
+			}
+			else
+			{
+				// Dunno, maybe something will eventually spit out being a member instead of nothing
+			}
+		}
+		// I think at this point we can assume its a card
+		else
+		{
+			delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD)
+					.addR(addressBookId, Vocabulary.CONTAINS, cardId);
+
+			addAttribute(delta, cardId, Vocabulary.HAS_UID, vCard.getUid(), x -> x);
+
+			for (Telephone telephone : vCard.getTelephoneNumbers())
+			{
+				String phoneNumber = telephone.getText();
+
+				addAttribute(delta, cardId, Vocabulary.HAS_PHONE_NUMBER, phoneNumber, x -> x);
+
+				// Potentially has 1+ types, such home and pref, can account for if we want to
+				delta.addL(phoneNumber, Vocabulary.HAS_PHONE_TYPE, telephone.getTypes().get(0));
+			}
+
+			for (Email email : vCard.getEmails())
+			{
+				String emailAddress = email.getValue();
+
+				addAttribute(delta, cardId, Vocabulary.HAS_EMAIL, emailAddress, x -> x);
+
+				// Potentially has 1+ types, such home and pref, can account for if we want to
+				delta.addL(emailAddress, Vocabulary.HAS_PHONE_TYPE, email.getTypes().get(0));
+			}
+		}
+
 
 		addAttribute(delta, cardId, Vocabulary.HAS_ETAG, card.getEtag(), x -> x);
 
 		addAttribute(delta, cardId, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> x);
-
-
-		for (Telephone telephone : vCard.getTelephoneNumbers())
-		{
-			String phoneNumber = telephone.getText();
-
-			addAttribute(delta, cardId, Vocabulary.HAS_PHONE_NUMBER, phoneNumber, x -> x);
-
-			// Potentially has 1+ types, such home and pref, can account for if we want to
-			delta.addL(phoneNumber, Vocabulary.HAS_PHONE_TYPE, telephone.getTypes().get(0));
-		}
-
-		for (Email email : vCard.getEmails())
-		{
-			String emailAddress = email.getValue();
-
-			addAttribute(delta, cardId, Vocabulary.HAS_EMAIL, emailAddress, x -> x);
-
-			// Potentially has 1+ types, such home and pref, can account for if we want to
-			delta.addL(emailAddress, Vocabulary.HAS_PHONE_TYPE, email.getTypes().get(0));
-		}
 
 	}
 
