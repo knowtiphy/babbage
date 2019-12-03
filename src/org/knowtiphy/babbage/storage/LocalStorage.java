@@ -52,7 +52,6 @@ public class LocalStorage implements IStorage
 	public LocalStorage(Path databaseLocation, Path accountsFile) throws IOException
 	{
 		//	data structures shared between accounts
-		System.out.println("XXXXXXXXXXXXXXXXXXXXXXXXXXX");
 
 		messageDatabase = TDB2Factory.connectDataset(databaseLocation.toString());
 		listenerManager = new ListenerManager();
