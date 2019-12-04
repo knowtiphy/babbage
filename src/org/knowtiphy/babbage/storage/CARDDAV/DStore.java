@@ -17,6 +17,7 @@ import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.ThreeTuple;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.function.Function;
 
@@ -63,7 +64,7 @@ public interface DStore
 		addAttribute(delta, addressBookId, Vocabulary.HAS_CTAG, addressBook.getCustomProps().get("getctag"), x -> x);
 	}
 
-	static void storeCard(Delta delta, Collection<ThreeTuple<String, DavResource, VCard>> toProcess,
+	static void storeResource(Delta delta, Collection<ThreeTuple<String, DavResource, VCard>> toProcess,
 			String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
 
@@ -107,11 +108,11 @@ public interface DStore
 		}
 
 		// This can apparently be empty, so will fill with a tele first, and then an email if none found
-		addAttribute(delta, cardId, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> x);
+		addAttribute(delta, cardId, Vocabulary.HAS_NAME, vCard.getFormattedName().getValue(), x -> x);
 		toProcess.add(new ThreeTuple<>(cardId, card, vCard));
 	}
 
-	static void storeCardMeta(Delta delta, ThreeTuple<String, DavResource, VCard> toProcess,
+	static void storeResourceMeta(Delta delta, ThreeTuple<String, DavResource, VCard> toProcess,
 			Collection<String> groupURIs)
 	{
 		String cardId = toProcess.fst();
@@ -163,36 +164,84 @@ public interface DStore
 	{
 		Resource groupRes = R(db, groupID);
 
-		StmtIterator it = db.listStatements(groupRes, null, (RDFNode) null);
-		while (it.hasNext())
-		{
-			Statement stmt = it.next();
-			if (stmt.getObject().isResource())
-			{
-				delta.delete(db.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
-			}
-		}
-
-		delta.delete(db.listStatements(groupRes, null, (RDFNode) null))
+		delta.delete(db.listStatements(groupRes, P(db, Vocabulary.HAS_NAME), (RDFNode) null))
+				.delete(db.listStatements(groupRes, P(db, Vocabulary.RDF_TYPE), (RDFNode) null))
+				.delete(db.listStatements(groupRes, P(db, Vocabulary.HAS_CARD), (RDFNode) null))
 				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.HAS_GROUP), groupRes));
+
+		System.out.println("DID ALL DELTA DELETES FOR A GROUP");
+
 	}
 
-	static void deleteVCard(Model db, Delta delta, String bookID, String vCardID)
+	static void computeMemberCardDiffs(Model messageDB, Delta delta, String resourceURI, Collection<String> oldMem, Collection<String> updatedMem)
 	{
-		Resource vCardRes = R(db, vCardID);
+		// Wil optimize this later lol, 2am coding
+		Collection<String> membersToAdd = new ArrayList<>();
+		Collection<String> membersToDelete = new ArrayList<>();
 
-		StmtIterator it = db.listStatements(vCardRes, null, (RDFNode) null);
-		while (it.hasNext())
+		for (String member : oldMem)
 		{
-			Statement stmt = it.next();
+			if(!updatedMem.contains(member))
+			{
+				membersToDelete.add(member);
+			}
+		}
+
+		for (String member : updatedMem)
+		{
+			if (!oldMem.contains(member))
+			{
+				membersToAdd.add(member);
+			}
+		}
+
+		for (String member : membersToAdd)
+		{
+			System.out.println("ADDED SOMEONE TO GROUP");
+			addAttribute(delta, resourceURI, Vocabulary.HAS_CARD, member, x -> x);
+		}
+
+		for (String member : membersToDelete)
+		{
+			System.out.println("REMOVED SOMEONE FROM GROUP");
+			delta.delete(messageDB.listStatements(R(messageDB, resourceURI), P(messageDB, Vocabulary.HAS_CARD), L(messageDB, member)));
+		}
+	}
+
+	static void deleteVCard(Model db, Delta delta, String bookID, String cardID)
+	{
+		Resource cardRes = R(db, cardID);
+
+		StmtIterator phones = db.listStatements(cardRes, P(db, Vocabulary.HAS_PHONE), (RDFNode) null);
+		while (phones.hasNext())
+		{
+			Statement stmt = phones.next();
 			if (stmt.getObject().isResource())
 			{
 				delta.delete(db.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
+
+			delta.delete(db.listStatements(cardRes, P(db, Vocabulary.HAS_PHONE), stmt.getObject().asResource()));
 		}
 
-		delta.delete(db.listStatements(vCardRes, null, (RDFNode) null))
-				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.CONTAINS), vCardRes));
+		StmtIterator emails = db.listStatements(cardRes, P(db, Vocabulary.HAS_PHONE), (RDFNode) null);
+		while (emails.hasNext())
+		{
+			Statement stmt = emails.next();
+			if (stmt.getObject().isResource())
+			{
+				delta.delete(db.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+			}
+
+			delta.delete(db.listStatements(cardRes, P(db, Vocabulary.HAS_EMAIL), stmt.getObject().asResource()));
+		}
+
+
+		delta.delete(db.listStatements(cardRes, P(db, Vocabulary.HAS_NAME), (RDFNode) null))
+				.delete(db.listStatements(cardRes, P(db, Vocabulary.RDF_TYPE), (RDFNode) null))
+				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.CONTAINS), cardRes));
+
+		System.out.println("DID ALL DELTA DELETES FOR A CARD");
 	}
 
 	static void unStoreMeta(Model db, Delta delta, String resName)

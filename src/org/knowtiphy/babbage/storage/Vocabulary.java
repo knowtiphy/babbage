@@ -87,7 +87,6 @@ public interface Vocabulary
     String CARDDAV_CARD = TBASE + "CARDDAVCard";
 
     String HAS_UID = TBASE + "hasUID";
-    String HAS_FORMATTED_NAME = TBASE + "formattedName";
     String HAS_PHONE = TBASE + "hasPhone";
     String HAS_NUMBER = "hasNumber";
     String HAS_TYPE = TBASE + "hasType";

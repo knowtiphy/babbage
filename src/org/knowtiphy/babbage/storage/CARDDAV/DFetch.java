@@ -10,14 +10,8 @@ public interface DFetch
 	String ABOOKRES = "addressbook";
 	String ETAG = "etag";
 	String CTAG = "ctag";
-	String FORMATTEDNAME = "formattedName";
-	String PHONE = "phone";
-	String PHONENUMBER = "phoneNumber";
-	String PHONETYPE = "phoneType";
-	String EMAIL = "email";
-	String EMAILADDRESS = "emailAddress";
-	String EMAILTYPE = "emailType";
 	String NAME = "name";
+	String MEMBERUIDS = "memberCards";
 
 	// @formatter:off
 	static String cardURIs(String bookURI)
@@ -59,10 +53,19 @@ public interface DFetch
 
 	static String addressBookProperties(String addressBookURI)
 	{
-		return "SELECT ?name"
+		return "SELECT ?" + NAME + " "
 				+ " WHERE {"
 				+ "      <" + addressBookURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
-				+ "      <" + addressBookURI + "> <" + Vocabulary.HAS_NAME + "> ?name.\n"
+				+ "      <" + addressBookURI + "> <" + Vocabulary.HAS_NAME + "> ?" + NAME + ".\n"
+				+ "      }";
+	}
+
+	static String groupProperties(String groupURI)
+	{
+		return "SELECT ?" + NAME + " "
+				+ " WHERE {"
+				+ "      <" + groupURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
+				+ "      <" + groupURI + "> <" + Vocabulary.HAS_NAME + "> ?" + NAME + ".\n"
 				+ "      }";
 	}
 
@@ -110,7 +113,7 @@ public interface DFetch
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_NAME, Vars.VAR_ADDRESSBOOK_NAME);
 	}
 
-	static String initialState()
+	static String initialStateCards()
 	{
 		return String
 				.format("      CONSTRUCT {   ?%s <%s> <%s> . " +
@@ -119,6 +122,10 @@ public interface DFetch
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> <%s> .   " +
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s}\n   " +
@@ -132,27 +139,38 @@ public interface DFetch
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> <%s> }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								" }",
 						// START OF CONSTRUCT
 						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
-						Vars.VAR_CARD_ID, Vocabulary.HAS_FORMATTED_NAME, Vars.VAR_FORMATTED_NAME,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_NAME, Vars.VAR_FORMATTED_NAME,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE, Vars.VAR_PHONE_ID,
 						Vars.VAR_PHONE_ID, Vocabulary.HAS_NUMBER, Vars.VAR_PHONE_NUMBER,
 						Vars.VAR_PHONE_ID, Vocabulary.HAS_TYPE, Vars.VAR_PHONE_TYPE,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL, Vars.VAR_EMAIL_ID,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL_ADDRESS,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE,
+						Vars.VAR_GROUP_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP,
+						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_GROUP, Vars.VAR_GROUP_ID,
+						Vars.VAR_GROUP_ID, Vocabulary.HAS_NAME, Vars.VAR_NAME,
+						Vars.VAR_GROUP_ID, Vocabulary.HAS_CARD, Vars.VAR_MEMBER_CARD,
 						// START OF WHERE
 						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
-						Vars.VAR_CARD_ID, Vocabulary.HAS_FORMATTED_NAME, Vars.VAR_FORMATTED_NAME,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_NAME, Vars.VAR_FORMATTED_NAME,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE, Vars.VAR_PHONE_ID,
 						Vars.VAR_PHONE_ID, Vocabulary.HAS_NUMBER, Vars.VAR_PHONE_NUMBER,
 						Vars.VAR_PHONE_ID, Vocabulary.HAS_TYPE, Vars.VAR_PHONE_TYPE,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL, Vars.VAR_EMAIL_ID,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL_ADDRESS,
-						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE);
+						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE,
+						Vars.VAR_GROUP_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP,
+						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_GROUP, Vars.VAR_GROUP_ID,
+						Vars.VAR_GROUP_ID, Vocabulary.HAS_NAME, Vars.VAR_NAME,
+						Vars.VAR_GROUP_ID, Vocabulary.HAS_CARD, Vars.VAR_MEMBER_CARD);
 	}
-
 }

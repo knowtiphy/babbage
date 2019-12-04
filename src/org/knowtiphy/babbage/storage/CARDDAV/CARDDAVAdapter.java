@@ -137,35 +137,67 @@ public class CARDDAVAdapter extends DaveAdapter
 
 	}
 
-	private void storeCardDiffs(String serverBookURI, String cardURI, DavResource serverCard) throws Exception
+	private void storeResourceDiffs(String serverBookURI, String resourceURI, DavResource serverResource) throws Exception
 	{
-		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverCard)).first();
+		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverResource)).first();
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		applyAndNotify(delta -> {
-			unstoreRes(messageDB, delta, serverBookURI, cardURI);
-		});
-
-		applyAndNotify(delta -> {
-			storeCard(delta, new ArrayList<>(), serverBookURI, cardURI, vCard, serverCard);
-		});
-
-		Collection<String> toAddGroupURIs = new ArrayList<>();
-		apply(delta -> {
-			storeCardMeta(delta, new ThreeTuple<>(cardURI, serverCard, vCard), toAddGroupURIs);
-		});
-
-		if (!toAddGroupURIs.isEmpty())
+		if (!vCard.getExtendedProperties().isEmpty() && vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0)
+				.getValue().equals("group"))
 		{
-			System.out.println("GOT A GROUP CHANGE");
-		}
 
-		toAddGroupURIs.forEach(groupURI -> {
-			Collection<String> memberCards = getStored(memberCardURI(groupURI), CARDRES);
-			applyAndNotify(delta -> {
-				storeMemberCards(delta, groupURI, memberCards);
+			// get old set of MemberCards
+			Collection<String> oldMemCards = getStored(memberCardURI(resourceURI), CARDRES);
+
+			// Delete old memberUID Info
+			apply(delta -> {
+				unStoreMeta(messageDB, delta, resourceURI);
 			});
-		});
+
+			// Store new memberUID Info
+			apply(delta -> {
+				storeResourceMeta(delta, new ThreeTuple<>(resourceURI, serverResource, vCard), new ArrayList<>());
+			});
+
+			// Get updated set of memberCards
+			Collection<String> updatedMemCards = getStored(memberCardURI(resourceURI), CARDRES);
+
+			System.out.println("GROUP CHANGE");
+			// relations to delete, relations to add. old vs new mem cards
+
+			applyAndNotify(delta -> {
+
+				ResultSet rs = QueryExecutionFactory.create(groupProperties(resourceURI), messageDB).execSelect();
+				while (rs.hasNext())
+				{
+					QuerySolution soln = rs.next();
+					if (!soln.getLiteral(NAME).equals(L(messageDB, vCard.getFormattedName().getValue())))
+					{
+						updateTriple(messageDB, delta, resourceURI, Vocabulary.HAS_NAME, vCard.getFormattedName().getValue());
+						System.out.println("NAME CHANGE");
+					}
+				}
+
+				computeMemberCardDiffs(messageDB, delta, resourceURI, oldMemCards, updatedMemCards);
+
+			});
+		}
+		else
+		{
+			apply(delta -> {
+				unStoreMeta(messageDB, delta, resourceURI);
+			});
+
+			applyAndNotify(delta -> {
+				deleteVCard(messageDB, delta, serverBookURI, resourceURI);
+				storeResource(delta, new ArrayList<>(), serverBookURI, resourceURI, vCard, serverResource);
+			});
+
+			apply(delta -> {
+				storeResourceMeta(delta, new ThreeTuple<>(resourceURI, serverResource, vCard), new ArrayList<>());
+			});
+
+		}
 
 	}
 
@@ -203,7 +235,7 @@ public class CARDDAVAdapter extends DaveAdapter
 				.add(QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
 
 		queryAndNotify(delta -> delta
-				.add(QueryExecutionFactory.create(initialState(), messageDatabase.getDefaultModel()).execConstruct()));
+				.add(QueryExecutionFactory.create(initialStateCards(), messageDatabase.getDefaultModel()).execConstruct()));
 
 	}
 
@@ -356,7 +388,7 @@ public class CARDDAVAdapter extends DaveAdapter
 							try
 							{
 								VCard vCard = Ezvcard.parse(sardine.get(serverHeader + value)).first();
-								storeCard(delta, furtherProcess, serverBookURI, key, vCard, value);
+								storeResource(delta, furtherProcess, serverBookURI, key, vCard, value);
 							} catch (IOException e)
 							{
 								e.printStackTrace();
@@ -369,7 +401,7 @@ public class CARDDAVAdapter extends DaveAdapter
 					Collection<String> toAddGroupURIs = new ArrayList<>();
 					apply(delta -> {
 						// Store UIDs for Contacts, memberUIds for Groups, and ETags for both
-						furtherProcess.forEach(element -> storeCardMeta(delta, element, toAddGroupURIs));
+						furtherProcess.forEach(element -> storeResourceMeta(delta, element, toAddGroupURIs));
 
 					});
 
@@ -432,42 +464,59 @@ public class CARDDAVAdapter extends DaveAdapter
 
 								if (!storedTAG.equals(serverCardRes.getEtag()))
 								{
-									storeCardDiffs(serverBookURI, serverCardURI, serverCardRes);
+									storeResourceDiffs(serverBookURI, serverCardURI, serverCardRes);
 								}
 							}
 
 						}
 
 						// Cards to be removed, this needs to be events in the DB
-						Collection<String> removeCard = new HashSet<>();
+						Collection<String> removeCard = new ArrayList<>(90);
+						Collection<String> removeGroup = new ArrayList<>(10);
 
-						Set<String> storedCardsAndGroups = new HashSet<>(100);
-						storedCardsAndGroups.addAll(storedCards);
-						storedCardsAndGroups.addAll(storedGroups);
 
-						for (String currCardURI : storedCardsAndGroups)
+						for (String currCardURI : storedCards)
 						{
 							if (!serverCardURIs.contains(currCardURI))
 							{
+								System.out.println("REMOVED CARD");
 								removeCard.add(currCardURI);
 								m_PerBookCards.get(serverBookURI).remove(currCardURI);
 							}
 						}
 
-						applyAndNotify(delta -> {
+						for (String currCardURI : storedGroups)
+						{
+							if (!serverCardURIs.contains(currCardURI))
+							{
+								System.out.println("REMOVED GROUP");
+								removeGroup.add(currCardURI);
+								m_PerBookCards.get(serverBookURI).remove(currCardURI);
+							}
+						}
 
-							removeCard.forEach(
-									event -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI,
-											event));
+
+						apply(delta -> {
+							removeCard.forEach(card -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI, card));
+							removeGroup.forEach(group -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI, group));
 						});
 
 						Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess = new ArrayList<>();
 						applyAndNotify(delta -> {
+
+							removeCard.forEach(
+									card -> deleteVCard(messageDatabase.getDefaultModel(), delta, serverBookURI,
+											card));
+
+							removeGroup.forEach(
+									group -> deleteGroup(messageDatabase.getDefaultModel(), delta, serverBookURI,
+											group));
+
 							addCards.forEach(card -> {
 								try
 								{
 									VCard vCard = Ezvcard.parse(sardine.get(serverHeader + card.snd())).first();
-									storeCard(delta, furtherProcess, serverBookURI, card.fst(), vCard, card.snd());
+									storeResource(delta, furtherProcess, serverBookURI, card.fst(), vCard, card.snd());
 								} catch (IOException e)
 								{
 									e.printStackTrace();
@@ -478,7 +527,7 @@ public class CARDDAVAdapter extends DaveAdapter
 						// New groups to notify client of its card relations
 						Collection<String> toAddGroupURIs = new ArrayList<>();
 						apply(delta -> {
-							furtherProcess.forEach(tuple -> storeCardMeta(delta, tuple, toAddGroupURIs));
+							furtherProcess.forEach(tuple -> storeResourceMeta(delta, tuple, toAddGroupURIs));
 						});
 
 						toAddGroupURIs.forEach(groupURI -> {
