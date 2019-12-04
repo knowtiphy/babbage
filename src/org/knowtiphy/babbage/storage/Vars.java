@@ -59,9 +59,11 @@ public class Vars
     // Card VARs
     public static final String VAR_CARD_ID = "cardId";
     public static final String VAR_FORMATTED_NAME = "formattedName";
+    public static final String VAR_PHONE_ID = "phoneId";
     public static final String VAR_PHONE_NUMBER = "phoneNumber";
     public static final String VAR_PHONE_TYPE = "phoneType";
-    public static final String VAR_EMAIL = "email";
+    public static final String VAR_EMAIL_ID = "emailId";
+    public static final String VAR_EMAIL_ADDRESS = "emailAddress";
     public static final String VAR_EMAIL_TYPE = "emailType";
 
 }

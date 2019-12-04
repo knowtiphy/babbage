@@ -10,9 +10,11 @@ public interface DFetch
 	String ETAG = "etag";
 	String CTAG = "ctag";
 	String FORMATTEDNAME = "formattedName";
+	String PHONE = "phone";
 	String PHONENUMBER = "phoneNumber";
 	String PHONETYPE = "phoneType";
 	String EMAIL = "email";
+	String EMAILADDRESS = "emailAddress";
 	String EMAILTYPE = "emailType";
 	String NAME = "name";
 
@@ -62,18 +64,18 @@ public interface DFetch
 				+ "      }";
 	}
 
-	static String cardProperties(String cardURI)
+/*	static String cardProperties(String cardURI)
 	{
-		return "SELECT ?" + FORMATTEDNAME + " ?" + PHONENUMBER + " ?" + PHONENUMBER + " ?" + EMAIL + " ?" + EMAILTYPE + " "
+		return "SELECT ?" + FORMATTEDNAME + " ?" + PHONE + " ?" + PHONE + " ?" + EMAIL + " ?" + EMAILTYPE + " "
 				+ " WHERE {"
 				+ "      <" + cardURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
 				+ "      <" + cardURI + "> <" + Vocabulary.HAS_FORMATTED_NAME + "> ?" + FORMATTEDNAME + ".\n"
-				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE_NUMBER + "> ?" + PHONENUMBER + " }\n"
+				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE + "> ?" + PHONE + " }\n"
 				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE_TYPE + "> ?" + PHONETYPE + " }\n"
 				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_EMAIL + "> ?" + EMAIL + " }\n"
 				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_EMAIL_TYPE + "> ?" + EMAILTYPE + " }\n"
 				+ "      }";
-	}
+	}*/
 
 	static String skeleton()
 	{
@@ -104,6 +106,8 @@ public interface DFetch
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
+								"?%s <%s> ?%s .   " +
 								"?%s <%s> ?%s}\n   " +
 
 								"WHERE {     ?%s <%s> <%s> .  " +
@@ -113,23 +117,29 @@ public interface DFetch
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
+								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								" }",
 						// START OF CONSTRUCT
 						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_FORMATTED_NAME, Vars.VAR_FORMATTED_NAME,
-						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE_NUMBER, Vars.VAR_PHONE_NUMBER,
-						Vars.VAR_PHONE_NUMBER, Vocabulary.HAS_PHONE_TYPE, Vars.VAR_PHONE_TYPE,
-						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL,
-						Vars.VAR_EMAIL, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE, Vars.VAR_PHONE_ID,
+						Vars.VAR_PHONE_ID, Vocabulary.HAS_NUMBER, Vars.VAR_PHONE_NUMBER,
+						Vars.VAR_PHONE_ID, Vocabulary.HAS_TYPE, Vars.VAR_PHONE_TYPE,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL, Vars.VAR_EMAIL_ID,
+						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL_ADDRESS,
+						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE,
 						// START OF WHERE
 						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_FORMATTED_NAME, Vars.VAR_FORMATTED_NAME,
-						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE_NUMBER, Vars.VAR_PHONE_NUMBER,
-						Vars.VAR_PHONE_NUMBER, Vocabulary.HAS_PHONE_TYPE, Vars.VAR_PHONE_TYPE,
-						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL,
-						Vars.VAR_EMAIL, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE);
+						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE, Vars.VAR_PHONE_ID,
+						Vars.VAR_PHONE_ID, Vocabulary.HAS_NUMBER, Vars.VAR_PHONE_NUMBER,
+						Vars.VAR_PHONE_ID, Vocabulary.HAS_TYPE, Vars.VAR_PHONE_TYPE,
+						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL, Vars.VAR_EMAIL_ID,
+						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL_ADDRESS,
+						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_TYPE, Vars.VAR_EMAIL_TYPE);
 	}
 
 }

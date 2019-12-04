@@ -15,7 +15,9 @@ import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
+import org.knowtiphy.utils.ThreeTuple;
 
+import java.util.Collection;
 import java.util.function.Function;
 
 public interface DStore
@@ -43,7 +45,6 @@ public interface DStore
 		}
 	}
 
-
 	static void storeAddressBook(Delta delta, String adapterID, String addressBookId, DavResource addressBook)
 	{
 		delta.addR(addressBookId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ADDRESSBOOK)
@@ -53,7 +54,8 @@ public interface DStore
 		addAttribute(delta, addressBookId, Vocabulary.HAS_CTAG, addressBook.getCustomProps().get("getctag"), x -> x);
 	}
 
-	static void storeCard(Delta delta, String addressBookId, String cardId, VCard vCard, DavResource card)
+	static void storeCard(Delta delta, Collection<ThreeTuple<String, DavResource, VCard>> toProcess,
+			String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
 
 		if (!vCard.getExtendedProperties().isEmpty())
@@ -62,13 +64,7 @@ public interface DStore
 			if (vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0).getValue().equals("group"))
 			{
 				delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP)
-						.addR(addressBookId, Vocabulary.CONTAINS, cardId);
-
-				for (RawProperty member : vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-MEMBER"))
-				{
-					addAttribute(delta, cardId, Vocabulary.HAS_CARD, member.getValue(), x -> x);
-				}
-
+						.addR(addressBookId, Vocabulary.HAS_GROUP, cardId);
 			}
 			else
 			{
@@ -81,33 +77,61 @@ public interface DStore
 			delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD)
 					.addR(addressBookId, Vocabulary.CONTAINS, cardId);
 
-			addAttribute(delta, cardId, Vocabulary.HAS_UID, vCard.getUid(), x -> x);
-
 			for (Telephone telephone : vCard.getTelephoneNumbers())
 			{
 				String phoneNumber = telephone.getText();
+				String phoneURI = cardId + "/phone/" + phoneNumber;
 
-				addAttribute(delta, cardId, Vocabulary.HAS_PHONE_NUMBER, phoneNumber, x -> x);
+				delta.addR(cardId, Vocabulary.HAS_PHONE, phoneURI);
 
 				// Potentially has 1+ types, such home and pref, can account for if we want to
-				delta.addL(phoneNumber, Vocabulary.HAS_PHONE_TYPE, telephone.getTypes().get(0));
+				addAttribute(delta, phoneURI, Vocabulary.HAS_NUMBER, phoneNumber, x -> x);
+				addAttribute(delta, phoneURI, Vocabulary.HAS_TYPE, telephone.getTypes().get(0).getValue(), x -> x);
 			}
 
 			for (Email email : vCard.getEmails())
 			{
 				String emailAddress = email.getValue();
+				String emailURI = cardId + "/email/" + emailAddress;
 
-				addAttribute(delta, cardId, Vocabulary.HAS_EMAIL, emailAddress, x -> x);
+				delta.addR(emailURI, Vocabulary.HAS_EMAIL, emailURI);
 
 				// Potentially has 1+ types, such home and pref, can account for if we want to
-				delta.addL(emailAddress, Vocabulary.HAS_PHONE_TYPE, email.getTypes().get(0));
+				addAttribute(delta, emailURI, Vocabulary.HAS_ADDRESS, emailAddress, x -> x);
+				addAttribute(delta, emailURI, Vocabulary.HAS_TYPE, email.getTypes().get(0).getValue(), x -> x);
+
 			}
 		}
 
+		// This can apparently be empty
+		addAttribute(delta, cardId, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> x);
+		toProcess.add(new ThreeTuple<>(cardId, card, vCard));
+	}
+
+	static void storeCardMeta(Delta delta, ThreeTuple<String, DavResource, VCard> toProcess)
+	{
+		String cardId = toProcess.fst();
+		DavResource card = toProcess.snd();
+		VCard vCard = toProcess.thrd();
+
+		if (!vCard.getExtendedProperties().isEmpty())
+		{
+			// Not sure yet if this list can be any bigger, IE have more than 1 KIND
+			if (vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0).getValue().equals("group"))
+			{
+				for (RawProperty member : vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-MEMBER"))
+				{
+					addAttribute(delta, cardId, Vocabulary.HAS_MEMBER_UID, member.getValue(), x -> x);
+				}
+			}
+
+		}
+		else
+		{
+			addAttribute(delta, cardId, Vocabulary.HAS_UID, vCard.getUid(), x -> x);
+		}
 
 		addAttribute(delta, cardId, Vocabulary.HAS_ETAG, card.getEtag(), x -> x);
-
-		addAttribute(delta, cardId, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> x);
 
 	}
 

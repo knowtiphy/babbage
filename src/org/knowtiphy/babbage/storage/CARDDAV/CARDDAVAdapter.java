@@ -17,8 +17,10 @@ import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
+import org.knowtiphy.utils.ThreeTuple;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -138,9 +140,14 @@ public class CARDDAVAdapter extends BaseAdapter
 		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverCard)).first();
 		Model messageDB = messageDatabase.getDefaultModel();
 
+		// Bit janky since this only ever has one thing in it, have 2nd method? Gross
 		applyAndNotify(delta -> {
 			unstoreRes(messageDB, delta, getId(), cardURI);
-			storeCard(delta, serverBookURI, cardURI, vCard, serverCard);
+			storeCard(delta, new ArrayList<>(), serverBookURI, cardURI, vCard, serverCard);
+		});
+
+		apply(delta -> {
+			storeCardMeta(delta, new ThreeTuple<>(cardURI, serverCard, vCard));
 		});
 
 	}
@@ -326,12 +333,14 @@ public class CARDDAVAdapter extends BaseAdapter
 							storeAddressBook(delta, getId(), serverBookURI, serverBook);
 						});
 
+						Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess = new ArrayList<>();
+
 						applyAndNotify(delta -> {
 							addCard.forEach(card -> {
 								try
 								{
 									VCard vCard = Ezvcard.parse(sardine.get(serverHeader + card)).first();
-									storeCard(delta, serverBookURI, encodeCard(serverBook, card),
+									storeCard(delta, furtherProcess, serverBookURI, encodeCard(serverBook, card),
 											vCard, card);
 								} catch (IOException e)
 								{
@@ -341,8 +350,15 @@ public class CARDDAVAdapter extends BaseAdapter
 
 						});
 
+						apply(delta -> {
+
+							// Need carID, DAVresource card, and Vcard
+							furtherProcess.forEach(element -> storeCardMeta(delta, element));
+
+						});
+
 					}
-					// Calendar already exists, check if CTags differ, check if names differ
+					// Addressbook already exists, check if CTags differ, check if names differ
 					else
 					{
 						if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
@@ -408,6 +424,7 @@ public class CARDDAVAdapter extends BaseAdapter
 								}
 							}
 
+							Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess =  new ArrayList<>();
 							applyAndNotify(delta -> {
 
 								removeCard.forEach(
@@ -417,14 +434,19 @@ public class CARDDAVAdapter extends BaseAdapter
 								addCards.forEach(event -> {
 									try
 									{
-										storeCard(delta, serverBookURI, encodeCard(serverBook, event),
-												Ezvcard.parse(sardine.get(serverHeader + event)).first(), event);
+										VCard  vCard = Ezvcard.parse(sardine.get(serverHeader + event)).first();
+										storeCard(delta, furtherProcess, serverBookURI, encodeCard(serverBook, event),
+												vCard, event);
 									} catch (IOException e)
 									{
 										e.printStackTrace();
 									}
 								});
 
+							});
+
+							apply(delta -> {
+								furtherProcess.forEach(tuple -> storeCardMeta(delta, tuple));
 							});
 
 						}
