@@ -67,7 +67,7 @@ public interface DStore
 	static void storeResource(Delta delta, Collection<ThreeTuple<String, DavResource, VCard>> toProcess,
 			String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
-
+		boolean hasEmail = false;
 		if (!vCard.getExtendedProperties().isEmpty() && vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0)
 				.getValue().equals("group"))
 		{
@@ -95,6 +95,7 @@ public interface DStore
 
 			for (Email email : vCard.getEmails())
 			{
+				hasEmail = true;
 				String emailAddress = email.getValue().replaceAll("\\s", "");
 				String emailURI = cardId + "/email/" + emailAddress;
 
@@ -107,8 +108,15 @@ public interface DStore
 			}
 		}
 
-		// This can apparently be empty, so will fill with a tele first, and then an email if none found
-		addAttribute(delta, cardId, Vocabulary.HAS_NAME, vCard.getFormattedName().getValue(), x -> x);
+		// This can apparently be empty, so will fill with an email first, and then an tele if none found
+		// I just had fun doing this, it's too late.
+		// If they don't have an email or a tele, well they suck, can account for that later
+
+		String name = vCard.getFormattedName().getValue();
+
+		addAttribute(delta, cardId, Vocabulary.HAS_NAME, !name.equals("") && !name.equals(" ") ?
+				name :
+				hasEmail ? vCard.getEmails().get(0).getValue() : vCard.getTelephoneNumbers().get(0).getText(), x -> x);
 		toProcess.add(new ThreeTuple<>(cardId, card, vCard));
 	}
 
@@ -173,7 +181,8 @@ public interface DStore
 
 	}
 
-	static void computeMemberCardDiffs(Model messageDB, Delta delta, String resourceURI, Collection<String> oldMem, Collection<String> updatedMem)
+	static void computeMemberCardDiffs(Model messageDB, Delta delta, String resourceURI, Collection<String> oldMem,
+			Collection<String> updatedMem)
 	{
 		// Wil optimize this later lol, 2am coding
 		Collection<String> membersToAdd = new ArrayList<>();
@@ -181,7 +190,7 @@ public interface DStore
 
 		for (String member : oldMem)
 		{
-			if(!updatedMem.contains(member))
+			if (!updatedMem.contains(member))
 			{
 				membersToDelete.add(member);
 			}
@@ -204,7 +213,8 @@ public interface DStore
 		for (String member : membersToDelete)
 		{
 			System.out.println("REMOVED SOMEONE FROM GROUP");
-			delta.delete(messageDB.listStatements(R(messageDB, resourceURI), P(messageDB, Vocabulary.HAS_CARD), L(messageDB, member)));
+			delta.delete(messageDB.listStatements(R(messageDB, resourceURI), P(messageDB, Vocabulary.HAS_CARD),
+					L(messageDB, member)));
 		}
 	}
 
@@ -235,7 +245,6 @@ public interface DStore
 
 			delta.delete(db.listStatements(cardRes, P(db, Vocabulary.HAS_EMAIL), stmt.getObject().asResource()));
 		}
-
 
 		delta.delete(db.listStatements(cardRes, P(db, Vocabulary.HAS_NAME), (RDFNode) null))
 				.delete(db.listStatements(cardRes, P(db, Vocabulary.RDF_TYPE), (RDFNode) null))
