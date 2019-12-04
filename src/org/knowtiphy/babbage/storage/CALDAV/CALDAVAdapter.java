@@ -12,7 +12,7 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
-import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.DaveAdapter;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
@@ -41,7 +41,7 @@ import java.util.logging.Logger;
 import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
 import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
 
-public class CALDAVAdapter extends BaseAdapter
+public class CALDAVAdapter extends DaveAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(CALDAVAdapter.class.getName());
 	private static final long FREQUENCY = 30_000L;

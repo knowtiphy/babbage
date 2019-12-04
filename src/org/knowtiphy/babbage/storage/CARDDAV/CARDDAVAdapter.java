@@ -10,13 +10,14 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
-import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
+import org.knowtiphy.babbage.storage.DaveAdapter;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
+import org.knowtiphy.utils.Pair;
 import org.knowtiphy.utils.ThreeTuple;
 
 import java.io.IOException;
@@ -38,7 +39,7 @@ import java.util.logging.Logger;
 import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.*;
 import static org.knowtiphy.babbage.storage.CARDDAV.DStore.*;
 
-public class CARDDAVAdapter extends BaseAdapter
+public class CARDDAVAdapter extends DaveAdapter
 {
 
 	private static final Logger LOGGER = Logger.getLogger(CALDAVAdapter.class.getName());
@@ -116,12 +117,13 @@ public class CARDDAVAdapter extends BaseAdapter
 	{
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		applyAndNotify(delta -> {
-
-			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).execSelect();
+		apply(delta -> {
 			updateTriple(messageDB, delta, addressBookUri, Vocabulary.HAS_CTAG,
 					addressBook.getCustomProps().get("getctag"));
+		});
 
+		applyAndNotify(delta -> {
+			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).execSelect();
 			while (rs.hasNext())
 			{
 				QuerySolution soln = rs.next();
@@ -140,14 +142,29 @@ public class CARDDAVAdapter extends BaseAdapter
 		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverCard)).first();
 		Model messageDB = messageDatabase.getDefaultModel();
 
-		// Bit janky since this only ever has one thing in it, have 2nd method? Gross
 		applyAndNotify(delta -> {
-			unstoreRes(messageDB, delta, getId(), cardURI);
+			unstoreRes(messageDB, delta, serverBookURI, cardURI);
+		});
+
+		applyAndNotify(delta -> {
 			storeCard(delta, new ArrayList<>(), serverBookURI, cardURI, vCard, serverCard);
 		});
 
+		Collection<String> toAddGroupURIs = new ArrayList<>();
 		apply(delta -> {
-			storeCardMeta(delta, new ThreeTuple<>(cardURI, serverCard, vCard));
+			storeCardMeta(delta, new ThreeTuple<>(cardURI, serverCard, vCard), toAddGroupURIs);
+		});
+
+		if (!toAddGroupURIs.isEmpty())
+		{
+			System.out.println("GOT A GROUP CHANGE");
+		}
+
+		toAddGroupURIs.forEach(groupURI -> {
+			Collection<String> memberCards = getStored(memberCardURI(groupURI), CARDRES);
+			applyAndNotify(delta -> {
+				storeMemberCards(delta, groupURI, memberCards);
+			});
 		});
 
 	}
@@ -281,6 +298,7 @@ public class CARDDAVAdapter extends BaseAdapter
 	{
 
 		@Override public void run()
+
 		{
 			try
 			{
@@ -293,165 +311,184 @@ public class CARDDAVAdapter extends BaseAdapter
 				Set<String> storedAddressBooks = getStored(addressBookURIs(getId()), ABOOKRES);
 
 				Iterator<DavResource> cardDavResources = sardine.list(serverName).iterator();
+				// 1st resource is actually the ADDRESS BOOK??? What, so if something has multple addressbook,
+				// will need to check the contentType of this davResource and do something based on that
+				DavResource serverBookRes = cardDavResources.next();
+				String serverBookURI = encodeAddressBook(serverBookRes);
 
+				// Apparently some servers allow you to delete addressBooks....
 				Set<String> serverBookURIs = new HashSet<>(10);
-				// During this loop, I can check the CTAGS, Check if need to be added/deleted
-				// Maybe all at once later on
-				while (cardDavResources.hasNext())
-				{
-					DavResource serverBook = cardDavResources.next();
-					String serverBookURI = encodeAddressBook(serverBook);
-					serverBookURIs.add(serverBookURI);
+				serverBookURIs.add(serverBookURI);
 
-					if (!m_addressBook.containsKey(serverBookURI))
+				if (!m_addressBook.containsKey(serverBookURI))
+				{
+					m_addressBook.put(serverBookURI, serverBookRes);
+					m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
+				}
+
+				// Addressbook not in DB
+				if (!storedAddressBooks.contains(serverBookURI))
+				{
+					applyAndNotify(delta -> {
+						storeAddressBook(delta, getId(), serverBookURI, serverBookRes);
+					});
+
+					// For explicit sake, everything from here on, should be a vCard of some sort
+					Iterator<DavResource> davCards = cardDavResources;
+					//Collection<Pair<String, DavResource>> addCard = new HashSet<>(1000);
+
+					// From here on, every one of these resouces is an addressbook resouce
+					while (davCards.hasNext())
 					{
-						m_addressBook.put(serverBookURI, serverBook);
+						DavResource serverCardRes = davCards.next();
+						String serverCardURI = encodeCard(serverBookRes, serverCardRes);
+
+						m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCardRes);
+
+						// Can I use map instead of this???? Prob
+						//addCard.add(new Pair<>(serverCardURI, serverCardRes));
 					}
 
-					// AddressBook not in DB, store it and cards
-					if (!storedAddressBooks.contains(serverBookURI))
-					{
-						m_addressBook.put(serverBookURI, serverBook);
+					// Tuple to further Store data without notifying client
+					Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess = new ArrayList<>();
+					applyAndNotify(delta -> {
+						m_PerBookCards.get(serverBookURI).forEach((key, value) -> {
+							try
+							{
+								VCard vCard = Ezvcard.parse(sardine.get(serverHeader + value)).first();
+								storeCard(delta, furtherProcess, serverBookURI, key, vCard, value);
+							} catch (IOException e)
+							{
+								e.printStackTrace();
+							}
+						});
 
-						// Add Cards
-						Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
+					});
+
+					// New groups to notify client of its card relations
+					Collection<String> toAddGroupURIs = new ArrayList<>();
+					apply(delta -> {
+						// Store UIDs for Contacts, memberUIds for Groups, and ETags for both
+						furtherProcess.forEach(element -> storeCardMeta(delta, element, toAddGroupURIs));
+
+					});
+
+					toAddGroupURIs.forEach(groupURI -> {
+						Collection<String> memberCards = getStored(memberCardURI(groupURI), CARDRES);
+						applyAndNotify(delta -> {
+							storeMemberCards(delta, groupURI, memberCards);
+						});
+					});
+
+				}
+				// Addressbook already exists, check if CTags differ, check if names differ
+				else
+				{
+					if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
+							.equals(serverBookRes.getCustomProps().get("getctag")))
+					{
+						System.out.println(
+								":::::::::::::::::::::::::::::::::: CARDDAV C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
+						m_addressBook.put(serverBookURI, serverBookRes);
+						storeAddressBookDiffs(serverBookURI, serverBookRes);
+
+						Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
+						Set<String> storedGroups =  getStored(groupURIs(serverBookURI), GROUPRES);
+
+						Set<Pair<String, DavResource>> addCards = new HashSet<>();
+						Set<String> serverCardURIs = new HashSet<>();
+
+						Iterator<DavResource> davCards = sardine.list(serverName).iterator();
 						// 1st iteration is the addressBook uri, so skip
 						davCards.next();
 
-						Collection<DavResource> addCard = new HashSet<>(1000);
-						Map<String, DavResource> cardURIToRes = new ConcurrentHashMap<>();
 						while (davCards.hasNext())
 						{
-							DavResource serverEvent = davCards.next();
-							cardURIToRes.put(encodeCard(serverBook, serverEvent), serverEvent);
-							addCard.add(serverEvent);
+							DavResource serverCardRes = davCards.next();
+							String serverCardURI = encodeCard(serverBookRes, serverCardRes);
+							serverCardURIs.add(serverCardURI);
+
+							if (!m_PerBookCards.containsKey(serverBookURI))
+							{
+								m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
+							}
+
+							if (!m_PerBookCards.get(serverBookURI).containsKey(serverCardURI))
+							{
+								m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCardRes);
+							}
+
+							// New Card, store it
+							if (!storedCards.contains(serverCardURI) && !storedGroups.contains(serverCardURI))
+							{
+								addCards.add(new Pair<>(serverCardURI, serverCardRes));
+							}
+							// Not new event, compare ETAGS
+							else
+							{
+								m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCardRes);
+
+								String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG).replace("\\", "");
+
+								if (!storedTAG.equals(serverCardRes.getEtag()))
+								{
+									storeCardDiffs(serverBookURI, serverCardURI, serverCardRes);
+								}
+							}
+
 						}
 
-						m_PerBookCards.put(serverBookURI, cardURIToRes);
+						// Cards to be removed, this needs to be events in the DB
+						Collection<String> removeCard = new HashSet<>();
+
+						Set<String> storedCardsAndGroups = new HashSet<>(100);
+						storedCardsAndGroups.addAll(storedCards);
+						storedCardsAndGroups.addAll(storedGroups);
+
+						for (String currCardURI : storedCardsAndGroups)
+						{
+							if (!serverCardURIs.contains(currCardURI))
+							{
+								removeCard.add(currCardURI);
+								m_PerBookCards.get(serverBookURI).remove(currCardURI);
+							}
+						}
 
 						applyAndNotify(delta -> {
-							storeAddressBook(delta, getId(), serverBookURI, serverBook);
+
+							removeCard.forEach(
+									event -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI,
+											event));
 						});
 
 						Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess = new ArrayList<>();
-
 						applyAndNotify(delta -> {
-							addCard.forEach(card -> {
+							addCards.forEach(card -> {
 								try
 								{
-									VCard vCard = Ezvcard.parse(sardine.get(serverHeader + card)).first();
-									storeCard(delta, furtherProcess, serverBookURI, encodeCard(serverBook, card),
-											vCard, card);
+									VCard vCard = Ezvcard.parse(sardine.get(serverHeader + card.snd())).first();
+									storeCard(delta, furtherProcess, serverBookURI, card.fst(), vCard, card.snd());
 								} catch (IOException e)
 								{
 									e.printStackTrace();
 								}
 							});
-
 						});
 
+						// New groups to notify client of its card relations
+						Collection<String> toAddGroupURIs = new ArrayList<>();
 						apply(delta -> {
+							furtherProcess.forEach(tuple -> storeCardMeta(delta, tuple, toAddGroupURIs));
+						});
 
-							// Need carID, DAVresource card, and Vcard
-							furtherProcess.forEach(element -> storeCardMeta(delta, element));
-
+						toAddGroupURIs.forEach(groupURI -> {
+							Collection<String> memberCards = getStored(memberCardURI(groupURI), CARDRES);
+							applyAndNotify(delta -> {
+								storeMemberCards(delta, groupURI, memberCards);
+							});
 						});
 
 					}
-					// Addressbook already exists, check if CTags differ, check if names differ
-					else
-					{
-						if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
-								.equals(serverBook.getCustomProps().get("getctag")))
-						{
-							System.out.println(
-									":::::::::::::::::::::::::::::::::: C TAG HAS CHANGED :::::::::::::::::::::::::::::::::::::::::::::");
-							m_addressBook.put(serverBookURI, serverBook);
-							storeAddressBookDiffs(serverBookURI, serverBook);
-
-							Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
-							Set<DavResource> addCards = new HashSet<>();
-							Set<String> serverCardURIs = new HashSet<>();
-
-							Iterator<DavResource> davCards = sardine.list(serverHeader + serverBook).iterator();
-							// 1st iteration is the addressBook uri, so skip
-							davCards.next();
-
-							while (davCards.hasNext())
-							{
-								DavResource serverCard = davCards.next();
-								String serverCardURI = encodeCard(serverBook, serverCard);
-								serverCardURIs.add(serverCardURI);
-
-								if (!m_PerBookCards.containsKey(serverBookURI))
-								{
-									m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
-								}
-
-								if (!m_PerBookCards.get(serverBookURI).containsKey(serverBookURI))
-								{
-									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
-								}
-
-								// New Card, store it
-								if (!storedCards.contains(serverCardURI))
-								{
-									addCards.add(serverCard);
-								}
-								// Not new event, compare ETAGS
-								else
-								{
-									m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCard);
-
-									String storedTAG = getStoredTag(cardETAG(serverCardURI), ETAG).replace("\\", "");
-
-									if (!storedTAG.equals(serverCard.getEtag()))
-									{
-										storeCardDiffs(serverBookURI, serverCardURI, serverCard);
-									}
-								}
-
-							}
-
-							// Cards to be removed, this needs to be events in the DB
-							Collection<String> removeCard = new HashSet<>();
-							for (String currCardURI : storedCards)
-							{
-								if (!serverCardURIs.contains(currCardURI))
-								{
-									removeCard.add(currCardURI);
-									m_PerBookCards.get(serverBookURI).remove(currCardURI);
-								}
-							}
-
-							Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess =  new ArrayList<>();
-							applyAndNotify(delta -> {
-
-								removeCard.forEach(
-										event -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI,
-												event));
-
-								addCards.forEach(event -> {
-									try
-									{
-										VCard  vCard = Ezvcard.parse(sardine.get(serverHeader + event)).first();
-										storeCard(delta, furtherProcess, serverBookURI, encodeCard(serverBook, event),
-												vCard, event);
-									} catch (IOException e)
-									{
-										e.printStackTrace();
-									}
-								});
-
-							});
-
-							apply(delta -> {
-								furtherProcess.forEach(tuple -> storeCardMeta(delta, tuple));
-							});
-
-						}
-					}
-
 				}
 
 				// AddressBooks to be removed

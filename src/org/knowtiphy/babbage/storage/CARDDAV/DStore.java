@@ -45,12 +45,21 @@ public interface DStore
 		}
 	}
 
+	static void storeMemberCards(Delta delta, String groupID, Collection<String> memberID)
+	{
+		memberID.forEach(id -> addAttribute(delta, groupID, Vocabulary.HAS_CARD, id, x -> x));
+	}
+
 	static void storeAddressBook(Delta delta, String adapterID, String addressBookId, DavResource addressBook)
 	{
 		delta.addR(addressBookId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ADDRESSBOOK)
 				.addR(adapterID, Vocabulary.CONTAINS, addressBookId);
 
 		addAttribute(delta, addressBookId, Vocabulary.HAS_NAME, addressBook.getDisplayName(), x -> x);
+
+		System.out.println("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB :: " + addressBook.getCustomProps()
+				.get("getctag"));
+
 		addAttribute(delta, addressBookId, Vocabulary.HAS_CTAG, addressBook.getCustomProps().get("getctag"), x -> x);
 	}
 
@@ -58,18 +67,12 @@ public interface DStore
 			String addressBookId, String cardId, VCard vCard, DavResource card)
 	{
 
-		if (!vCard.getExtendedProperties().isEmpty())
+		if (!vCard.getExtendedProperties().isEmpty() && vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0)
+				.getValue().equals("group"))
 		{
-			// Not sure yet if this list can be any bigger, IE have more than 1 KIND
-			if (vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0).getValue().equals("group"))
-			{
-				delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP)
-						.addR(addressBookId, Vocabulary.HAS_GROUP, cardId);
-			}
-			else
-			{
-				// Dunno, maybe something will eventually spit out being a member instead of nothing
-			}
+
+			delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP)
+					.addR(addressBookId, Vocabulary.HAS_GROUP, cardId);
 		}
 		// I think at this point we can assume its a card
 		else
@@ -79,7 +82,7 @@ public interface DStore
 
 			for (Telephone telephone : vCard.getTelephoneNumbers())
 			{
-				String phoneNumber = telephone.getText();
+				String phoneNumber = telephone.getText().trim();
 				String phoneURI = cardId + "/phone/" + phoneNumber;
 
 				delta.addR(cardId, Vocabulary.HAS_PHONE, phoneURI);
@@ -91,7 +94,7 @@ public interface DStore
 
 			for (Email email : vCard.getEmails())
 			{
-				String emailAddress = email.getValue();
+				String emailAddress = email.getValue().replaceAll("\\s", "");
 				String emailURI = cardId + "/email/" + emailAddress;
 
 				delta.addR(emailURI, Vocabulary.HAS_EMAIL, emailURI);
@@ -103,44 +106,42 @@ public interface DStore
 			}
 		}
 
-		// This can apparently be empty
+		// This can apparently be empty, so will fill with a tele first, and then an email if none found
 		addAttribute(delta, cardId, Vocabulary.HAS_FORMATTED_NAME, vCard.getFormattedName().getValue(), x -> x);
 		toProcess.add(new ThreeTuple<>(cardId, card, vCard));
 	}
 
-	static void storeCardMeta(Delta delta, ThreeTuple<String, DavResource, VCard> toProcess)
+	static void storeCardMeta(Delta delta, ThreeTuple<String, DavResource, VCard> toProcess,
+			Collection<String> groupURIs)
 	{
 		String cardId = toProcess.fst();
 		DavResource card = toProcess.snd();
 		VCard vCard = toProcess.thrd();
 
-		if (!vCard.getExtendedProperties().isEmpty())
+		if (!vCard.getExtendedProperties().isEmpty() && vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0)
+				.getValue().equals("group"))
 		{
-			// Not sure yet if this list can be any bigger, IE have more than 1 KIND
-			if (vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-KIND").get(0).getValue().equals("group"))
+			groupURIs.add(cardId);
+			for (RawProperty member : vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-MEMBER"))
 			{
-				for (RawProperty member : vCard.getExtendedProperties("X-ADDRESSBOOKSERVER-MEMBER"))
-				{
-					addAttribute(delta, cardId, Vocabulary.HAS_MEMBER_UID, member.getValue(), x -> x);
-				}
+				addAttribute(delta, cardId, Vocabulary.HAS_MEMBER_UID, member.getValue().replace("urn:uuid:", ""),
+						x -> x);
 			}
-
 		}
 		else
 		{
-			addAttribute(delta, cardId, Vocabulary.HAS_UID, vCard.getUid(), x -> x);
+			addAttribute(delta, cardId, Vocabulary.HAS_UID, vCard.getUid().getValue(), x -> x);
 		}
 
 		addAttribute(delta, cardId, Vocabulary.HAS_ETAG, card.getEtag(), x -> x);
 
 	}
 
-	//  TODO -- have to delete the CIDS, content, etc
+	// TODO :: SPLIT THIS UP TO NOT NOTIFY OF SOME DELETES
 	static void unstoreRes(Model messageDB, Delta delta, String containerName, String resName)
 	{
-		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
 		Resource res = R(messageDB, resName);
-		//  TODO -- delete everything reachable from messageName
+
 		StmtIterator it = messageDB.listStatements(res, null, (RDFNode) null);
 		while (it.hasNext())
 		{
@@ -150,7 +151,58 @@ public interface DStore
 				delta.delete(messageDB.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
 			}
 		}
-		delta.delete(messageDB.listStatements(res, null, (RDFNode) null));
-		delta.delete(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res));
+		delta.delete(messageDB.listStatements(res, null, (RDFNode) null))
+				.delete(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res))
+				.delete(messageDB.listStatements(null, P(messageDB, Vocabulary.HAS_CARD), res))
+				.delete(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.HAS_GROUP), res))
+				.delete(messageDB.listStatements(res, P(messageDB, Vocabulary.HAS_CARD), (RDFNode) null));
+
+	}
+
+	static void deleteGroup(Model db, Delta delta, String bookID, String groupID)
+	{
+		Resource groupRes = R(db, groupID);
+
+		StmtIterator it = db.listStatements(groupRes, null, (RDFNode) null);
+		while (it.hasNext())
+		{
+			Statement stmt = it.next();
+			if (stmt.getObject().isResource())
+			{
+				delta.delete(db.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+			}
+		}
+
+		delta.delete(db.listStatements(groupRes, null, (RDFNode) null))
+				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.HAS_GROUP), groupRes));
+	}
+
+	static void deleteVCard(Model db, Delta delta, String bookID, String vCardID)
+	{
+		Resource vCardRes = R(db, vCardID);
+
+		StmtIterator it = db.listStatements(vCardRes, null, (RDFNode) null);
+		while (it.hasNext())
+		{
+			Statement stmt = it.next();
+			if (stmt.getObject().isResource())
+			{
+				delta.delete(db.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+			}
+		}
+
+		delta.delete(db.listStatements(vCardRes, null, (RDFNode) null))
+				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.CONTAINS), vCardRes));
+	}
+
+	static void unStoreMeta(Model db, Delta delta, String resName)
+	{
+		Resource davRes = R(db, resName);
+
+		delta.delete(db.listStatements(davRes, P(db, Vocabulary.HAS_CTAG), (RDFNode) null))
+				.delete(db.listStatements(davRes, P(db, Vocabulary.HAS_ETAG), (RDFNode) null))
+				.delete(db.listStatements(davRes, P(db, Vocabulary.HAS_UID), (RDFNode) null))
+				.delete(db.listStatements(davRes, P(db, Vocabulary.HAS_MEMBER_UID), (RDFNode) null));
+
 	}
 }

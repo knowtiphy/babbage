@@ -6,6 +6,7 @@ import org.knowtiphy.babbage.storage.Vocabulary;
 public interface DFetch
 {
 	String CARDRES = "card";
+	String GROUPRES = "group";
 	String ABOOKRES = "addressbook";
 	String ETAG = "etag";
 	String CTAG = "ctag";
@@ -50,8 +51,9 @@ public interface DFetch
 	{
 		return "SELECT ?" + ETAG + " "
 				+ "WHERE {"
-				+ "      <" + contactURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
+				+ "      <" + contactURI + "> <" + Vocabulary.RDF_TYPE + "> ?type.\n"
 				+ "      <" + contactURI + "> <" + Vocabulary.HAS_ETAG + "> ?" + ETAG + ".\n"
+				+ " FILTER ( ?type = <" + Vocabulary.CARDDAV_CARD + "> || ?type = <" + Vocabulary.CARDDAV_GROUP + "> )\n"
 				+ "      }";
 	}
 
@@ -64,18 +66,29 @@ public interface DFetch
 				+ "      }";
 	}
 
-/*	static String cardProperties(String cardURI)
+	static String groupURIs(String bookURI)
 	{
-		return "SELECT ?" + FORMATTEDNAME + " ?" + PHONE + " ?" + PHONE + " ?" + EMAIL + " ?" + EMAILTYPE + " "
-				+ " WHERE {"
-				+ "      <" + cardURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
-				+ "      <" + cardURI + "> <" + Vocabulary.HAS_FORMATTED_NAME + "> ?" + FORMATTEDNAME + ".\n"
-				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE + "> ?" + PHONE + " }\n"
-				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_PHONE_TYPE + "> ?" + PHONETYPE + " }\n"
-				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_EMAIL + "> ?" + EMAIL + " }\n"
-				+ " OPTIONAL { <" + cardURI + "> <" + Vocabulary.HAS_EMAIL_TYPE + "> ?" + EMAILTYPE + " }\n"
+		return "SELECT ?" + GROUPRES + " "
+				+ "WHERE {"
+				+ "      ?" + GROUPRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
+				+ "      <" + bookURI + "> <" + Vocabulary.HAS_GROUP + "> ?" + GROUPRES + ".\n"
 				+ "      }";
-	}*/
+	}
+
+	static String memberCardURI(String groupURI)
+	{
+		return "SELECT ?" + CARDRES + " "
+				+ " WHERE {"
+				+ " ?" + CARDRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
+				+ " ?" + CARDRES + " <" + Vocabulary.HAS_UID + "> ?uid.\n"
+				+ " { SELECT ?uid "
+				+ "   WHERE { "
+				+ "   		<" + groupURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
+				+ "			<" + groupURI + "> <" + Vocabulary.HAS_MEMBER_UID + "> ?uid.\n"
+				+ "			}\n"
+				+ "  }\n"
+				+ "	      }";
+	}
 
 	static String skeleton()
 	{
