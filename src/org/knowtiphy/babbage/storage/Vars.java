@@ -19,6 +19,7 @@ public class Vars
 	public static final String VAR_IS_INBOX_FOLDER = "folderIsInbox";
 	public static final String VAR_IS_JUNK_FOLDER = "folderIsJunk";
 	public static final String VAR_IS_TRASH_FOLDER = "folderIsTrash";
+	public static final String VAR_IS_SENT_FOLDER = "folderIsSent";
 
 	public static final String VAR_MESSAGE_ID = "messageId";
 	public static final String VAR_IS_READ = "isRead";

@@ -72,7 +72,8 @@ public interface DStore
 				.addL(folderId, Vocabulary.HAS_NAME, folder.getName())
 				.addL(folderId, Vocabulary.IS_INBOX, Constants.INBOX_FOLDER_PATTERN.matcher(folder.getName()).matches())
 				.addL(folderId, Vocabulary.IS_TRASH_FOLDER, Constants.TRASH_FOLDER_PATTERN.matcher(folder.getName()).matches())
-				.addL(folderId, Vocabulary.IS_JUNK_FOLDER, Constants.JUNK_FOLDER_PATTERN.matcher(folder.getName()).matches());
+				.addL(folderId, Vocabulary.IS_JUNK_FOLDER, Constants.JUNK_FOLDER_PATTERN.matcher(folder.getName()).matches())
+				.addL(folderId, Vocabulary.IS_SENT_FOLDER, Constants.SENT_FOLDER_PATTERN.matcher(folder.getName()).matches());
 	}
 
 	static void addFolderCounts(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException

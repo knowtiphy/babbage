@@ -42,6 +42,7 @@ public interface Vocabulary
     String IS_JUNK_FOLDER = TBASE + "isJunkFolder";
     String IS_INBOX = TBASE + "isInBox";
     String IS_TRASH_FOLDER = TBASE + "isTrashFolder";
+    String IS_SENT_FOLDER = TBASE + "isSentFolder";
 
     String CONTAINS = TBASE + "contains";
 
