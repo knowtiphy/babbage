@@ -98,6 +98,7 @@ public interface DStore
 		delta.addL(messageId, Vocabulary.HAS_CONTENT, content.getContent().toString())
 				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(content));
 		System.out.println("START CONTENT FETCH --- BASIC");
+		//  Note: the local CID is a string, not a URI -- it is unique within a message, but not across messages
 		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
 		{
 			String cidId = adapter.encode(message, entry.getKey());
