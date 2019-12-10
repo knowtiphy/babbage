@@ -70,7 +70,6 @@ public class CALDAVAdapter extends DaveAdapter
 			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
 	{
 		super(messageDatabase, listenerManager, notificationQ);
-		System.out.println("CALDAVAdapter INSTANTIATED");
 		// Query for serverName, emailAdress, and password
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
@@ -91,9 +90,6 @@ public class CALDAVAdapter extends DaveAdapter
 		}
 
 		this.id = Vocabulary.E(Vocabulary.CALDAV_ACCOUNT, emailAddress);
-
-		System.out.println("CALDAV EMAIL :: " + emailAddress);
-		System.out.println("CALDAV PASSWORD :: " + password);
 
 		sardine = SardineFactory.begin(emailAddress, password);
 

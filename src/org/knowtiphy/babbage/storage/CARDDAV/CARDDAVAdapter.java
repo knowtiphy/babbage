@@ -69,7 +69,6 @@ public class CARDDAVAdapter extends DaveAdapter
 			BlockingDeque<Runnable> notificationQ, Model model)
 	{
 		super(messageDatabase, listenerManager, notificationQ);
-		System.out.println("CARDDAVAdapter INSTANTIATED");
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
@@ -89,9 +88,6 @@ public class CARDDAVAdapter extends DaveAdapter
 		}
 
 		this.id = Vocabulary.E(Vocabulary.CARDDAV_ACCOUNT, emailAddress);
-
-		System.out.println("CALDAV EMAIL :: " + emailAddress);
-		System.out.println("CALDAV PASSWORD :: " + password);
 
 		sardine = SardineFactory.begin(emailAddress, password);
 
