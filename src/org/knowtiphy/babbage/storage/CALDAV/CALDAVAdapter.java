@@ -463,13 +463,12 @@ public class CALDAVAdapter extends DaveAdapter
 								// Not new event, compare ETAGS
 								else
 								{
-									m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
-
 									String storedTAG = getStoredTag(eventETag(serverEventURI), ETAG).replace("\\", "");
 
 									if (!storedTAG.equals(serverEvent.getEtag()))
 									{
 										storeEventDiffs(serverEventURI, serverEvent);
+										m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
 									}
 								}
 
