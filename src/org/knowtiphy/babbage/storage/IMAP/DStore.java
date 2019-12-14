@@ -77,9 +77,8 @@ public interface DStore
 				.addL(folderId, Vocabulary.IS_SENT_FOLDER, folder.getName().equals(account.sent.getName()));//Constants.SENT_FOLDER_PATTERN.matcher(folder.getName()).matches());
 	}
 
-	static void addFolderCounts(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
+	static void addFolderCounts(Delta delta, Folder folder, String folderId) throws MessagingException
 	{
-		String folderId = account.encode(folder);
 		delta.addL(folderId, Vocabulary.HAS_MESSAGE_COUNT, folder.getMessageCount())
 				.addL(folderId, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, folder.getUnreadMessageCount());
 	}
@@ -196,6 +195,16 @@ public interface DStore
 		}
 		delta.delete(dbase.listStatements(mRes, null, (RDFNode) null))
 				.delete(dbase.listStatements(R(dbase, folderId), P(dbase, Vocabulary.CONTAINS), mRes));
+	}
+
+	//	methods to update stuff -- delete then add
+
+	public static void updateFolderCounts(Model dbase, Delta delta, Folder folder, String folderId) throws MessagingException
+	{
+		//	chag
+		DStore.deleteFolderCounts(dbase, delta, folderId);
+		DStore.addFolderCounts(delta, folder, folderId);
+
 	}
 
 	//  methods to access message content

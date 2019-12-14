@@ -168,7 +168,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		//	TODO -- all these need to be in RDF
 		incoming.put("mail.imaps.compress.enable", "true");
-		incoming.put("mail.imaps.connectionpoolsize", "10");
+		incoming.put("mail.imaps.connectionpoolsize", "20");
 		incoming.put("mail.imaps.fetchsize", "3000000");
 		// incoming.setProperty("mail.imaps.port", "993");
 
@@ -850,11 +850,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		System.out.println("XXXXXXXXXXXXXXX " + nickName);
-		System.out.println(junk);
-		System.out.println(sent);
-		System.out.println(trash);
-		System.out.println(inbox);
+//		System.out.println("XXXXXXXXXXXXXXX " + nickName);
+//		System.out.println(junk);
+//		System.out.println(sent);
+//		System.out.println(trash);
+//		System.out.println(inbox);
 	}
 
 	private void startFolderWatchers() throws MessagingException, StorageException
@@ -876,11 +876,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.addMessageChangedListener(new WatchMessageChanges(this, folder));
 			idleManager.watch(folder);
 		}
-
-		Folder[] specs = store.getDefaultFolder().list("SPECIAL-USE");
-		System.out.println("XXXXXXXXXXXXXXXX : " + nickName);
-		System.out.println(specs.length);
-
 	}
 
 	//	synch methods
@@ -912,7 +907,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					addFolder(delta, this, folder);
 				}
 
-				addFolderCounts(delta, this, folder);
+				addFolderCounts(delta, folder, folderId);
 			}
 		});
 	}
@@ -1022,7 +1017,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private class WatchMessageChanges implements MessageChangedListener
 	{
 		private final IMAPAdapter account;
-		private final Folder folder;
+		private Folder folder;
 
 		WatchMessageChanges(IMAPAdapter account, Folder folder)
 		{
@@ -1050,19 +1045,21 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			Message message = messageChangedEvent.getMessage();
 
+			folder = (Folder) messageChangedEvent.getSource();
 			addWork(new MessageWork(() -> {
 				if (messageChangedEvent.getMessageChangeType() == MessageChangedEvent.FLAGS_CHANGED)
 				{
-					//	deletes are handled elsewhere
-					if (!isDeleted(message))
+					applyAndNotify(delta ->
 					{
-						applyAndNotify(delta ->
+						String folderId = encode(folder);
+						System.out.println("UPDATING FOLDER COUNTS");
+						DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
+
+						//	deletes are handled elsewhere
+						if (!isDeleted(message))
 						{
-							String folderId = encode(folder);
 							String messageId = encode(message);
 
-							addFolderCounts(delta, account, folder);
-							DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
 							if (m_PerFolderMessage.get(folder).containsKey(messageId))
 							{
 								deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
@@ -1073,8 +1070,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								//  not sure if this is possible -- probably not
 								LOGGER.info("OUT OF ORDER CHANGE");
 							}
-						});
-					}
+							JenaUtils.printModel(delta.getAdds(), "DELTA");
+							JenaUtils.printModel(delta.getDeletes(), "DELTA");
+							System.out.println("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
+						}
+					});
 				}
 				else
 				{
@@ -1089,7 +1089,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private class WatchCountChanges extends MessageCountAdapter
 	{
 		private final IMAPAdapter account;
-		private final Folder folder;
+		private Folder folder;
 
 		WatchCountChanges(IMAPAdapter account, Folder folder)
 		{
@@ -1102,6 +1102,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 
+			folder = (Folder) e.getSource();
 			addWork(new MessageWork(() -> {
 				applyAndNotify(delta -> {
 					for (Message message : e.getMessages())
@@ -1117,6 +1118,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						}
 						//						else
 						//						{
+
+						System.out.println("UPDATING FOLDER COUNTS");
+						DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
 						DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, encode(message));
 					}
 				});
@@ -1131,22 +1135,25 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
 
+			folder = (Folder) e.getSource();
 			addWork(new MessageWork(() -> {
 				applyAndNotify(delta ->
 				{
+					System.out.println("MESSAGE ADDED XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 					String folderId = encode(folder);
 
-					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
-					DStore.addFolderCounts(delta, account, folder);
+					DStore.updateFolderCounts(account.messageDatabase.getDefaultModel(), delta, folder, folderId);
+					System.out.println("MESSAGE ADDED YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");
 
 					for (Message message : e.getMessages())
 					{
 						String messageId = encode(message);
 						DStore.addMessage(delta, folderId, messageId);
-						deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+						DStore.addMessageFlags(delta, message, messageId);
 						addMessageHeaders(delta, message, messageId);
 						m_PerFolderMessage.get(folder).put(messageId, message);
 					}
+					System.out.println("MESSAGE ADDED ZZZZZZZZZZZZZZZZZZZZZZZZ");
 				});
 
 				return folder;
