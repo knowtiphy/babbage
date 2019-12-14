@@ -9,17 +9,6 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="utils" />
     <orderEntry type="module-library">
-      <library name="com.sun.mail:javax.mail:1.6.2" type="repository">
-        <properties maven-id="com.sun.mail:javax.mail:1.6.2" />
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/com/sun/mail/javax.mail/1.6.2/javax.mail-1.6.2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/javax/activation/activation/1.1/activation-1.1.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library">
       <library name="com.github.lookfirst:sardine:5.9" type="repository">
         <properties maven-id="com.github.lookfirst:sardine:5.9" />
         <CLASSES>
@@ -60,5 +49,6 @@
         <SOURCES />
       </library>
     </orderEntry>
+    <orderEntry type="library" name="com.sun.mail:jakarta.mail:1.6.4" level="project" />
   </component>
 </module>

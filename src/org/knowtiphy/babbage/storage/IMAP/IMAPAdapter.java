@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
 import com.sun.mail.imap.IMAPFolder;
+import com.sun.mail.imap.IMAPStore;
 import com.sun.mail.imap.IdleManager;
 import com.sun.mail.util.MailConnectException;
 import org.apache.commons.lang3.concurrent.ConcurrentUtils;
@@ -69,8 +70,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
@@ -110,7 +113,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private final IdleManager idleManager;
 	private final Store store;
 	private Thread pingThread;
-	private Folder inbox;
+	//	special folders
+	Folder inbox;
+	Folder junk;
+	Folder sent;
+	Folder trash;
 
 	public IMAPAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
 					   BlockingDeque<Runnable> notificationQ, Model model)
@@ -180,6 +187,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		store.connect(serverName, emailAddress, password);
 		//	we can in fact have one idle manager for all accounts ..
 		idleManager = new IdleManager(session, es);
+
+		System.out.println("CAPABILITES ----------------------- " + nickName);
+		System.out.println(((IMAPStore) store).hasCapability("LIST-EXTENDED"));
+		System.out.println(((IMAPStore) store).hasCapability("SPECIAL-USE"));
+
 	}
 
 	@Override
@@ -192,6 +204,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		return new FutureTask<Void>(() -> {
 			startFolderWatchers();
+			computeSpecialFolders();
 			synchronizeFolders();
 
 			for (Folder folder : m_folder.values())
@@ -774,6 +787,76 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return message;
 	}
 
+	private void setSpecialFolder(Folder folder, Pattern[] alternatives, Consumer<Folder> setFolder)
+	{
+		for (Pattern p : alternatives)
+		{
+			if (p.matcher(folder.getName()).matches())
+			{
+				setFolder.accept(folder);
+				return;
+			}
+		}
+	}
+
+	private void computeSpecialFolders() throws MessagingException
+	{
+		assert !m_folder.isEmpty();
+
+		inbox = store.getFolder("INBOX");
+
+		if (((IMAPStore) store).hasCapability("SPECIAL-USE"))
+		{
+			for (Folder folder : m_folder.values())
+			{
+				System.out.println(folder.getName() + " : " + Arrays.toString((((IMAPFolder) folder).getAttributes())));
+				for (String attr : ((IMAPFolder) folder).getAttributes())
+				{
+//				if(Constants.DRAFTS_PATTERN.matcher(attr).matches())
+//					drafts = folder;
+					if (Constants.JUNK_ATTRIBUTE.matcher(attr).matches())
+					{
+						junk = folder;
+					}
+					if (Constants.SENT_ATTRIBUTE.matcher(attr).matches())
+					{
+						sent = folder;
+					}
+					if (Constants.TRASH_ATTRIBUTE.matcher(attr).matches())
+					{
+						trash = folder;
+					}
+				}
+			}
+		}
+
+		//	we run this code to cover two scenarios:
+		//	a) we didn't have the SPECIAL-USE capability
+		//	b) we did have SPECIAL-USE but not for all special folders
+
+		for (Folder folder : m_folder.values())
+		{
+			if (junk == null)
+			{
+				setSpecialFolder(folder, Constants.JUNK_PATTERNS, f -> junk = f);
+			}
+			if (sent == null)
+			{
+				setSpecialFolder(folder, Constants.SENT_PATTERNS, f -> sent = f);
+			}
+			if (trash == null)
+			{
+				setSpecialFolder(folder, Constants.TRASH_PATTERNS, f -> trash = f);
+			}
+		}
+		
+		System.out.println("XXXXXXXXXXXXXXX " + nickName);
+		System.out.println(junk);
+		System.out.println(sent);
+		System.out.println(trash);
+		System.out.println(inbox);
+	}
+
 	private void startFolderWatchers() throws MessagingException, StorageException
 	{
 		// Each account needs to have its folders now
@@ -784,10 +867,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			openFolder(folder);
 			m_folder.put(encode(folder), folder);
-			if (Constants.INBOX_FOLDER_PATTERN.matcher(folder.getName()).matches())
-			{
-				inbox = folder;
-			}
 		}
 
 		for (Folder folder : m_folder.values())
@@ -797,6 +876,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.addMessageChangedListener(new WatchMessageChanges(this, folder));
 			idleManager.watch(folder);
 		}
+
+		Folder[] specs = store.getDefaultFolder().list("SPECIAL-USE");
+		System.out.println("XXXXXXXXXXXXXXXX : " + nickName);
+		System.out.println(specs.length);
+
 	}
 
 	//	synch methods

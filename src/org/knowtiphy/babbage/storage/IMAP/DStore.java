@@ -70,10 +70,11 @@ public interface DStore
 				.addR(account.getId(), Vocabulary.CONTAINS, folderId)
 				.addL(folderId, Vocabulary.HAS_UID_VALIDITY, ((UIDFolder) folder).getUIDValidity())
 				.addL(folderId, Vocabulary.HAS_NAME, folder.getName())
-				.addL(folderId, Vocabulary.IS_INBOX, Constants.INBOX_FOLDER_PATTERN.matcher(folder.getName()).matches())
-				.addL(folderId, Vocabulary.IS_TRASH_FOLDER, Constants.TRASH_FOLDER_PATTERN.matcher(folder.getName()).matches())
-				.addL(folderId, Vocabulary.IS_JUNK_FOLDER, Constants.JUNK_FOLDER_PATTERN.matcher(folder.getName()).matches())
-				.addL(folderId, Vocabulary.IS_SENT_FOLDER, Constants.SENT_FOLDER_PATTERN.matcher(folder.getName()).matches());
+				//	remember that two calls to getFolder(X) can return different folder objects for the same folder
+				.addL(folderId, Vocabulary.IS_INBOX, folder.getName().equals(account.inbox.getName()))//Constants.INBOX_FOLDER_PATTERN.matcher(folder.getName()).matches())
+				.addL(folderId, Vocabulary.IS_TRASH_FOLDER, folder.getName().equals(account.trash.getName()))//Constants.TRASH_FOLDER_PATTERN.matcher(folder.getName()).matches())
+				.addL(folderId, Vocabulary.IS_JUNK_FOLDER, folder.getName().equals(account.junk.getName()))//Constants.JUNK_FOLDER_PATTERN.matcher(folder.getName()).matches())
+				.addL(folderId, Vocabulary.IS_SENT_FOLDER, folder.getName().equals(account.sent.getName()));//Constants.SENT_FOLDER_PATTERN.matcher(folder.getName()).matches());
 	}
 
 	static void addFolderCounts(Delta delta, IMAPAdapter account, Folder folder) throws MessagingException
