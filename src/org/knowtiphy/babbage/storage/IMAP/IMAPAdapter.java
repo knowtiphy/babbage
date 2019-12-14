@@ -849,7 +849,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				setSpecialFolder(folder, Constants.TRASH_PATTERNS, f -> trash = f);
 			}
 		}
-		
+
 		System.out.println("XXXXXXXXXXXXXXX " + nickName);
 		System.out.println(junk);
 		System.out.println(sent);
