@@ -371,8 +371,6 @@ public class CALDAVAdapter extends DaveAdapter
 					// Calendar not in DB, store it and events
 					if (!storedCalendars.contains(serverCalURI))
 					{
-						m_Calendar.put(serverCalURI, serverCal);
-
 						// Add Events
 						Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
 						// 1st iteration is the calendar uri, so skip
@@ -413,6 +411,22 @@ public class CALDAVAdapter extends DaveAdapter
 					// Calendar already exists, check if CTags differ, check if names differ
 					else
 					{
+						if (!m_PerCalendarEvents.containsKey(serverCalURI))
+						{
+							m_PerCalendarEvents.put(serverCalURI, new ConcurrentHashMap<>(100));
+							Iterator<DavResource> davEvents = sardine.list(serverHeader + serverCal).iterator();
+							// 1st iteration is the calendar uri, so skip
+							davEvents.next();
+
+							while (davEvents.hasNext())
+							{
+								DavResource serverEvent = davEvents.next();
+								m_PerCalendarEvents.get(serverCalURI)
+										.put(encodeEvent(serverCal, serverEvent), serverEvent);
+							}
+
+						}
+
 						if (!getStoredTag(calendarCTag(serverCalURI), CTAG)
 								.equals(serverCal.getCustomProps().get("getctag")))
 						{
@@ -449,13 +463,12 @@ public class CALDAVAdapter extends DaveAdapter
 								// Not new event, compare ETAGS
 								else
 								{
-									m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
-
 									String storedTAG = getStoredTag(eventETag(serverEventURI), ETAG).replace("\\", "");
 
 									if (!storedTAG.equals(serverEvent.getEtag()))
 									{
 										storeEventDiffs(serverEventURI, serverEvent);
+										m_PerCalendarEvents.get(serverCalURI).put(serverEventURI, serverEvent);
 									}
 								}
 

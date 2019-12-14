@@ -93,7 +93,6 @@ public interface Vocabulary
     String HAS_TYPE = TBASE + "hasType";
     String HAS_EMAIL = TBASE + "hasEmail";
     String HAS_ADDRESS = TBASE + "hasAddress";
-    String HAS_EMAIL_TYPE = TBASE + "hasEmailType";
 
 
     static String E(Object... parts)
