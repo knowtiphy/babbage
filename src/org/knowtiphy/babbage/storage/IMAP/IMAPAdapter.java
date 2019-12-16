@@ -806,11 +806,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				for (String attr : ((IMAPFolder) folder).getAttributes())
 				{
-					if (Constants.ARCHIVE_PATTERN.matcher(attr).matches())
+					if (Constants.ARCHIVES_ATTRIBUTE.matcher(attr).matches())
 					{
 						archive = folder;
 					}
-					if (Constants.DRAFTS_PATTERN.matcher(attr).matches())
+					if (Constants.DRAFTS_ATTRIBUTE.matcher(attr).matches())
 					{
 						drafts = folder;
 					}
@@ -836,6 +836,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		for (Folder folder : m_folder.values())
 		{
+			if (archive == null)
+			{
+				setSpecialFolder(folder, Constants.ARCHIVE_PATTERNS, f -> junk = f);
+			}
+			if (drafts == null)
+			{
+				setSpecialFolder(folder, Constants.DRAFT_PATTERNS, f -> junk = f);
+			}
 			if (junk == null)
 			{
 				setSpecialFolder(folder, Constants.JUNK_PATTERNS, f -> junk = f);
