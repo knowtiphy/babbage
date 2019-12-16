@@ -133,7 +133,8 @@ public class CARDDAVAdapter extends DaveAdapter
 
 	}
 
-	private void storeResourceDiffs(String serverBookURI, String resourceURI, DavResource serverResource) throws Exception
+	private void storeResourceDiffs(String serverBookURI, String resourceURI, DavResource serverResource)
+			throws Exception
 	{
 		VCard vCard = Ezvcard.parse(sardine.get(serverHeader + serverResource)).first();
 		Model messageDB = messageDatabase.getDefaultModel();
@@ -169,7 +170,8 @@ public class CARDDAVAdapter extends DaveAdapter
 					QuerySolution soln = rs.next();
 					if (!soln.getLiteral(NAME).equals(L(messageDB, vCard.getFormattedName().getValue())))
 					{
-						updateTriple(messageDB, delta, resourceURI, Vocabulary.HAS_NAME, vCard.getFormattedName().getValue());
+						updateTriple(messageDB, delta, resourceURI, Vocabulary.HAS_NAME,
+								vCard.getFormattedName().getValue());
 						System.out.println("NAME CHANGE");
 					}
 				}
@@ -231,7 +233,8 @@ public class CARDDAVAdapter extends DaveAdapter
 				.add(QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));
 
 		queryAndNotify(delta -> delta
-				.add(QueryExecutionFactory.create(initialStateCards(), messageDatabase.getDefaultModel()).execConstruct()));
+				.add(QueryExecutionFactory.create(initialStateCards(), messageDatabase.getDefaultModel())
+						.execConstruct()));
 
 	}
 
@@ -412,6 +415,18 @@ public class CARDDAVAdapter extends DaveAdapter
 				// Addressbook already exists, check if CTags differ, check if names differ
 				else
 				{
+					if (m_PerBookCards.get(serverBookURI).isEmpty())
+					{
+						Iterator<DavResource> davCards = sardine.list(serverName).iterator();
+						davCards.next();
+						while (davCards.hasNext())
+						{
+							DavResource serverCardRes = davCards.next();
+							String serverCardURI = encodeCard(serverBookRes, serverCardRes);
+							m_PerBookCards.get(serverBookURI).put(serverCardURI, serverCardRes);
+						}
+					}
+
 					if (!getStoredTag(addressBookCTAG(serverBookURI), CTAG)
 							.equals(serverBookRes.getCustomProps().get("getctag")))
 					{
@@ -420,26 +435,21 @@ public class CARDDAVAdapter extends DaveAdapter
 						m_addressBook.put(serverBookURI, serverBookRes);
 						storeAddressBookDiffs(serverBookURI, serverBookRes);
 
-						Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
-						Set<String> storedGroups =  getStored(groupURIs(serverBookURI), GROUPRES);
-
-						Set<Pair<String, DavResource>> addCards = new HashSet<>();
-						Set<String> serverCardURIs = new HashSet<>();
-
 						Iterator<DavResource> davCards = sardine.list(serverName).iterator();
 						// 1st iteration is the addressBook uri, so skip
 						davCards.next();
+
+						Set<String> storedCards = getStored(cardURIs(serverBookURI), CARDRES);
+						Set<String> storedGroups = getStored(groupURIs(serverBookURI), GROUPRES);
+
+						Set<Pair<String, DavResource>> addCards = new HashSet<>();
+						Set<String> serverCardURIs = new HashSet<>();
 
 						while (davCards.hasNext())
 						{
 							DavResource serverCardRes = davCards.next();
 							String serverCardURI = encodeCard(serverBookRes, serverCardRes);
 							serverCardURIs.add(serverCardURI);
-
-							if (!m_PerBookCards.containsKey(serverBookURI))
-							{
-								m_PerBookCards.put(serverBookURI, new ConcurrentHashMap<>(100));
-							}
 
 							if (!m_PerBookCards.get(serverBookURI).containsKey(serverCardURI))
 							{
@@ -470,7 +480,6 @@ public class CARDDAVAdapter extends DaveAdapter
 						Collection<String> removeCard = new ArrayList<>(90);
 						Collection<String> removeGroup = new ArrayList<>(10);
 
-
 						for (String currCardURI : storedCards)
 						{
 							if (!serverCardURIs.contains(currCardURI))
@@ -491,18 +500,19 @@ public class CARDDAVAdapter extends DaveAdapter
 							}
 						}
 
-
 						apply(delta -> {
-							removeCard.forEach(card -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI, card));
-							removeGroup.forEach(group -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI, group));
+							removeCard.forEach(
+									card -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI, card));
+							removeGroup.forEach(
+									group -> unstoreRes(messageDatabase.getDefaultModel(), delta, serverBookURI,
+											group));
 						});
 
 						Collection<ThreeTuple<String, DavResource, VCard>> furtherProcess = new ArrayList<>();
 						applyAndNotify(delta -> {
 
 							removeCard.forEach(
-									card -> deleteVCard(messageDatabase.getDefaultModel(), delta, serverBookURI,
-											card));
+									card -> deleteVCard(messageDatabase.getDefaultModel(), delta, serverBookURI, card));
 
 							removeGroup.forEach(
 									group -> deleteGroup(messageDatabase.getDefaultModel(), delta, serverBookURI,
