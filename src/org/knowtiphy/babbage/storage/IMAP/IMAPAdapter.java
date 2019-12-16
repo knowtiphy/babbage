@@ -45,8 +45,6 @@ import javax.mail.event.MessageChangedEvent;
 import javax.mail.event.MessageChangedListener;
 import javax.mail.event.MessageCountAdapter;
 import javax.mail.event.MessageCountEvent;
-import javax.mail.event.StoreEvent;
-import javax.mail.event.StoreListener;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
@@ -118,6 +116,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private final Store store;
 	private Thread pingThread;
 	//	special folders
+	Folder archive;
+	Folder drafts;
 	Folder inbox;
 	Folder junk;
 	Folder sent;
@@ -804,11 +804,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			for (Folder folder : m_folder.values())
 			{
-				System.out.println(folder.getName() + " : " + Arrays.toString((((IMAPFolder) folder).getAttributes())));
 				for (String attr : ((IMAPFolder) folder).getAttributes())
 				{
-//				if(Constants.DRAFTS_PATTERN.matcher(attr).matches())
-//					drafts = folder;
+					if (Constants.ARCHIVE_PATTERN.matcher(attr).matches())
+					{
+						archive = folder;
+					}
+					if (Constants.DRAFTS_PATTERN.matcher(attr).matches())
+					{
+						drafts = folder;
+					}
 					if (Constants.JUNK_ATTRIBUTE.matcher(attr).matches())
 					{
 						junk = folder;
@@ -854,7 +859,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private void startStoreWatcher()
 	{
-		store.addStoreListener(new StoreChanges());
+		//store.addStoreListener(new StoreChanges());
 		//store.addFolderListener(new FolderChanges());
 	}
 
@@ -1190,15 +1195,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
-	private class StoreChanges implements StoreListener
-	{
+//	private class StoreChanges implements StoreListener
+//	{
+//
+//		@Override
+//		public void notification(StoreEvent storeEvent)
+//		{
+//			System.out.println("STORE EVENT " + storeEvent);
+//			System.out.println("STORE EVENT " + storeEvent.getMessage());
+//			System.out.println("STORE EVENT " + storeEvent.getMessageType());
+//		}
+//	}
 
-		@Override
-		public void notification(StoreEvent storeEvent)
-		{
-			System.out.println("STORE EVENT " + storeEvent);
-		}
-	}
 	private class MessageWork implements Callable<Folder>
 	{
 		private final Callable<? extends Folder> work;
@@ -1221,6 +1229,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//	TODO -- what happens if the rewatch fails? Can it fail?
 						reWatchFolder(folder);
 					}
+					return null;
+				} catch (MessageRemovedException ex)
+				{
+					LOGGER.log(Level.INFO, "MessageWork::message removed");
+					//	ignore
 					return null;
 				} catch (StoreClosedException ex)
 				{

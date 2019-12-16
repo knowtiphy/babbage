@@ -31,12 +31,16 @@ public interface DFetch
 						+ "?%s <%s> ?%s.\n"
 						+ "?%s <%s> ?%s.\n"
 						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
 						+ "?%s <%s> ?%s\n"
 						+ "}\n"
 						+ "WHERE\n"
 						+ "{\n"
 						+ " ?%s <%s> <%s>.\n"
 						+ "<%s> <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
+						+ "?%s <%s> ?%s.\n"
 						+ "?%s <%s> ?%s.\n"
 						+ "?%s <%s> ?%s.\n"
 						+ "?%s <%s> ?%s.\n"
@@ -51,20 +55,24 @@ public interface DFetch
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_ARCHIVE_FOLDER, Vars.VAR_IS_ARCHIVE_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_DRAFTS_FOLDER, Vars.VAR_IS_DRAFTS_FOLDER,
 				Vars.VAR_FOLDER_ID, Vocabulary.IS_INBOX, Vars.VAR_IS_INBOX_FOLDER,
-				Vars.VAR_FOLDER_ID, Vocabulary.IS_TRASH_FOLDER, Vars.VAR_IS_TRASH_FOLDER,
 				Vars.VAR_FOLDER_ID, Vocabulary.IS_JUNK_FOLDER, Vars.VAR_IS_JUNK_FOLDER,
 				Vars.VAR_FOLDER_ID, Vocabulary.IS_SENT_FOLDER, Vars.VAR_IS_SENT_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_TRASH_FOLDER, Vars.VAR_IS_TRASH_FOLDER,
 				// START OF WHERE
 				Vars.VAR_FOLDER_ID, Vocabulary.RDF_TYPE, Vocabulary.IMAP_FOLDER,
 				id, Vocabulary.CONTAINS, Vars.VAR_FOLDER_ID,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_NAME, Vars.VAR_FOLDER_NAME,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_MESSAGE_COUNT, Vars.VAR_MESSAGE_COUNT,
 				Vars.VAR_FOLDER_ID, Vocabulary.HAS_UNREAD_MESSAGE_COUNT, Vars.VAR_UNREAD_MESSAGE_COUNT,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_ARCHIVE_FOLDER, Vars.VAR_IS_ARCHIVE_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_DRAFTS_FOLDER, Vars.VAR_IS_DRAFTS_FOLDER,
 				Vars.VAR_FOLDER_ID, Vocabulary.IS_INBOX, Vars.VAR_IS_INBOX_FOLDER,
-				Vars.VAR_FOLDER_ID, Vocabulary.IS_TRASH_FOLDER, Vars.VAR_IS_TRASH_FOLDER,
 				Vars.VAR_FOLDER_ID, Vocabulary.IS_JUNK_FOLDER, Vars.VAR_IS_JUNK_FOLDER,
-				Vars.VAR_FOLDER_ID, Vocabulary.IS_SENT_FOLDER, Vars.VAR_IS_SENT_FOLDER);
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_SENT_FOLDER, Vars.VAR_IS_SENT_FOLDER,
+				Vars.VAR_FOLDER_ID, Vocabulary.IS_TRASH_FOLDER, Vars.VAR_IS_TRASH_FOLDER);
 	}
 
 	static String initialState(String id)

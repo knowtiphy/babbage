@@ -41,8 +41,10 @@ public interface Vocabulary
     String HAS_UNREAD_MESSAGE_COUNT = TBASE + "hasUnreadMessageCount";
     String IS_JUNK_FOLDER = TBASE + "isJunkFolder";
     String IS_INBOX = TBASE + "isInBox";
-    String IS_TRASH_FOLDER = TBASE + "isTrashFolder";
+    String IS_ARCHIVE_FOLDER = TBASE + "isArchiveFolder";
+    String IS_DRAFTS_FOLDER = TBASE + "isDraftsFolder";
     String IS_SENT_FOLDER = TBASE + "isSentFolder";
+    String IS_TRASH_FOLDER = TBASE + "isTrashFolder";
 
     String CONTAINS = TBASE + "contains";
 
