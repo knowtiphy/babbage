@@ -39,10 +39,14 @@ import javax.mail.Session;
 import javax.mail.Store;
 import javax.mail.StoreClosedException;
 import javax.mail.UIDFolder;
+import javax.mail.event.FolderEvent;
+import javax.mail.event.FolderListener;
 import javax.mail.event.MessageChangedEvent;
 import javax.mail.event.MessageChangedListener;
 import javax.mail.event.MessageCountAdapter;
 import javax.mail.event.MessageCountEvent;
+import javax.mail.event.StoreEvent;
+import javax.mail.event.StoreListener;
 import javax.mail.internet.AddressException;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
@@ -168,7 +172,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		//	TODO -- all these need to be in RDF
 		incoming.put("mail.imaps.compress.enable", "true");
-		incoming.put("mail.imaps.connectionpoolsize", "10");
+		incoming.put("mail.imaps.connectionpoolsize", "20");
 		incoming.put("mail.imaps.fetchsize", "3000000");
 		// incoming.setProperty("mail.imaps.port", "993");
 
@@ -179,7 +183,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 //		session.setDebug(true);
 
 		Properties props1 = session.getProperties();
-		props1.put("mail.event.scope", "session"); // or "application"
+		//props1.put("mail.event.scope", "session"); // or "application"
 		ExecutorService es = Executors.newCachedThreadPool();
 		props1.put("mail.event.executor", es);
 
@@ -188,10 +192,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	we can in fact have one idle manager for all accounts ..
 		idleManager = new IdleManager(session, es);
 
-		System.out.println("CAPABILITES ----------------------- " + nickName);
-		System.out.println(((IMAPStore) store).hasCapability("LIST-EXTENDED"));
-		System.out.println(((IMAPStore) store).hasCapability("SPECIAL-USE"));
-
+//		System.out.println("CAPABILITES ----------------------- " + nickName);
+//		System.out.println(((IMAPStore) store).hasCapability("LIST-EXTENDED"));
+//		System.out.println(((IMAPStore) store).hasCapability("SPECIAL-USE"));
 	}
 
 	@Override
@@ -203,6 +206,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	public FutureTask<?> getSynchTask()
 	{
 		return new FutureTask<Void>(() -> {
+			startStoreWatcher();
 			startFolderWatchers();
 			computeSpecialFolders();
 			synchronizeFolders();
@@ -436,7 +440,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//  TODO -- get rid of the toList stuff
 		if (model.getTo() != null)
 		{
-			for (Address address : toList(model.getTo(), true))
+			for (Address address : toList(model.getTo()))
 			{
 				try
 				{
@@ -450,7 +454,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		if (model.getCc() != null)
 		{
-			for (Address address : toList(model.getCc(), true))
+			for (Address address : toList(model.getCc()))
 			{
 				try
 				{
@@ -578,7 +582,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		messages[0].getFolder().setFlags(messages, flags, value);
 	}
 
-	private static List<Address> toList(String raw, boolean ignoreAddr) throws AddressException
+	private static List<Address> toList(String raw) throws AddressException
 	{
 		if (raw == null)
 		{
@@ -595,16 +599,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		List<Address> result = new ArrayList<>(10);
 		for (String to : tos)
 		{
-			try
-			{
-				result.add(new InternetAddress(to.trim()));
-			} catch (AddressException ex)
-			{
-				if (!ignoreAddr)
-				{
-					throw (ex);
-				}
-			}
+			result.add(new InternetAddress(to.trim()));
 		}
 
 		return result;
@@ -850,11 +845,17 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		System.out.println("XXXXXXXXXXXXXXX " + nickName);
-		System.out.println(junk);
-		System.out.println(sent);
-		System.out.println(trash);
-		System.out.println(inbox);
+//		System.out.println("XXXXXXXXXXXXXXX " + nickName);
+//		System.out.println(junk);
+//		System.out.println(sent);
+//		System.out.println(trash);
+//		System.out.println(inbox);
+	}
+
+	private void startStoreWatcher()
+	{
+		store.addStoreListener(new StoreChanges());
+		//store.addFolderListener(new FolderChanges());
 	}
 
 	private void startFolderWatchers() throws MessagingException, StorageException
@@ -872,15 +873,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		for (Folder folder : m_folder.values())
 		{
 			LOGGER.log(Level.INFO, "Starting watcher for {0}", folder.getName());
-			folder.addMessageCountListener(new WatchCountChanges(this, folder));
-			folder.addMessageChangedListener(new WatchMessageChanges(this, folder));
+			folder.addMessageCountListener(new WatchCountChanges(folder));
+			folder.addMessageChangedListener(new WatchMessageChanges(folder));
+			folder.addFolderListener(new FolderChanges(folder));
 			idleManager.watch(folder);
 		}
-
-		Folder[] specs = store.getDefaultFolder().list("SPECIAL-USE");
-		System.out.println("XXXXXXXXXXXXXXXX : " + nickName);
-		System.out.println(specs.length);
-
 	}
 
 	//	synch methods
@@ -912,7 +909,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					addFolder(delta, this, folder);
 				}
 
-				addFolderCounts(delta, this, folder);
+				addFolderCounts(delta, folder, folderId);
 			}
 		});
 	}
@@ -1021,12 +1018,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	// handle incoming messages from the IMAP server, new ones not caught in the synch of initial start up state
 	private class WatchMessageChanges implements MessageChangedListener
 	{
-		private final IMAPAdapter account;
-		private final Folder folder;
+		private Folder folder;
 
-		WatchMessageChanges(IMAPAdapter account, Folder folder)
+		WatchMessageChanges(Folder folder)
 		{
-			this.account = account;
 			this.folder = folder;
 		}
 
@@ -1050,19 +1045,22 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 			Message message = messageChangedEvent.getMessage();
 
+			folder = (Folder) messageChangedEvent.getSource();
 			addWork(new MessageWork(() -> {
 				if (messageChangedEvent.getMessageChangeType() == MessageChangedEvent.FLAGS_CHANGED)
 				{
-					//	deletes are handled elsewhere
-					if (!isDeleted(message))
+					applyAndNotify(delta ->
 					{
-						applyAndNotify(delta ->
+						String folderId = encode(folder);
+
+						//	message flag changing can indicate that folder counts have changed
+						DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
+
+						//	deletes are handled elsewhere
+						if (!isDeleted(message))
 						{
-							String folderId = encode(folder);
 							String messageId = encode(message);
 
-							addFolderCounts(delta, account, folder);
-							DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
 							if (m_PerFolderMessage.get(folder).containsKey(messageId))
 							{
 								deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
@@ -1073,8 +1071,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 								//  not sure if this is possible -- probably not
 								LOGGER.info("OUT OF ORDER CHANGE");
 							}
-						});
-					}
+//							JenaUtils.printModel(delta.getAdds(), "DELTA");
+//							JenaUtils.printModel(delta.getDeletes(), "DELTA");
+//							System.out.println("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
+						}
+					});
 				}
 				else
 				{
@@ -1088,12 +1089,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private class WatchCountChanges extends MessageCountAdapter
 	{
-		private final IMAPAdapter account;
-		private final Folder folder;
+		private Folder folder;
 
-		WatchCountChanges(IMAPAdapter account, Folder folder)
+		WatchCountChanges(Folder folder)
 		{
-			this.account = account;
 			this.folder = folder;
 		}
 
@@ -1102,6 +1101,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 
+			folder = (Folder) e.getSource();
 			addWork(new MessageWork(() -> {
 				applyAndNotify(delta -> {
 					for (Message message : e.getMessages())
@@ -1117,6 +1117,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						//						}
 						//						else
 						//						{
+
+						//System.out.println("UPDATING FOLDER COUNTS");
+						DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
 						DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, encode(message));
 					}
 				});
@@ -1131,22 +1134,25 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
 
+			folder = (Folder) e.getSource();
 			addWork(new MessageWork(() -> {
 				applyAndNotify(delta ->
 				{
-					String folderId = encode(folder);
+//					System.out.println("MESSAGE ADDED XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 
-					DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
-					DStore.addFolderCounts(delta, account, folder);
+					String folderId = encode(folder);
+					DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
+//					System.out.println("MESSAGE ADDED YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");
 
 					for (Message message : e.getMessages())
 					{
 						String messageId = encode(message);
 						DStore.addMessage(delta, folderId, messageId);
-						deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+						DStore.addMessageFlags(delta, message, messageId);
 						addMessageHeaders(delta, message, messageId);
 						m_PerFolderMessage.get(folder).put(messageId, message);
 					}
+//					System.out.println("MESSAGE ADDED ZZZZZZZZZZZZZZZZZZZZZZZZ");
 				});
 
 				return folder;
@@ -1154,6 +1160,45 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
+	private class FolderChanges implements FolderListener
+	{
+		private Folder folder;
+
+		public FolderChanges(Folder folder)
+		{
+			this.folder = folder;
+		}
+
+		@Override
+		public void folderCreated(FolderEvent event)
+		{
+
+		}
+
+		@Override
+		public void folderDeleted(FolderEvent event)
+		{
+			Folder folder = event.getFolder();
+			System.out.println("FOLDER DELETED ");
+			System.out.println("DELETED " + folder.getName());
+		}
+
+		@Override
+		public void folderRenamed(FolderEvent event)
+		{
+
+		}
+	}
+
+	private class StoreChanges implements StoreListener
+	{
+
+		@Override
+		public void notification(StoreEvent storeEvent)
+		{
+			System.out.println("STORE EVENT " + storeEvent);
+		}
+	}
 	private class MessageWork implements Callable<Folder>
 	{
 		private final Callable<? extends Folder> work;
