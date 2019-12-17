@@ -39,8 +39,6 @@ import javax.mail.Session;
 import javax.mail.Store;
 import javax.mail.StoreClosedException;
 import javax.mail.UIDFolder;
-import javax.mail.event.FolderEvent;
-import javax.mail.event.FolderListener;
 import javax.mail.event.MessageChangedEvent;
 import javax.mail.event.MessageChangedListener;
 import javax.mail.event.MessageCountAdapter;
@@ -206,7 +204,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	public FutureTask<?> getSynchTask()
 	{
 		return new FutureTask<Void>(() -> {
-			startStoreWatcher();
 			startFolderWatchers();
 			computeSpecialFolders();
 			synchronizeFolders();
@@ -865,12 +862,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 //		System.out.println(inbox);
 	}
 
-	private void startStoreWatcher()
-	{
-		//store.addStoreListener(new StoreChanges());
-		//store.addFolderListener(new FolderChanges());
-	}
-
 	private void startFolderWatchers() throws MessagingException, StorageException
 	{
 		// Each account needs to have its folders now
@@ -888,7 +879,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.log(Level.INFO, "Starting watcher for {0}", folder.getName());
 			folder.addMessageCountListener(new WatchCountChanges(folder));
 			folder.addMessageChangedListener(new WatchMessageChanges(folder));
-			folder.addFolderListener(new FolderChanges(folder));
 			idleManager.watch(folder);
 		}
 	}
@@ -1172,48 +1162,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}));
 		}
 	}
-
-	private class FolderChanges implements FolderListener
-	{
-		private Folder folder;
-
-		public FolderChanges(Folder folder)
-		{
-			this.folder = folder;
-		}
-
-		@Override
-		public void folderCreated(FolderEvent event)
-		{
-
-		}
-
-		@Override
-		public void folderDeleted(FolderEvent event)
-		{
-			Folder folder = event.getFolder();
-			System.out.println("FOLDER DELETED ");
-			System.out.println("DELETED " + folder.getName());
-		}
-
-		@Override
-		public void folderRenamed(FolderEvent event)
-		{
-
-		}
-	}
-
-//	private class StoreChanges implements StoreListener
-//	{
-//
-//		@Override
-//		public void notification(StoreEvent storeEvent)
-//		{
-//			System.out.println("STORE EVENT " + storeEvent);
-//			System.out.println("STORE EVENT " + storeEvent.getMessage());
-//			System.out.println("STORE EVENT " + storeEvent.getMessageType());
-//		}
-//	}
 
 	private class MessageWork implements Callable<Folder>
 	{
