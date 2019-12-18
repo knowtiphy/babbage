@@ -48,7 +48,9 @@ public interface DStore
 
 	static void storeMemberCards(Delta delta, String groupID, Collection<String> memberID)
 	{
-		memberID.forEach(id -> addAttribute(delta, groupID, Vocabulary.HAS_CARD, id, x -> x));
+		//memberID.forEach(id -> addAttribute(delta, groupID, Vocabulary.HAS_CARD, id, x -> x));
+
+		memberID.forEach(id -> delta.addR(groupID, Vocabulary.HAS_CARD, id));
 	}
 
 	static void storeAddressBook(Delta delta, String adapterID, String addressBookId, DavResource addressBook)
