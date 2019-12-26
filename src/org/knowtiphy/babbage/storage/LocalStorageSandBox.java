@@ -160,9 +160,15 @@ public class LocalStorageSandBox implements IStorage
 		return new ReadContext(messageDatabase);
 	}
 
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
 	{
-		return getAccount(accountId).ensureMessageContentLoaded(messageId, folderId, immediate);
+		return getAccount(accountId).ensureMessageContentLoaded(messageId, folderId);
+	}
+
+	@Override
+	public Future<?> loadAhead(String accountId, String folderId, Collection<String> messageIds)
+	{
+		return getAccount(accountId).loadAhead(folderId, messageIds);
 	}
 
 	// Will call an addListener method in each adapter

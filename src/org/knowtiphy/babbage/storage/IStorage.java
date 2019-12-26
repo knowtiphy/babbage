@@ -9,7 +9,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 
 /**
- *
  * @author graham
  */
 public interface IStorage
@@ -17,7 +16,9 @@ public interface IStorage
 	// For time being, stick all extra methods in here
 	Map<String, FutureTask<?>> addListener(IStorageListener listener) throws InterruptedException, StorageException, MessagingException;
 
-	Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate);
+	Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId);
+
+	Future<?> loadAhead(String accountId, String folderId, Collection<String> messageIds);
 
 	void send(MessageModel model) throws StorageException;
 
@@ -29,10 +30,10 @@ public interface IStorage
 	Future<?> deleteMessages(String accountId, String folderId, Collection<String> messageIds);
 
 	Future<?> moveMessagesToJunk(String accountId, String sourceFolderId, Collection<String> messageIds,
-			String targetFolderId, boolean delete);
+								 String targetFolderId, boolean delete);
 
 	Future<?> copyMessages(String accountId, String sourceFolderId, Collection<String> messageIds,
-			String targetFolderId, boolean delete);
+						   String targetFolderId, boolean delete);
 
 	Future<?> markMessagesAsAnswered(String accountId, String folderId, Collection<String> messageIds, boolean flag);
 

@@ -87,7 +87,13 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
-	public Future<?> ensureMessageContentLoaded(String messageId, String folderId, boolean immediate)
+	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
+	{
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Future<?> loadAhead(String folderId, Collection<String> messageIds)
 	{
 		throw new UnsupportedOperationException();
 	}

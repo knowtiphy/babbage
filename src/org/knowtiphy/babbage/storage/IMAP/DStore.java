@@ -94,12 +94,13 @@ public interface DStore
 	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent)
 			throws MessagingException, IOException
 	{
-		System.out.println("START CONTENT FETCH");
+		long start = System.currentTimeMillis();
 		String messageId = adapter.encode(message);
-		Part content = messageContent.getContent();
-		delta.addL(messageId, Vocabulary.HAS_CONTENT, content.getContent().toString())
-				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(content));
-		System.out.println("START CONTENT FETCH --- BASIC");
+		System.out.println("addMessageContent -- BODY : " + messageId);
+		String content = messageContent.getContent().getContent().toString();
+		delta.addL(messageId, Vocabulary.HAS_CONTENT, content)
+				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(messageContent.getContent()));
+		System.out.println("addMessageContent --- CIDs");
 		//  Note: the local CID is a string, not a URI -- it is unique within a message, but not across messages
 		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
 		{
@@ -109,7 +110,8 @@ public interface DStore
 					.addL(cidId, Vocabulary.HAS_MIME_TYPE, mimeType(entry.getValue()))
 					.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
 		}
-		System.out.println("START CONTENT FETCH --- CID");
+
+		System.out.println("addMessageContent --- ATTACHMENTS");
 
 		int i = 0;
 		for (Part part : messageContent.getAttachments())
@@ -126,7 +128,8 @@ public interface DStore
 				i++;
 			}
 		}
-		System.out.println("START CONTENT FETCH --- ATTACHMENTS");
+
+		System.out.println("addMessageContent --- END : " + messageId + " : " + (System.currentTimeMillis() - start));
 	}
 
 	static void addMessageFlags(Delta delta, Message message, String messageId) throws MessagingException
@@ -201,12 +204,10 @@ public interface DStore
 
 	//	methods to update stuff -- delete then add
 
-	public static void updateFolderCounts(Model dbase, Delta delta, Folder folder, String folderId) throws MessagingException
+	static void updateFolderCounts(Model dbase, Delta delta, Folder folder, String folderId) throws MessagingException
 	{
-		//	chag
 		DStore.deleteFolderCounts(dbase, delta, folderId);
 		DStore.addFolderCounts(delta, folder, folderId);
-
 	}
 
 	//  methods to access message content

@@ -56,12 +56,6 @@ public class RemoteStorage implements IStorage
 	}
 
 	@Override
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
-	{
-		return send(new EnsureContentLoadedMessage(accountId, folderId, messageId, immediate));
-	}
-
-	@Override
 	public void send(MessageModel model) throws StorageException
 	{
 
@@ -118,5 +112,17 @@ public class RemoteStorage implements IStorage
 										boolean flag)
 	{
 		return send(new MarkAsJunkMessage(accountId, folderId, messageIds, flag));
+	}
+
+	@Override
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
+	{
+		return send(new EnsureContentLoadedMessage(accountId, folderId, messageId));
+	}
+
+	@Override
+	public Future<?> loadAhead(String accountId, String folderId, Collection<String> messageIds)
+	{
+		return null;
 	}
 }

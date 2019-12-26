@@ -4,7 +4,6 @@ import com.sun.mail.imap.IMAPFolder;
 import com.sun.mail.imap.IMAPStore;
 import com.sun.mail.imap.IdleManager;
 import com.sun.mail.util.MailConnectException;
-import org.apache.commons.lang3.concurrent.ConcurrentUtils;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
@@ -484,58 +483,70 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return message;
 	}
 
-	//	AUDIT -- I think this will now work if we have a folder closed exception and we re-run the work.
-	public Future<?> ensureMessageContentLoaded(String messageId, String folderId, boolean immediate)
+	private MessageWork load(String folderId, Collection<String> messageIds)
 	{
-//		System.err.println("ensureMessageContentLoaded : " + immediate + " :: " + messageId);
+		return new MessageWork(() -> {
+			ensureMapsLoaded();
 
-		boolean stored = query(() -> messageDatabase.getDefaultModel().
-				listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
-						P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
-//		System.err.println("ensureMessageContentLoaded WORKER : " + messageId + " : " + stored);
+			//	TODO -- not sure this is correct -- what happens if we get a delete between checking its stored and
+			//	the fetch of the message -- perhaps the single threadedness helps us?
 
-		return stored ?
-				ConcurrentUtils.constantFuture(null) :
-				(immediate ? doContent : doLoahahead).submit(new MessageWork(() -> {
-					ensureMapsLoaded();
+			List<String> needToFetch = new ArrayList<>();
+			for (String messageId : messageIds)
+			{
+				boolean stored = query(() -> messageDatabase.getDefaultModel().
+						listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
+								P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
+				if (!stored)
+				{
+					needToFetch.add(messageId);
+				}
+			}
+			System.out.println("load WORKER : " + needToFetch);
 
-					//	check if the content is not already in the database
-//			boolean stored = query(() -> messageDatabase.getDefaultModel().
-//					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
-//							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
+			if (!needToFetch.isEmpty())
+			{
+				assert m_folder.containsKey(folderId);
+				Folder folder = m_folder.get(folderId);
+				Message[] msgs = U(encode(folder), needToFetch);
 
-					//	if (!stored)
+				///how do we set a profile for the actual content?
+				FetchProfile fp = new FetchProfile();
+				fp.add(FetchProfile.Item.CONTENT_INFO);
+				folder.fetch(msgs, fp);
+
+				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
+				List<Pair<Message, MessageContent>> contents = new LinkedList<>();
+				for (Message message : msgs)
+				{
+					MessageContent content = new MessageContent(message, true);
+					content.process();
+					contents.add(new Pair<>(message, content));
+				}
+
+				applyAndNotify(delta -> {
+					for (Pair<Message, MessageContent> p : contents)
 					{
-						assert m_folder.containsKey(folderId);
-						Folder folder = m_folder.get(folderId);
-						Message[] msgs = U(encode(folder), List.of(messageId));
-
-						///how do we set a profile for the actual content?
-//				FetchProfile fp = new FetchProfile();
-//				fp.add(FetchProfile.Item.CONTENT_INFO);
-//				folder.fetch(msgs, fp);
-
-						//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-						List<Pair<Message, MessageContent>> contents = new LinkedList<>();
-						for (Message message : msgs)
-						{
-							MessageContent content = new MessageContent(message, true);
-							content.process();
-							contents.add(new Pair<>(message, content));
-						}
-
-						applyAndNotify(delta -> {
-							for (Pair<Message, MessageContent> p : contents)
-							{
-								addMessageContent(delta, this, p.fst(), p.snd());
-							}
-						});
-//						System.err.println("ensureMessageContentLoaded WORKER DONE : " + messageId);
-						return folder;
+						addMessageContent(delta, this, p.fst(), p.snd());
 					}
+				});
 
-					//	return null;
-				}));
+				System.out.println("load WORKER DONE : " + needToFetch);
+				return folder;
+			}
+
+			return null;
+		});
+	}
+
+	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
+	{
+		return doContent.submit(load(folderId, List.of(messageId)));
+	}
+
+	public Future<?> loadAhead(String folderId, Collection<String> messageIds)
+	{
+		return doLoahahead.submit(load(folderId, messageIds));
 	}
 
 	//	private methods start here

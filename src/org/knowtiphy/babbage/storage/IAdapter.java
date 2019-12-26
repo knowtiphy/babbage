@@ -15,7 +15,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 
 /**
- *
  * @author graham
  */
 
@@ -34,7 +33,7 @@ public interface IAdapter
 	Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag);
 
 	Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-			boolean delete);
+								 boolean delete);
 
 	Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId, boolean delete);
 
@@ -46,5 +45,7 @@ public interface IAdapter
 
 	FutureTask<?> getSynchTask();
 
-	Future<?> ensureMessageContentLoaded(String messageId, String folderId, boolean immediate);
+	Future<?> ensureMessageContentLoaded(String messageId, String folderId);
+
+	Future<?> loadAhead(String folderId, Collection<String> messageIds);
 }

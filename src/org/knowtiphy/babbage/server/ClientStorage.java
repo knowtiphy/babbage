@@ -81,11 +81,16 @@ public class ClientStorage implements IStorage
 	}
 
 	@Override
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId, boolean immediate)
+	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId)
 	{
 		return null;
 	}
 
+	@Override
+	public Future<?> loadAhead(String accountId, String folderId, Collection<String> messageIds)
+	{
+		return null;
+	}
 
 	@Override
 	public void send(MessageModel model) throws StorageException
