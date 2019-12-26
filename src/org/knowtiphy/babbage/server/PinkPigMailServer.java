@@ -104,9 +104,9 @@ public class PinkPigMailServer
 			InstantiationException, IllegalAccessException, InvocationTargetException
 	{
 		//	get local message storage
-		Path dir = Paths.get(Objects.requireNonNull(OS.getAppDir(PinkPigMailServer.class)).toString(), MESSAGE_STORAGE);
+		Path dir = Paths.get(Objects.requireNonNull(OS.getDataDir(PinkPigMailServer.class)).toString(), MESSAGE_STORAGE);
 		Files.createDirectories(dir);
-		IStorage storage = StorageFactory.getLocal(dir, OS.getAppFile(ClientStorage.class, ACCOUNTS_FILE));
+		IStorage storage = StorageFactory.getLocal(dir, Paths.get(OS.getSettingsDir(ClientStorage.class).toString(), ACCOUNTS_FILE));
 
 		System.out.println("PINK PIG MAIL SERVER");
 
