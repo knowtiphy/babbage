@@ -979,6 +979,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		stored.removeAll(withHeaders);
 
+		//  fetch headers we don't have
 		if (!stored.isEmpty())
 		{
 			Message[] msgs = U(encode(folder), stored);
@@ -989,9 +990,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			fp.add(FetchProfile.Item.FLAGS);
 			folder.fetch(msgs, fp);
 
-			//  fetch headers we don't have
-
-			applyAndNotify(delta -> {
+			hdrsDelta.merge(apply(delta -> {
 				delta.merge(hdrsDelta);
 				for (Message msg : msgs)
 				{
@@ -999,8 +998,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					addMessageHeaders(delta, msg, messageId);
 					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
 				}
-			});
+			}));
 		}
+
+		notifyListeners(hdrsDelta);
 	}
 
 	//	TODO -- should combine methods
