@@ -168,7 +168,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- all these need to be in RDF
 		incoming.put("mail.imaps.compress.enable", "true");
 		incoming.put("mail.imaps.connectionpoolsize", "20");
-		incoming.put("mail.imaps.fetchsize", "3000000");
+		//	TODO -- what is a sane number for this?
+		incoming.put("mail.imaps.fetchsize", "300000");
 		// incoming.setProperty("mail.imaps.port", "993");
 
 		//	we need system properties to pick up command line flags

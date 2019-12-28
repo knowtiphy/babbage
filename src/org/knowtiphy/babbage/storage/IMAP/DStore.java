@@ -1,6 +1,5 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.Property;
@@ -17,9 +16,7 @@ import javax.mail.Flags;
 import javax.mail.Folder;
 import javax.mail.Message;
 import javax.mail.MessagingException;
-import javax.mail.Part;
 import javax.mail.UIDFolder;
-import java.io.IOException;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Map;
@@ -92,39 +89,37 @@ public interface DStore
 	}
 
 	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent)
-			throws MessagingException, IOException
+			throws MessagingException
 	{
 		long start = System.currentTimeMillis();
 		String messageId = adapter.encode(message);
 		System.out.println("addMessageContent -- BODY : " + messageId);
-		String content = messageContent.getContent().getContent().toString();
-		delta.addL(messageId, Vocabulary.HAS_CONTENT, content)
-				.addL(messageId, Vocabulary.HAS_MIME_TYPE, mimeType(messageContent.getContent()));
+		delta.addL(messageId, Vocabulary.HAS_CONTENT, messageContent.content)
+				.addL(messageId, Vocabulary.HAS_MIME_TYPE, messageContent.mimeType);
 		System.out.println("addMessageContent --- CIDs");
 		//  Note: the local CID is a string, not a URI -- it is unique within a message, but not across messages
-		for (Map.Entry<String, Part> entry : messageContent.getCidMap().entrySet())
+		for (Map.Entry<String, AttachedPart> entry : messageContent.cidMap.entrySet())
 		{
 			String cidId = adapter.encode(message, entry.getKey());
 			delta.addR(messageId, Vocabulary.HAS_CID_PART, cidId)
-					.addL(cidId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(entry.getValue().getInputStream()))
-					.addL(cidId, Vocabulary.HAS_MIME_TYPE, mimeType(entry.getValue()))
+					.addL(cidId, Vocabulary.HAS_CONTENT, entry.getValue().content)
+					.addL(cidId, Vocabulary.HAS_MIME_TYPE, entry.getValue().mimeType)
 					.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
 		}
 
 		System.out.println("addMessageContent --- ATTACHMENTS");
 
 		int i = 0;
-		for (Part part : messageContent.getAttachments())
+		for (AttachedPart part : messageContent.attachments)
 		{
-			String fileName = fileName(part);
 			//  TODO -- what do we do if we have no filename?
-			if (fileName != null)
+			if (part.fileName != null)
 			{
 				String attachmentId = adapter.encode(message, String.valueOf(i));
 				delta.addR(messageId, Vocabulary.HAS_ATTACHMENT, attachmentId)
-						.addL(attachmentId, Vocabulary.HAS_CONTENT, IOUtils.toByteArray(part.getInputStream()))
-						.addL(attachmentId, Vocabulary.HAS_MIME_TYPE, mimeType(part))
-						.addL(attachmentId, Vocabulary.HAS_FILE_NAME, fileName);
+						.addL(attachmentId, Vocabulary.HAS_CONTENT, part.content)
+						.addL(attachmentId, Vocabulary.HAS_MIME_TYPE, part.mimeType)
+						.addL(attachmentId, Vocabulary.HAS_FILE_NAME, part.fileName);
 				i++;
 			}
 		}
@@ -208,41 +203,5 @@ public interface DStore
 	{
 		DStore.deleteFolderCounts(dbase, delta, folderId);
 		DStore.addFolderCounts(delta, folder, folderId);
-	}
-
-	//  methods to access message content
-
-	static String mimeType(Part part) throws MessagingException
-	{
-		return part.getContentType().split(";")[0];
-	}
-
-	static String fileName(Part part) throws MessagingException
-	{
-		String fileName = part.getFileName();
-		if (fileName == null)
-		{
-			String[] headers = part.getHeader("Content-Type");
-			if (headers != null)
-			{
-				for (String header : headers)
-				{
-					String[] split = header.split(";");
-					for (String s : split)
-					{
-						String[] x = s.split("=");
-						if (x.length == 2 && "name".equals(x[0].trim()))
-						{
-							String fn = x[1].trim();
-							int start = fn.indexOf('"');
-							int end = fn.lastIndexOf('"');
-							fileName = fn.substring(start == -1 ? 0 : start + 1, end == -1 ? fn.length() : end);
-						}
-					}
-				}
-			}
-		}
-
-		return fileName;
 	}
 }

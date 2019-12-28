@@ -1,5 +1,6 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
+import org.apache.commons.io.IOUtils;
 import org.knowtiphy.utils.ThrowingConsumer;
 
 import javax.mail.Message;
@@ -21,30 +22,16 @@ public class MessageContent
 {
 	private final Message message;
 	private final boolean allowHTML;
-	private final Map<String, Part> cidMap = new HashMap<>(30);
-	private final Collection<Part> attachments = new LinkedList<>();
-	private Part content;
+	String content;
+	String mimeType;
+	Map<String, AttachedPart> cidMap = new HashMap<>(30);
+	Collection<AttachedPart> attachments = new LinkedList<>();
 
 	public MessageContent(Message message, boolean allowHTML)
 	{
 		assert message != null;
 		this.message = message;
 		this.allowHTML = allowHTML;
-	}
-
-	public Part getContent()
-	{
-		return content;
-	}
-
-	public Map<String, Part> getCidMap()
-	{
-		return cidMap;
-	}
-
-	public Collection<Part> getAttachments()
-	{
-		return attachments;
 	}
 
 	private static boolean isAttachment(Part part) throws MessagingException
@@ -170,7 +157,7 @@ public class MessageContent
 		return null;
 	}
 
-	private static void walk(Part part, ThrowingConsumer<? super Part, ? extends MessagingException> process) throws MessagingException, IOException
+	private static void walk(Part part, ThrowingConsumer<? super Part, ? extends Exception> process)  throws Exception
 	{
 		process.apply(part);
 
@@ -185,7 +172,46 @@ public class MessageContent
 		}
 	}
 
-	private void parseAttachments() throws MessagingException, IOException
+	private static String mimeType(Part part) throws MessagingException
+	{
+		return part.getContentType().split(";")[0];
+	}
+
+	static String fileName(Part part) throws MessagingException
+	{
+		String fileName = part.getFileName();
+		if (fileName == null)
+		{
+			String[] headers = part.getHeader("Content-Type");
+			if (headers != null)
+			{
+				for (String header : headers)
+				{
+					String[] split = header.split(";");
+					for (String s : split)
+					{
+						String[] x = s.split("=");
+						if (x.length == 2 && "name".equals(x[0].trim()))
+						{
+							String fn = x[1].trim();
+							int start = fn.indexOf('"');
+							int end = fn.lastIndexOf('"');
+							fileName = fn.substring(start == -1 ? 0 : start + 1, end == -1 ? fn.length() : end);
+						}
+					}
+				}
+			}
+		}
+
+		return fileName;
+	}
+
+	private void addAttachment(Part part) throws MessagingException, IOException
+	{
+		attachments.add(new AttachedPart(mimeType(part), IOUtils.toByteArray(part.getInputStream()), fileName(part)));
+	}
+
+	private void parseAttachments() throws Exception
 	{
 		Collection<Part> inline = new LinkedList<>();
 		walk(message, part ->
@@ -195,7 +221,7 @@ public class MessageContent
 			{
 				if (disposition.equalsIgnoreCase(Part.ATTACHMENT))
 				{
-					attachments.add(part);
+					addAttachment(part);
 				}
 				else if (disposition.equalsIgnoreCase(Part.INLINE))
 				{
@@ -205,7 +231,7 @@ public class MessageContent
 					}
 					else
 					{
-						attachments.add(part);
+						addAttachment(part);
 					}
 				}
 			}
@@ -214,14 +240,19 @@ public class MessageContent
 		for (Part part : inline)
 		{
 			String cidName = cid(part.getHeader("Content-Id")[0]);
-			cidMap.put("cid:" + cidName, part);
+			cidMap.put("cid:" + cidName, new AttachedPart(mimeType(part), IOUtils.toByteArray(part.getInputStream())));
 		}
 	}
 
-	protected void process() throws MessagingException, IOException
+	protected void process() throws Exception
 	{
-		content = getText(message);
-		parseAttachments();
+		Part part = getText(message);
+		if(part != null)
+		{
+			mimeType = mimeType(part);
+			content = part.getContent().toString();
+			parseAttachments();
+		}
 	}
 }
 

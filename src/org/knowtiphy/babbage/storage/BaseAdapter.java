@@ -193,5 +193,4 @@ public abstract class BaseAdapter implements IAdapter
 	{
 		applyAndNotify(query(changes));
 	}
-
 }
