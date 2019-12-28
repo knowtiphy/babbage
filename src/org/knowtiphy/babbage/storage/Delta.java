@@ -93,6 +93,13 @@ public class Delta
 		adds.add(model);
 		return this;
 	}
+
+	public void merge(Delta delta)
+	{
+		getAdds().add(delta.getAdds());
+		getDeletes().add(delta.getDeletes());
+	}
+
 //	public <T> void deleteR(String subject, String predicate, String object)
 //	{
 //		toDelete.add(toDelete.createStatement(R(toDelete, subject), P(toDelete, predicate), R(toDelete, object)));

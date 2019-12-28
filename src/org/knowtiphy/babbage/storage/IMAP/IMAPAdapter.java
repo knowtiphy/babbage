@@ -81,6 +81,7 @@ import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolderCounts;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageContent;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageHeaders;
 import static org.knowtiphy.babbage.storage.IMAP.DStore.deleteMessageFlags;
+import static org.knowtiphy.utils.IProcedure.doAndIgnore;
 
 /**
  * @author graham
@@ -103,15 +104,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	map org.knowtiphy.pinkpigmail.messages to ids of those org.knowtiphy.pinkpigmail.messages for org.knowtiphy.pinkpigmail.messages being deleted
 	//private final Map<Message, String> m_toDelete = new HashMap<>();
 
-	//	private final BlockingQueue<Runnable> workQ;
-//	private final Thread doWork;
-	private final ExecutorService doWork;
-	private final ExecutorService doContent;
-	private final ExecutorService doLoahahead;
-	private final Mutex accountLock;
-	private final IdleManager idleManager;
 	private final Store store;
+	private final IdleManager idleManager;
 	private Thread pingThread;
+
+	private final ExecutorService workService;
+	private final ExecutorService contentService;
+	private final ExecutorService loadAheadService;
+
+	private final Mutex accountLock;
+
 	//	special folders
 	Folder archive;
 	Folder drafts;
@@ -153,13 +155,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		accountLock = new Mutex();
 		accountLock.lock();
 
-//		workQ = new LinkedBlockingQueue<>();
-//		doWork = new Thread(new Worker(workQ));
-		doWork = Executors.newSingleThreadExecutor();
-		doContent = Executors.newCachedThreadPool();
-		doLoahahead = Executors.newFixedThreadPool(4);
-
-//		doWork.start();
+		workService = Executors.newSingleThreadExecutor();
+		contentService = Executors.newCachedThreadPool();
+		loadAheadService = Executors.newFixedThreadPool(4);
 
 		Properties incoming = new Properties();
 		incoming.put("mail.store.protocol", "imaps");
@@ -241,20 +239,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	public void close()
 	{
-		LOGGER.log(Level.INFO, "{0} :: shutting down work queues", emailAddress);
-		try
-		{
-//			workQ.add(Constants.POISON_PILL);
-//			doWork.join();
-			doWork.shutdown();
-			doContent.shutdown();
-			doLoahahead.shutdown();
-			doContent.awaitTermination(10_000L, TimeUnit.SECONDS);
-			doLoahahead.awaitTermination(10_000L, TimeUnit.SECONDS);
-		} catch (InterruptedException ex)
-		{
-			//  ignore
-		}
+		LOGGER.log(Level.INFO, "{0} :: shutting down worker pools", emailAddress);
+
+		doAndIgnore(workService::shutdown);
+		doAndIgnore(() -> workService.awaitTermination(10, TimeUnit.SECONDS));
+		doAndIgnore(contentService::shutdown);
+		doAndIgnore(() -> contentService.awaitTermination(10, TimeUnit.SECONDS));
+		doAndIgnore(loadAheadService::shutdown);
+		doAndIgnore(() -> loadAheadService.awaitTermination(10, TimeUnit.SECONDS));
 
 		LOGGER.log(Level.INFO, "{0} :: shutting down idle manager", emailAddress);
 		idleManager.stop();
@@ -265,26 +257,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			pingThread.interrupt();
 		}
 
-		for (Folder folder : m_folder.values())
+		m_folder.values().forEach(folder ->
 		{
 			LOGGER.info(emailAddress + " :: " + folder.getName() + " :: closing ");
-			try
-			{
-				folder.close();
-			} catch (Exception $)
-			{
-				//	ignore
-			}
-		}
+			doAndIgnore(folder::close);
+		});
 
 		LOGGER.log(Level.INFO, "{0} :: closing store", emailAddress);
-		try
-		{
-			store.close();
-		} catch (MessagingException ex)
-		{
-			//	ignore
-		}
+		doAndIgnore(store::close);
 	}
 
 	//	AUDIT -- I think this one is ok
@@ -541,12 +521,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
 	{
-		return doContent.submit(load(folderId, List.of(messageId)));
+		return contentService.submit(load(folderId, List.of(messageId)));
 	}
 
 	public Future<?> loadAhead(String folderId, Collection<String> messageIds)
 	{
-		return doLoahahead.submit(load(folderId, messageIds));
+		return loadAheadService.submit(load(folderId, messageIds));
 	}
 
 	//	private methods start here
@@ -742,7 +722,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	protected <T> Future<T> addWork(Callable<T> operation)
 	{
-		return doWork.submit(() -> {
+		return workService.submit(() -> {
 			try
 			{
 				ensureMapsLoaded();
@@ -928,7 +908,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
-	private void synchMessageIds(Folder folder) throws MessagingException
+	private Delta synchMessageIds(Folder folder) throws MessagingException
 	{
 		LOGGER.log(Level.INFO, "synchMessageIds {0}", folder.getName());
 
@@ -981,14 +961,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		}
 
-		applyAndNotify(delta ->
+		return apply(delta ->
 		{
 			removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, message));
 			addUID.forEach(message -> DStore.addMessage(delta, folderId, message));
 		});
 	}
 
-	private void synchMessageHeaders(Folder folder) throws MessagingException
+	private void synchMessageHeaders(Delta hdrsDelta, Folder folder) throws MessagingException
 	{
 		String folderId = encode(folder);
 
@@ -1012,6 +992,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			//  fetch headers we don't have
 
 			applyAndNotify(delta -> {
+				delta.merge(hdrsDelta);
 				for (Message msg : msgs)
 				{
 					String messageId = encode(msg);
@@ -1023,10 +1004,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	//	TODO -- should combine methods
+	//	todo -- get rid of this crap with hdrsDelta and the merging -- hackery for the UI
+
 	private void synchMessageIdsAndHeaders(Folder folder) throws MessagingException
 	{
-		synchMessageIds(folder);
-		synchMessageHeaders(folder);
+		Delta hdrsDelta = synchMessageIds(folder);
+		synchMessageHeaders(hdrsDelta, folder);
 	}
 
 	// handle incoming messages from the IMAP server, new ones not caught in the synch of initial start up state
