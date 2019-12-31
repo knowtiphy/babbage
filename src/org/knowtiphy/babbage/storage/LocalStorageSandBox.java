@@ -12,11 +12,13 @@ import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.tdb2.TDB2Factory;
+import org.knowtiphy.babbage.Babbage;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
 import org.knowtiphy.babbage.storage.CARDDAV.CARDDAVAdapter;
 import org.knowtiphy.babbage.storage.IMAP.IMAPAdapter;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.JenaUtils;
+import org.knowtiphy.utils.OS;
 
 import javax.mail.Message;
 import javax.mail.MessagingException;
@@ -25,6 +27,7 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -45,9 +48,13 @@ public class LocalStorageSandBox implements IStorage
 {
 	private static final Logger logger = Logger.getLogger(LocalStorageSandBox.class.getName());
 
+	private static final String CACHE = "cache";
+	private static final String ACCOUNTS_FILE = "accounts.ttl";
+
 	private static final Runnable POISON_PILL = () -> {
 	};
 	private static final Map<String, Class<?>> m_Class = new HashMap<>();
+
 	static
 	{
 
@@ -63,11 +70,12 @@ public class LocalStorageSandBox implements IStorage
 	private final Map<String, IAdapter> m_adapter;
 	private final BlockingDeque<Runnable> notificationQ;
 
-	public LocalStorageSandBox(Path databaseLocation, Path accountsFile)
-			throws IOException, NoSuchMethodException, IllegalAccessException,
-			InvocationTargetException, InstantiationException
+	public LocalStorageSandBox() throws IOException, NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException
 	{
 		//	data structures shared between accounts
+
+		Path databaseLocation = Paths.get(OS.getDataDir(Babbage.class).toString(), CACHE);
+		Files.createDirectories(databaseLocation);
 
 		messageDatabase = TDB2Factory.connectDataset(databaseLocation.toString());
 		listenerManager = new ListenerManager();
@@ -75,8 +83,11 @@ public class LocalStorageSandBox implements IStorage
 
 		//  read accounts -- TODO: this information should all be in a database not a file
 
+		Path accountsDir = Paths.get(OS.getSettingsDir(Babbage.class).toString());
+		Files.createDirectories(accountsDir);
+
 		Model model = ModelFactory.createDefaultModel();
-		RDFDataMgr.read(model, Files.newInputStream(accountsFile), Lang.TURTLE);
+		RDFDataMgr.read(model, Files.newInputStream(Paths.get(OS.getSettingsDir(Babbage.class).toString(), ACCOUNTS_FILE)), Lang.TURTLE);
 
 		// Theoretically I want add all various subclass of accounts here
 		JenaUtils.addSubClasses(model, Vocabulary.IMAP_ACCOUNT, Vocabulary.ACCOUNT);
@@ -155,7 +166,8 @@ public class LocalStorageSandBox implements IStorage
 		return adapter;
 	}
 
-	@Override public ReadContext getReadContext()
+	@Override
+	public ReadContext getReadContext()
 	{
 		return new ReadContext(messageDatabase);
 	}
@@ -172,7 +184,8 @@ public class LocalStorageSandBox implements IStorage
 	}
 
 	// Will call an addListener method in each adapter
-	@Override public Map<String, FutureTask<?>> addListener(IStorageListener listener)
+	@Override
+	public Map<String, FutureTask<?>> addListener(IStorageListener listener)
 	{
 		listenerManager.addListener(listener);
 
@@ -224,37 +237,43 @@ public class LocalStorageSandBox implements IStorage
 	//		return null; //getAccount(accountId).appendMessages(folderId, org.knowtiphy.pinkpigmail.messages);
 	//	}
 
-	@Override public Future<?> deleteMessages(String accountId, String folderId, Collection<String> messageIds)
+	@Override
+	public Future<?> deleteMessages(String accountId, String folderId, Collection<String> messageIds)
 	{
 		return getAccount(accountId).deleteMessages(folderId, messageIds);
 	}
 
-	@Override public Future<?> moveMessagesToJunk(String accountId, String sourceFolderId,
-			Collection<String> messageIds, String targetFolderId, boolean delete)
+	@Override
+	public Future<?> moveMessagesToJunk(String accountId, String sourceFolderId,
+										Collection<String> messageIds, String targetFolderId, boolean delete)
 	{
 		return getAccount(accountId).moveMessagesToJunk(sourceFolderId, messageIds, targetFolderId, delete);
 	}
 
-	@Override public Future<?> copyMessages(String accountId, String sourceFolderId, Collection<String> messageIds,
-			String targetFolderId, boolean delete)
+	@Override
+	public Future<?> copyMessages(String accountId, String sourceFolderId, Collection<String> messageIds,
+								  String targetFolderId, boolean delete)
 	{
 		return getAccount(accountId).copyMessages(sourceFolderId, messageIds, targetFolderId, delete);
 	}
 
-	@Override public Future<?> markMessagesAsAnswered(String accountId, String folderId, Collection<String> messageIds,
-			boolean flag)
+	@Override
+	public Future<?> markMessagesAsAnswered(String accountId, String folderId, Collection<String> messageIds,
+											boolean flag)
 	{
 		return getAccount(accountId).markMessagesAsAnswered(messageIds, folderId, flag);
 	}
 
-	@Override public Future<?> markMessagesAsRead(String accountId, String folderId, Collection<String> messageIds,
-			boolean flag)
+	@Override
+	public Future<?> markMessagesAsRead(String accountId, String folderId, Collection<String> messageIds,
+										boolean flag)
 	{
 		return getAccount(accountId).markMessagesAsRead(messageIds, folderId, flag);
 	}
 
-	@Override public Future<?> markMessagesAsJunk(String accountId, String folderId, Collection<String> messageIds,
-			boolean flag)
+	@Override
+	public Future<?> markMessagesAsJunk(String accountId, String folderId, Collection<String> messageIds,
+										boolean flag)
 	{
 		return getAccount(accountId).markMessagesAsJunk(messageIds, folderId, flag);
 	}
@@ -266,7 +285,8 @@ public class LocalStorageSandBox implements IStorage
 	////		rewatch(m_folder.get(draftId));
 	//	}
 
-	@Override public void close()
+	@Override
+	public void close()
 	{
 		for (IAdapter adapter : m_adapter.values())
 		{
@@ -295,7 +315,8 @@ public class LocalStorageSandBox implements IStorage
 	//		return account;
 	//	}
 
-	@Override public void send(MessageModel model) throws StorageException
+	@Override
+	public void send(MessageModel model) throws StorageException
 	{
 		try
 		{
@@ -303,7 +324,7 @@ public class LocalStorageSandBox implements IStorage
 			Transport.send(message);
 			if (model.getCopyToId() != null)
 			{
-				m_adapter.get(model.getAccountId()).appendMessages(model.getCopyToId(), new Message[] { message });
+				m_adapter.get(model.getAccountId()).appendMessages(model.getCopyToId(), new Message[]{message});
 			}
 		} catch (MessagingException | IOException ex)
 		{

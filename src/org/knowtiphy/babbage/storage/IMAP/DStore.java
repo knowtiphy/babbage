@@ -19,7 +19,6 @@ import javax.mail.MessagingException;
 import javax.mail.UIDFolder;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -88,43 +87,37 @@ public interface DStore
 				.addR(folderId, Vocabulary.CONTAINS, messageId);
 	}
 
-	static void addMessageContent(Delta delta, IMAPAdapter adapter, Message message, MessageContent messageContent)
-			throws MessagingException
+	static void addMessageContent(Delta delta, MessageContent content)
 	{
 		long start = System.currentTimeMillis();
-		String messageId = adapter.encode(message);
-		System.out.println("addMessageContent -- BODY : " + messageId);
-		delta.addL(messageId, Vocabulary.HAS_CONTENT, messageContent.content)
-				.addL(messageId, Vocabulary.HAS_MIME_TYPE, messageContent.mimeType);
+		System.out.println("addMessageContent -- BODY : " + content.id);
+		delta.addL(content.id, Vocabulary.HAS_CONTENT, content.content)
+				.addL(content.id, Vocabulary.HAS_MIME_TYPE, content.mimeType);
 		System.out.println("addMessageContent --- CIDs");
-		//  Note: the local CID is a string, not a URI -- it is unique within a message, but not across messages
-		for (Map.Entry<String, AttachedPart> entry : messageContent.cidMap.entrySet())
+		for (InlineAttachment attachment : content.inlineAttachments)
 		{
-			String cidId = adapter.encode(message, entry.getKey());
-			delta.addR(messageId, Vocabulary.HAS_CID_PART, cidId)
-					.addL(cidId, Vocabulary.HAS_CONTENT, entry.getValue().content)
-					.addL(cidId, Vocabulary.HAS_MIME_TYPE, entry.getValue().mimeType)
-					.addL(cidId, Vocabulary.HAS_LOCAL_CID, entry.getKey());
+			//  Note: the local CID is a string, not a URI -- it is unique within a message, but not across messages
+			delta.addR(content.id, Vocabulary.HAS_CID_PART, attachment.id)
+					.addL(attachment.id, Vocabulary.HAS_CONTENT, attachment.content)
+					.addL(attachment.id, Vocabulary.HAS_MIME_TYPE, attachment.mimeType)
+					.addL(attachment.id, Vocabulary.HAS_LOCAL_CID, attachment.localName);
 		}
 
 		System.out.println("addMessageContent --- ATTACHMENTS");
 
-		int i = 0;
-		for (AttachedPart part : messageContent.attachments)
+		for (RegularAttachment attachment : content.regularAttachments)
 		{
 			//  TODO -- what do we do if we have no filename?
-			if (part.fileName != null)
+			if (attachment.fileName != null)
 			{
-				String attachmentId = adapter.encode(message, String.valueOf(i));
-				delta.addR(messageId, Vocabulary.HAS_ATTACHMENT, attachmentId)
-						.addL(attachmentId, Vocabulary.HAS_CONTENT, part.content)
-						.addL(attachmentId, Vocabulary.HAS_MIME_TYPE, part.mimeType)
-						.addL(attachmentId, Vocabulary.HAS_FILE_NAME, part.fileName);
-				i++;
+				delta.addR(content.id, Vocabulary.HAS_ATTACHMENT, attachment.id)
+						.addL(attachment.id, Vocabulary.HAS_CONTENT, attachment.content)
+						.addL(attachment.id, Vocabulary.HAS_MIME_TYPE, attachment.mimeType)
+						.addL(attachment.id, Vocabulary.HAS_FILE_NAME, attachment.fileName);
 			}
 		}
 
-		System.out.println("addMessageContent --- END : " + messageId + " : " + (System.currentTimeMillis() - start));
+		System.out.println("addMessageContent --- END : " + content.id + " : " + (System.currentTimeMillis() - start));
 	}
 
 	static void addMessageFlags(Delta delta, Message message, String messageId) throws MessagingException

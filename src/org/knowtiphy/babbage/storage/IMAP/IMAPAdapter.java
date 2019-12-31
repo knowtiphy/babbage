@@ -18,7 +18,6 @@ import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
-import org.knowtiphy.utils.Pair;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
@@ -135,6 +134,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
 		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
+		this.id = Vocabulary.E(Vocabulary.IMAP_ACCOUNT, emailAddress);
+
 		try
 		{
 			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
@@ -144,19 +145,15 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 
 		this.trustedSenders = new HashSet<>(100);
-		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_SENDER)
-				.forEachRemaining(x -> trustedSenders.add(x.toString()));
+		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_SENDER).forEachRemaining(x -> trustedSenders.add(x.toString()));
 		this.trustedContentProviders = new HashSet<>(100);
-		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER)
-				.forEachRemaining(x -> trustedContentProviders.add(x.toString()));
-
-		this.id = Vocabulary.E(Vocabulary.IMAP_ACCOUNT, emailAddress);
+		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER).forEachRemaining(x -> trustedContentProviders.add(x.toString()));
 
 		accountLock = new Mutex();
 		accountLock.lock();
 
 		workService = Executors.newSingleThreadExecutor();
-		contentService = Executors.newCachedThreadPool();
+		contentService = Executors.newFixedThreadPool(4);
 		loadAheadService = Executors.newFixedThreadPool(4);
 
 		Properties incoming = new Properties();
@@ -164,12 +161,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		incoming.put("mail.imaps.host", serverName);
 		incoming.put("mail.imaps.usesocketchannels", "true");
 		incoming.put("mail.imaps.peek", "true");
-
 		//	TODO -- all these need to be in RDF
 		incoming.put("mail.imaps.compress.enable", "true");
 		incoming.put("mail.imaps.connectionpoolsize", "20");
 		//	TODO -- what is a sane number for this?
-		incoming.put("mail.imaps.fetchsize", "300000");
+		incoming.put("mail.imaps.fetchsize", "3000000");
+		incoming.setProperty("mail.imaps.connectiontimeout", "5000");
+		incoming.setProperty("mail.imaps.timeout", "5000");
 		// incoming.setProperty("mail.imaps.port", "993");
 
 		//	we need system properties to pick up command line flags
@@ -464,70 +462,71 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return message;
 	}
 
-	private MessageWork load(String folderId, Collection<String> messageIds)
+	private Folder load(String folderId, Collection<String> messageIds) throws Exception
 	{
-		return new MessageWork(() -> {
-			ensureMapsLoaded();
+		ensureMapsLoaded();
 
-			//	TODO -- not sure this is correct -- what happens if we get a delete between checking its stored and
-			//	the fetch of the message -- perhaps the single threadedness helps us?
+		//	TODO -- not sure this is correct -- what happens if we get a delete between checking its stored and
+		//	the fetch of the message -- perhaps the single threadedness helps us?
 
-			List<String> needToFetch = new ArrayList<>();
-			for (String messageId : messageIds)
+		List<String> needToFetch = new ArrayList<>();
+		for (String messageId : messageIds)
+		{
+			boolean stored = query(() -> messageDatabase.getDefaultModel().
+					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
+							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
+			if (!stored)
 			{
-				boolean stored = query(() -> messageDatabase.getDefaultModel().
-						listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
-								P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
-				if (!stored)
-				{
-					needToFetch.add(messageId);
-				}
+				needToFetch.add(messageId);
 			}
-			System.out.println("load WORKER : " + needToFetch);
+		}
+		System.out.println("load WORKER : " + needToFetch);
 
-			if (!needToFetch.isEmpty())
+		if (!needToFetch.isEmpty())
+		{
+			assert m_folder.containsKey(folderId);
+			Folder folder = m_folder.get(folderId);
+			Message[] msgs = U(encode(folder), needToFetch);
+
+			///how do we set a profile for the actual content?
+			FetchProfile fp = new FetchProfile();
+			fp.add(FetchProfile.Item.CONTENT_INFO);
+			folder.fetch(msgs, fp);
+
+			//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
+			List<MessageContent> contents = new LinkedList<>();
+			for (Message message : msgs)
 			{
-				assert m_folder.containsKey(folderId);
-				Folder folder = m_folder.get(folderId);
-				Message[] msgs = U(encode(folder), needToFetch);
-
-				///how do we set a profile for the actual content?
-				FetchProfile fp = new FetchProfile();
-				fp.add(FetchProfile.Item.CONTENT_INFO);
-				folder.fetch(msgs, fp);
-
-				//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-				List<Pair<Message, MessageContent>> contents = new LinkedList<>();
-				for (Message message : msgs)
-				{
-					MessageContent content = new MessageContent(message, true);
-					content.process();
-					contents.add(new Pair<>(message, content));
-				}
-
-				applyAndNotify(delta -> {
-					for (Pair<Message, MessageContent> p : contents)
-					{
-						addMessageContent(delta, this, p.fst(), p.snd());
-					}
-				});
-
-				System.out.println("load WORKER DONE : " + needToFetch);
-				return folder;
+				contents.add(new MessageContent(message, this, true).process());
 			}
 
-			return null;
-		});
+			apply(delta -> contents.forEach(content -> addMessageContent(delta, content)));
+
+			System.out.println("load WORKER DONE : " + needToFetch);
+			return folder;
+		}
+
+		return null;
 	}
 
 	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
 	{
-		return contentService.submit(load(folderId, List.of(messageId)));
+		return contentService.submit(new MessageWork(() -> load(folderId, List.of(messageId))));
 	}
 
 	public Future<?> loadAhead(String folderId, Collection<String> messageIds)
 	{
-		return loadAheadService.submit(load(folderId, messageIds));
+		return loadAheadService.submit(() ->
+		{
+			try
+			{
+				load(folderId, messageIds);
+			} catch (Exception ex)
+			{
+				ex.printStackTrace(System.err);
+				//	ignore -- any errors will be picked up elsewhere
+			}
+		});
 	}
 
 	//	private methods start here
@@ -622,6 +621,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		LOGGER.log(Level.INFO, "reOpenFolder :: {0} :: {1}", new Object[]{folder.getName(), folder.isOpen()});
 		//assert !folder.isOpen();
 
+		System.err.println("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX REOPENING FOLDER XXXXXXXXXXXXXXXXXXXXXX");
 		accountLock.lock();
 		try
 		{
@@ -827,11 +827,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			if (archive == null)
 			{
-				setSpecialFolder(folder, Constants.ARCHIVE_PATTERNS, f -> junk = f);
+				setSpecialFolder(folder, Constants.ARCHIVE_PATTERNS, f -> archive = f);
 			}
 			if (drafts == null)
 			{
-				setSpecialFolder(folder, Constants.DRAFT_PATTERNS, f -> junk = f);
+				setSpecialFolder(folder, Constants.DRAFT_PATTERNS, f -> drafts = f);
 			}
 			if (junk == null)
 			{
@@ -1184,24 +1184,29 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					return null;
 				} catch (MessageRemovedException ex)
 				{
+					System.err.println("XXXXXXXXXXX MW DELETED XXXXXXXX");
 					LOGGER.log(Level.INFO, "MessageWork::message removed");
 					//	ignore
 					return null;
 				} catch (StoreClosedException ex)
 				{
+					System.err.println("XXXXXXXXXXX STORE CLOSED XXXXXXXX");
 					reconnect();
 				} catch (FolderClosedException ex)
 				{
+					System.err.println("XXXXXXXXXXX FOLDER CLOSED XXXXXXXX");
 					reOpenFolder(ex.getFolder());
 				} catch (MailConnectException ex)
 				{
+					System.err.println("XXXXXXXXXXX TIMEOUT ISSUE XXXXXXXX");
 					//  TODO -- timeout -- not really sure what this does
 					LOGGER.info("TIMEOUT -- adapting timeout");
 					//timeout = timeout * 2;
 				} catch (Exception ex)
 				{
+					System.err.println("XXXXXXXXXXX OTHER ISSUE XXXXXXXX");
 					//	usually a silly error where we did a dbase operation outside a transaction
-					LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
+					LOGGER.info(() -> LoggerUtils.exceptionMessage(ex));
 					throw ex;
 				}
 

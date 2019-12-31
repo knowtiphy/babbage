@@ -11,9 +11,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.Map;
 
 /**
  * @author graham
@@ -22,16 +20,20 @@ public class MessageContent
 {
 	private final Message message;
 	private final boolean allowHTML;
+	private final IMAPAdapter adapter;
+	private int count = 0;
+	String id;
 	String content;
 	String mimeType;
-	Map<String, AttachedPart> cidMap = new HashMap<>(30);
-	Collection<AttachedPart> attachments = new LinkedList<>();
+	Collection<InlineAttachment> inlineAttachments = new LinkedList<>();
+	Collection<RegularAttachment> regularAttachments = new LinkedList<>();
 
-	public MessageContent(Message message, boolean allowHTML)
+	public MessageContent(Message message, IMAPAdapter adapter, boolean allowHTML)
 	{
 		assert message != null;
 		this.message = message;
 		this.allowHTML = allowHTML;
+		this.adapter = adapter;
 	}
 
 	private static boolean isAttachment(Part part) throws MessagingException
@@ -157,7 +159,7 @@ public class MessageContent
 		return null;
 	}
 
-	private static void walk(Part part, ThrowingConsumer<? super Part, ? extends Exception> process)  throws Exception
+	private static void walk(Part part, ThrowingConsumer<? super Part, ? extends Exception> process) throws Exception
 	{
 		process.apply(part);
 
@@ -208,7 +210,8 @@ public class MessageContent
 
 	private void addAttachment(Part part) throws MessagingException, IOException
 	{
-		attachments.add(new AttachedPart(mimeType(part), IOUtils.toByteArray(part.getInputStream()), fileName(part)));
+		regularAttachments.add(new RegularAttachment(adapter.encode(message, "" + count++),
+				mimeType(part), IOUtils.toByteArray(part.getInputStream()), fileName(part)));
 	}
 
 	private void parseAttachments() throws Exception
@@ -240,19 +243,23 @@ public class MessageContent
 		for (Part part : inline)
 		{
 			String cidName = cid(part.getHeader("Content-Id")[0]);
-			cidMap.put("cid:" + cidName, new AttachedPart(mimeType(part), IOUtils.toByteArray(part.getInputStream())));
+			inlineAttachments.add(new InlineAttachment(adapter.encode(message, cidName), mimeType(part),
+					IOUtils.toByteArray(part.getInputStream()), "cid:" + cidName));
 		}
 	}
 
-	protected void process() throws Exception
+	protected MessageContent process() throws Exception
 	{
+		id = adapter.encode(message);
 		Part part = getText(message);
-		if(part != null)
+		if (part != null)
 		{
 			mimeType = mimeType(part);
 			content = part.getContent().toString();
 			parseAttachments();
 		}
+
+		return this;
 	}
 }
 

@@ -4,12 +4,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
-import org.knowtiphy.babbage.messages.*;
+import org.knowtiphy.babbage.messages.CloseMessage;
+import org.knowtiphy.babbage.messages.CopyMessage;
+import org.knowtiphy.babbage.messages.DeleteMessage;
+import org.knowtiphy.babbage.messages.IMessage;
+import org.knowtiphy.babbage.messages.MarkAsAnsweredMessage;
+import org.knowtiphy.babbage.messages.MarkAsJunkMessage;
+import org.knowtiphy.babbage.messages.MarkAsReadMessage;
+import org.knowtiphy.babbage.messages.MoveToJunkMessage;
+import org.knowtiphy.babbage.messages.SendMessage;
 import org.knowtiphy.babbage.storage.IStorage;
 import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.StorageFactory;
-import org.knowtiphy.utils.OS;
-
 
 import javax.mail.MessagingException;
 import java.io.ByteArrayOutputStream;
@@ -19,10 +25,10 @@ import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.*;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 //	a Pink Pig Mail server process
@@ -104,9 +110,9 @@ public class PinkPigMailServer
 			InstantiationException, IllegalAccessException, InvocationTargetException
 	{
 		//	get local message storage
-		Path dir = Paths.get(Objects.requireNonNull(OS.getDataDir(PinkPigMailServer.class)).toString(), MESSAGE_STORAGE);
-		Files.createDirectories(dir);
-		IStorage storage = StorageFactory.getLocal(dir, Paths.get(OS.getSettingsDir(ClientStorage.class).toString(), ACCOUNTS_FILE));
+//		Path dir = Paths.get(Objects.requireNonNull(OS.getDataDir(PinkPigMailServer.class)).toString(), MESSAGE_STORAGE);
+//		Files.createDirectories(dir);
+		IStorage storage = StorageFactory.getLocal();//Paths.get(OS.getSettingsDir(ClientStorage.class).toString(), ACCOUNTS_FILE));
 
 		System.out.println("PINK PIG MAIL SERVER");
 
