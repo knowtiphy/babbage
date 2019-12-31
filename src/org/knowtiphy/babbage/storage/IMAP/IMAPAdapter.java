@@ -108,6 +108,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Thread pingThread;
 
 	private final ExecutorService workService;
+	//	these are really the same thing, but having two allows fetching the content of a message immediately, even
+	//	if the load ahead service is completely busy.
 	private final ExecutorService contentService;
 	private final ExecutorService loadAheadService;
 
