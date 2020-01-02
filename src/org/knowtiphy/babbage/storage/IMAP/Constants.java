@@ -21,6 +21,7 @@ public interface Constants
 	Pattern MSG_JUNK_PATTERN = java.util.regex.Pattern.compile("\\$?Junk", java.util.regex.Pattern.CASE_INSENSITIVE);
 	//Pattern MSG_NOT_JUNK_PATTERN = Pattern.compile("(\\$NotJunk)", Pattern.CASE_INSENSITIVE);
 
+	long PING_FREQUENCY = 1L;
 	long FREQUENCY = 60000L;
 	String JUNK_FLAG = "Junk";
 	int NUM_ATTEMPTS = 5;

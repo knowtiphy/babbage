@@ -9,6 +9,7 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.babbage.storage.BaseAdapter;
+import org.knowtiphy.babbage.storage.CustomThreadFactory;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
@@ -18,6 +19,7 @@ import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.FileUtils;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
+import org.knowtiphy.utils.PriorityExecutor;
 
 import javax.activation.DataHandler;
 import javax.activation.DataSource;
@@ -67,6 +69,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -105,13 +108,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private final Store store;
 	private final IdleManager idleManager;
-	private Thread pingThread;
 
+	//private final LinkedBlockingDeque<Runnable> workQ;
 	private final ExecutorService workService;
+	private final ScheduledExecutorService pingService;
 	//	these are really the same thing, but having two allows fetching the content of a message immediately, even
 	//	if the load ahead service is completely busy.
 	private final ExecutorService contentService;
 	private final ExecutorService loadAheadService;
+
+	//private Thread pingThread;
 
 	private final Mutex accountLock;
 
@@ -141,7 +147,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		try
 		{
 			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
-		} catch (NoSuchElementException ex)
+		}
+		catch (NoSuchElementException ex)
 		{
 			//	the account doesn't have a nick name
 		}
@@ -154,7 +161,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		accountLock = new Mutex();
 		accountLock.lock();
 
-		workService = Executors.newSingleThreadExecutor();
+//		workQ = new LinkedBlockingDeque<>();
+		workService = new PriorityExecutor(new CustomThreadFactory("WorkQ"));
+
+		pingService = Executors.newSingleThreadScheduledExecutor();
 		contentService = Executors.newFixedThreadPool(4);
 		loadAheadService = Executors.newFixedThreadPool(4);
 
@@ -176,7 +186,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		Properties props = System.getProperties();
 		props.putAll(incoming);
 		Session session = Session.getInstance(props, null);
-//		session.setDebug(true);
+		//session.setDebug(true);
 
 		Properties props1 = session.getProperties();
 		//props1.put("mail.event.scope", "session"); // or "application"
@@ -211,10 +221,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				synchMessageIdsAndHeaders(folder);
 			}
 
-			startPingThread();
-
 			accountLock.unlock();
 			LOGGER.log(Level.INFO, "{0} :: SYNCH DONE ", emailAddress);
+
+			startPingThread();
+
 			return null;
 		});
 	}
@@ -240,6 +251,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	public void close()
 	{
+		LOGGER.log(Level.INFO, "{0} :: shutting down ping thread", emailAddress);
+//		if (pingThread != null)
+//		{
+//			pingThread.interrupt();
+//		}
+		doAndIgnore(pingService::shutdown);
+		doAndIgnore(() -> pingService.awaitTermination(10, TimeUnit.SECONDS));
+
 		LOGGER.log(Level.INFO, "{0} :: shutting down worker pools", emailAddress);
 
 		doAndIgnore(workService::shutdown);
@@ -251,12 +270,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		LOGGER.log(Level.INFO, "{0} :: shutting down idle manager", emailAddress);
 		idleManager.stop();
-
-		LOGGER.log(Level.INFO, "{0} :: shutting down ping thread", emailAddress);
-		if (pingThread != null)
-		{
-			pingThread.interrupt();
-		}
 
 		m_folder.values().forEach(folder ->
 		{
@@ -422,7 +435,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				try
 				{
 					message.addRecipient(Message.RecipientType.TO, address);
-				} catch (AddressException ex)
+				}
+				catch (AddressException ex)
 				{
 					//  ignore
 				}
@@ -436,7 +450,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				try
 				{
 					message.addRecipient(Message.RecipientType.CC, address);
-				} catch (AddressException ex)
+				}
+				catch (AddressException ex)
 				{
 					//  ignore
 				}
@@ -468,8 +483,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		ensureMapsLoaded();
 
-		//	TODO -- not sure this is correct -- what happens if we get a delete between checking its stored and
+		//	TODO -- not sure this is correct -- what happens if we get a delete/add between checking its stored and
 		//	the fetch of the message -- perhaps the single threadedness helps us?
+		//	definitely incorrect? Need to hold a write lock for the whole thing
 
 		List<String> needToFetch = new ArrayList<>();
 		for (String messageId : messageIds)
@@ -523,7 +539,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			try
 			{
 				load(folderId, messageIds);
-			} catch (Exception ex)
+			}
+			catch (Exception ex)
 			{
 				ex.printStackTrace(System.err);
 				//	ignore -- any errors will be picked up elsewhere
@@ -547,11 +564,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				folder.open(Folder.READ_WRITE);
 				return;
-			} catch (IllegalStateException e)
+			}
+			catch (IllegalStateException e)
 			{
 				//	the folder is already open
 				return;
-			} catch (MessagingException e)
+			}
+			catch (MessagingException e)
 			{
 				//	ignore and try again
 			}
@@ -600,8 +619,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		if (inbox != null)
 		{
 			LOGGER.log(Level.INFO, "Starting ping server for {0}", inbox.getName());
-			pingThread = new Thread(new PingServer(this, inbox, Constants.FREQUENCY));
-			pingThread.start();
+			pingService.scheduleAtFixedRate(new Ping(this, inbox), Constants.PING_FREQUENCY, Constants.PING_FREQUENCY, TimeUnit.MINUTES);
+//			pingThread = new Thread(new PingServer(this, inbox, Constants.FREQUENCY));
+//			pingThread.start();
 		}
 	}
 
@@ -630,7 +650,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			openFolder(folder);
 			m_PerFolderMessage.remove(folder);
 			synchMessageIdsAndHeaders(folder);
-		} finally
+		}
+		finally
 		{
 			accountLock.unlock();
 		}
@@ -687,7 +708,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			idleManager.watch(folder);
 			return;
-		} catch (MessagingException ex)
+		}
+		catch (MessagingException ex)
 		{
 			for (int i = 0; i < Constants.NUM_ATTEMPTS; i++)
 			{
@@ -697,7 +719,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					reOpenFolder(folder);
 					idleManager.watch(folder);
 					return;
-				} catch (InterruptedException | MessagingException e)
+				}
+				catch (InterruptedException | MessagingException e)
 				{
 					//	ignore and try again -- all the exceptions are folder related
 				}
@@ -723,6 +746,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return messages;
 	}
 
+	protected <T> Future<T> addWork1(Callable<T> operation)
+	{
+		return workService.submit(new PriorityWork<>(operation, -1));
+	}
+
 	protected <T> Future<T> addWork(Callable<T> operation)
 	{
 		return workService.submit(() -> {
@@ -730,14 +758,27 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			{
 				ensureMapsLoaded();
 				return operation.call();
-			} catch (Exception ex)
+			}
+			catch (Exception ex)
 			{
 				LOGGER.warning(ex.getLocalizedMessage());
 				return null;
 			}
 		});
 
-//		FutureTask<T> task = new FutureTask<>(operation);
+//		FutureTask<T> task = new FutureTask<>(() -> {
+//			try
+//			{
+//				System.out.println("DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD");
+//				ensureMapsLoaded();
+//				return operation.call();
+//			}
+//			catch (Exception ex)
+//			{
+//				LOGGER.warning(ex.getLocalizedMessage());
+//				return null;
+//			}
+//		});
 //		workQ.add(task);
 //		return task;
 	}
@@ -788,8 +829,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private void computeSpecialFolders() throws MessagingException
 	{
 		assert !m_folder.isEmpty();
-
-		inbox = store.getFolder("INBOX");
 
 		if (((IMAPStore) store).hasCapability("SPECIAL-USE"))
 		{
@@ -862,10 +901,18 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		// start a watcher for each one
 		assert m_folder.isEmpty();
 
+		inbox = store.getFolder("INBOX");
+
 		for (Folder folder : store.getDefaultFolder().list())//"*"))
 		{
 			openFolder(folder);
 			m_folder.put(encode(folder), folder);
+			//	we may get a different folder object, so have to re-remember it -- i hate IMAP and java mail
+			//	TODO can we just check for INBOX as a name and avoud this crap?
+			if (folder.getName().equals(inbox.getName()))
+			{
+				inbox = folder;
+			}
 		}
 
 		for (Folder folder : m_folder.values())
@@ -1033,7 +1080,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				//	do anything that can cause a MessageRemovedException
 				message.isSet(Flags.Flag.SEEN);
 				return false;
-			} catch (MessageRemovedException ex)
+			}
+			catch (MessageRemovedException ex)
 			{
 				return true;
 			}
@@ -1042,6 +1090,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		@Override
 		public void messageChanged(MessageChangedEvent messageChangedEvent)
 		{
+			System.out.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE CHANGED {0}", messageChangedEvent);
 
 			Message message = messageChangedEvent.getMessage();
@@ -1100,6 +1149,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		@Override
 		public void messagesRemoved(MessageCountEvent e)
 		{
+			System.out.println("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 
 			folder = (Folder) e.getSource();
@@ -1133,6 +1183,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		@Override
 		public void messagesAdded(MessageCountEvent e)
 		{
+			System.out.println("YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
 
 			folder = (Folder) e.getSource();
@@ -1184,27 +1235,32 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 						reWatchFolder(folder);
 					}
 					return null;
-				} catch (MessageRemovedException ex)
+				}
+				catch (MessageRemovedException ex)
 				{
 					System.err.println("XXXXXXXXXXX MW DELETED XXXXXXXX");
 					LOGGER.log(Level.INFO, "MessageWork::message removed");
 					//	ignore
 					return null;
-				} catch (StoreClosedException ex)
+				}
+				catch (StoreClosedException ex)
 				{
 					System.err.println("XXXXXXXXXXX STORE CLOSED XXXXXXXX");
 					reconnect();
-				} catch (FolderClosedException ex)
+				}
+				catch (FolderClosedException ex)
 				{
 					System.err.println("XXXXXXXXXXX FOLDER CLOSED XXXXXXXX");
 					reOpenFolder(ex.getFolder());
-				} catch (MailConnectException ex)
+				}
+				catch (MailConnectException ex)
 				{
 					System.err.println("XXXXXXXXXXX TIMEOUT ISSUE XXXXXXXX");
 					//  TODO -- timeout -- not really sure what this does
 					LOGGER.info("TIMEOUT -- adapting timeout");
 					//timeout = timeout * 2;
-				} catch (Exception ex)
+				}
+				catch (Exception ex)
 				{
 					System.err.println("XXXXXXXXXXX OTHER ISSUE XXXXXXXX");
 					//	usually a silly error where we did a dbase operation outside a transaction
@@ -1222,6 +1278,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 //
 //	private class Worker implements Runnable
+//	{
 //	{
 //		private final BlockingQueue<? extends Runnable> queue;
 //
@@ -1260,4 +1317,37 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 //			}
 //		}
 //	}
+
+	private class PriorityWork<T> implements Callable<T>, PriorityExecutor.Important
+	{
+		private Callable<T> operation;
+		private int priority;
+
+		public PriorityWork(Callable<T> operation, int priority)
+		{
+			this.operation = operation;
+			this.priority = priority;
+		}
+
+		@Override
+		public T call()
+		{
+			try
+			{
+				ensureMapsLoaded();
+				return operation.call();
+			}
+			catch (Exception ex)
+			{
+				LOGGER.warning(ex.getLocalizedMessage());
+				return null;
+			}
+		}
+
+		@Override
+		public int getPriority()
+		{
+			return priority;
+		}
+	}
 }

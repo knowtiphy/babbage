@@ -37,6 +37,7 @@ public class PingServer implements Runnable
 				return;
 			} catch (MessagingException ex)
 			{
+				System.out.println("Pinging server failed :: " + ex.getLocalizedMessage());
 				LOGGER.warning(() -> "Pinging server failed :: " + ex.getLocalizedMessage());
 				adapter.addWork(() ->
 				{
