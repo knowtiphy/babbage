@@ -619,7 +619,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		if (inbox != null)
 		{
 			LOGGER.log(Level.INFO, "Starting ping server for {0}", inbox.getName());
-			pingService.scheduleAtFixedRate(new Ping(this, inbox), Constants.PING_FREQUENCY, Constants.PING_FREQUENCY, TimeUnit.MINUTES);
+			pingService.scheduleAtFixedRate(new Ping(this, inbox),
+					Constants.PING_FREQUENCY, Constants.PING_FREQUENCY, TimeUnit.MINUTES);
 //			pingThread = new Thread(new PingServer(this, inbox, Constants.FREQUENCY));
 //			pingThread.start();
 		}
@@ -634,7 +635,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		else if (inbox != null && !inbox.isOpen())
 		{
 			reOpenFolder(inbox);
-			startPingThread();
+			//startPingThread();
 		}
 	}
 
@@ -746,9 +747,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return messages;
 	}
 
-	protected <T> Future<T> addWork1(Callable<T> operation)
+	protected <T> Future<T> addWork1(Callable<T> operation, int priority)
 	{
-		return workService.submit(new PriorityWork<>(operation, -1));
+		return workService.submit(new PriorityWork<>(operation, priority));
 	}
 
 	protected <T> Future<T> addWork(Callable<T> operation)

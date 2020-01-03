@@ -27,7 +27,6 @@ public class Ping implements Runnable
 		{
 			LOGGER.info("Pinging server");
 			int  x = folder.getUnreadMessageCount();
-			System.out.println("PING SERVER " + x);
 		}
 		catch (MessagingException ex)
 		{
