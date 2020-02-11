@@ -1,14 +1,13 @@
 package org.knowtiphy.babbage.storage;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 
 /**
  * @author graham
  */
 public class StorageFactory
 {
-	public static IStorage getLocal() throws IOException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException
+	public static IStorage getLocal() throws Exception
 	{
 		LocalStorageSandBox storage = new LocalStorageSandBox();
 		return storage;

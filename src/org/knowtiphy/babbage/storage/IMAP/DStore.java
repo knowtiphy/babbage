@@ -198,3 +198,267 @@ public interface DStore
 		DStore.addFolderCounts(delta, folder, folderId);
 	}
 }
+
+
+//
+//	private SynchWork reconnectWork()
+//	{
+//		return new SynchWork(0)
+//		{
+//			@Override
+//			public Void call() throws Exception
+//			{
+//				LOGGER.log(Level.INFO, "reconnectWork");
+//				if (isDone())
+//				{
+//					System.err.println("------- NEW WORK SETUP :: reconnectWork FAILING -------");
+//				}
+//				else
+//				{
+//					reconnect();
+//				}
+//
+//				return null;
+//			}
+//		};
+//	}
+
+//	private SynchWork reOpenFolderWork(final Folder folder)
+//	{
+//		return new SynchWork(0)
+//		{
+//			@Override
+//			public Void call() throws Exception
+//			{
+//				LOGGER.log(Level.INFO, "reOpenFolder :: {0} :: {1}", new Object[]{folder.getName(), folder.isOpen()});
+//				if (isDone())
+//				{
+//					System.err.println("------- NEW WORK SETUP :: reOpenFolder FAILING -------");
+//				}
+//				else
+//				{
+//					System.err.println("------- NEW WORK SETUP :: REOPENING FOLDER -------");
+//					accountLock.lock();
+//					try
+//					{
+//						folder.open(Folder.READ_WRITE);
+//						m_PerFolderMessage.remove(folder);
+//						synchMessageIdsAndHeaders(folder);
+//					}
+//					catch (IllegalStateException e)
+//					{
+//						//	the folder is already open
+//					}
+//					catch (MessagingException ex)
+//					{
+//						timesDone++;
+//						addWork1(this, Constants.SYNCH_PRIORITY);
+//					}
+//					finally
+//					{
+//						accountLock.unlock();
+//					}
+//				}
+//
+//				return null;
+//			}
+//		};
+//	}
+
+//	private <T> void reschedule(SynchWork synchWork, int synchWorkPriority, MessageWork1 work, int workPriority)
+//	{
+//		addWork1(synchWork, synchWorkPriority);
+//		addWork1(work, workPriority);
+//	}
+
+//	private abstract class Work implements Callable<Void>
+//	{
+//		int timesDone;
+//
+//		Work(int timesDone)
+//		{
+//			this.timesDone = timesDone;
+//		}
+//
+//		public boolean isDone()
+//		{
+//			return timesDone == Constants.NUM_ATTEMPTS;
+//		}
+//	}
+
+//	private abstract class SynchWork extends Work
+//	{
+//		SynchWork(int timesDone)
+//		{
+//			super(timesDone);
+//		}
+//	}
+
+//	private class MessageWork1 extends Work
+//	{
+//		private final Callable<Void> work;
+//
+//		MessageWork1(int timesDone, Callable<Void> work)
+//		{
+//			super(timesDone);
+//			this.work = work;
+//		}
+//
+//		MessageWork1(Callable<Void> work)
+//		{
+//			this(0, work);
+//		}
+//
+//		@Override
+//		public Void call() throws Exception
+//		{
+//			try
+//			{
+//				timesDone++;
+//				if (timesDone == Constants.NUM_ATTEMPTS)
+//				{
+//					System.err.println("------- NEW WORK SETUP :: MessageWork1 FAILING -------");
+//					return null;
+//				}
+//				else
+//				{
+//					return work.call();
+//				}
+//			}
+//			catch (MessageRemovedException ex)
+//			{
+//				System.err.println("------- NEW WORK SETUP :: MESSAGE DELETED -------");
+//				LOGGER.log(Level.INFO, "MessageWork::message removed");
+//				//	ignore
+//			}
+//			catch (StoreClosedException ex)
+//			{
+//				System.err.println("------- NEW WORK SETUP :: STORE CLOSED -------");
+//				reschedule(reconnectWork(), Constants.SYNCH_PRIORITY,
+//						new MessageWork1(timesDone, work), Constants.REDO_TASK + timesDone);
+//			}
+//			catch (FolderClosedException ex)
+//			{
+//				System.err.println("------- NEW WORK SETUP :: FOLDER CLOSED -------");
+//				reschedule(reOpenFolderWork(ex.getFolder()), Constants.SYNCH_PRIORITY,
+//						new MessageWork1(timesDone, work), Constants.REDO_TASK + timesDone);
+//			}
+//			catch (MailConnectException ex)
+//			{
+//				System.err.println("XXXXXXXXXXX TIMEOUT ISSUE XXXXXXXX");
+//				//  TODO -- timeout -- not really sure what this does
+//				LOGGER.info("TIMEOUT -- adapting timeout");
+//				//timeout = timeout * 2;
+//			}
+//			catch (Exception ex)
+//			{
+//				System.err.println("XXXXXXXXXXX OTHER ISSUE XXXXXXXX");
+//				//	usually a silly error where we did a dbase operation outside a transaction
+//				LOGGER.info(() -> LoggerUtils.exceptionMessage(ex));
+//				throw ex;
+//			}
+//
+//			return null;
+//		}
+//	}
+
+//	private class SynchWork implements Callable<Void>, HasPriority
+//	{
+//		private int priority;
+//		private final Callable<Void> work;
+//
+//		SynchWork(int priority, Callable<Void> work)
+//		{
+//			this.priority = priority;
+//			this.work = work;
+//		}
+//
+//		@Override
+//		public int getPriority()
+//		{
+//			return priority;
+//		}
+//
+//		@Override
+//		public Void call() throws Exception
+//		{
+////			try
+////			{
+//			return work.call();
+//			///	}
+////			catch (MessageRemovedException ex)
+////			{
+////				System.err.println("------- NEW WORK SETUP :: MESSAGE DELETED -------");
+////				LOGGER.log(Level.INFO, "MessageWork::message removed");
+////				//	ignore
+////			}
+////			catch (StoreClosedException ex)
+////			{
+////				System.err.println("------- NEW WORK SETUP :: STORE CLOSED -------");
+////				reschedule(reconnectWork(), Constants.SYNCH_PRIORITY, this);
+////			}
+////			catch (FolderClosedException ex)
+////			{
+////				System.err.println("------- NEW WORK SETUP :: FOLDER CLOSED -------");
+////				reschedule(reOpenFolderWork(ex.getFolder()), Constants.SYNCH_PRIORITY, this);
+////			}
+////			catch (MailConnectException ex)
+////			{
+////				System.err.println("XXXXXXXXXXX TIMEOUT ISSUE XXXXXXXX");
+////				//  TODO -- timeout -- not really sure what this does
+////				LOGGER.info("TIMEOUT -- adapting timeout");
+////				//timeout = timeout * 2;
+////			}
+////			catch (Exception ex)
+////			{
+////				System.err.println("XXXXXXXXXXX OTHER ISSUE XXXXXXXX");
+////				//	usually a silly error where we did a dbase operation outside a transaction
+////				LOGGER.info(() -> LoggerUtils.exceptionMessage(ex));
+////				throw ex;
+////			}
+////
+////			return null;
+//		}
+//	}
+
+//
+//	private class Worker implements Runnable
+//	{
+//	{
+//		private final BlockingQueue<? extends Runnable> queue;
+//
+//		Worker(BlockingQueue<? extends Runnable> queue)
+//		{
+//			this.queue = queue;
+//		}
+//
+//		@Override
+//		public void run()
+//		{
+//			while (true)
+//			{
+//				try
+//				{
+//					Runnable task = queue.take();
+//					if (task == Constants.POISON_PILL)
+//					{
+//						return;
+//					}
+//					else
+//					{
+//						ensureMapsLoaded();
+//						try
+//						{
+//							task.run();
+//						} catch (RuntimeException ex)
+//						{
+//							LOGGER.warning(ex.getLocalizedMessage());
+//						}
+//					}
+//				} catch (InterruptedException e)
+//				{
+//					return;
+//				}
+//			}
+//		}
+//	}

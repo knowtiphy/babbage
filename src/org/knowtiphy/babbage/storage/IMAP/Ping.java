@@ -1,7 +1,6 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
 import javax.mail.Folder;
-import javax.mail.MessagingException;
 import java.util.logging.Logger;
 
 /**
@@ -23,24 +22,33 @@ public class Ping implements Runnable
 	@Override
 	public void run()
 	{
-		try
-		{
-			LOGGER.info("Pinging server");
-			int  x = folder.getUnreadMessageCount();
-		}
-		catch (MessagingException ex)
-		{
-			LOGGER.warning("Pinging server failed :: " + ex.getLocalizedMessage());
-			adapter.addWork(() ->
-			{
-				adapter.reStartPingThread();
-				return null;
-			});
-		}
-		catch (Exception ex)
-		{
-			System.out.println("XXXXXXXXXXXXXXXXXXXXXXX bailing");
-			ex.printStackTrace();
-		}
+//		try
+//		{
+//			LOGGER.info("Pinging server");
+//			folder.getMessageCount();
+//		}
+//		catch (FolderClosedException ex)
+//		{
+//			LOGGER.warning("Ping :: Folder Closed Exception :: " + ex.getLocalizedMessage());
+//			adapter.addPriorityWork(() ->
+//			{
+//				adapter.reStartPingThread();
+//				return null;
+//			}, SYNCH_PRIORITY);
+//		}
+//		catch (MessagingException ex)
+//		{
+//			LOGGER.warning("Pinging server failed :: " + ex.getLocalizedMessage());
+//			adapter.addPriorityWork(() ->
+//			{
+//				adapter.reStartPingThread();
+//				return null;
+//			}, SYNCH_PRIORITY);
+//		}
+//		catch (Exception ex)
+//		{
+//			System.out.println("XXXXXXXXXXXXXXXXXXXXXXX bailing");
+//			ex.printStackTrace();
+//		}
 	}
 }

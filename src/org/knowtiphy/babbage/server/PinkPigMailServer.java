@@ -14,15 +14,12 @@ import org.knowtiphy.babbage.messages.MarkAsReadMessage;
 import org.knowtiphy.babbage.messages.MoveToJunkMessage;
 import org.knowtiphy.babbage.messages.SendMessage;
 import org.knowtiphy.babbage.storage.IStorage;
-import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.StorageFactory;
 
-import javax.mail.MessagingException;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Collection;
@@ -77,7 +74,8 @@ public class PinkPigMailServer
 				// Not sure on the method, will need to test
 				client.write(toRemove);
 
-			} catch (IOException e)
+			}
+			catch (IOException e)
 			{
 				e.printStackTrace();
 			}
@@ -105,9 +103,7 @@ public class PinkPigMailServer
 		}
 	}
 
-	public static void main(String[] args)
-			throws IOException, InterruptedException, StorageException, MessagingException, NoSuchMethodException,
-			InstantiationException, IllegalAccessException, InvocationTargetException
+	public static void main(String[] args) throws Exception
 	{
 		//	get local message storage
 //		Path dir = Paths.get(Objects.requireNonNull(OS.getDataDir(PinkPigMailServer.class)).toString(), MESSAGE_STORAGE);
@@ -137,7 +133,8 @@ public class PinkPigMailServer
 							try
 							{
 								processMessage(storage, clientInput.readUTF());
-							} catch (Exception e)
+							}
+							catch (Exception e)
 							{
 								e.printStackTrace();
 							}
@@ -146,7 +143,8 @@ public class PinkPigMailServer
 
 					clientThread.start();
 
-				} catch (IOException ex)
+				}
+				catch (IOException ex)
 				{
 					ex.printStackTrace();
 				}

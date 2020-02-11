@@ -11,6 +11,7 @@ import javax.mail.Message;
 import javax.mail.MessagingException;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
@@ -22,6 +23,7 @@ public abstract class BaseAdapter implements IAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(BaseAdapter.class.getName());
 
+	protected String id;
 	protected final Dataset messageDatabase;
 	protected final ListenerManager listenerManager;
 	protected final BlockingDeque<Runnable> notificationQ;
@@ -31,6 +33,16 @@ public abstract class BaseAdapter implements IAdapter
 		this.messageDatabase = messageDatabase;
 		this.listenerManager = listenerManager;
 		this.notificationQ = notificationQ;
+	}
+
+	@Override
+	public String getId()
+	{
+		return id;
+	}
+
+	public void initialize() throws Exception
+	{
 	}
 
 	public abstract void close();
@@ -98,9 +110,14 @@ public abstract class BaseAdapter implements IAdapter
 		throw new UnsupportedOperationException();
 	}
 
+	protected void notifyListeners(Collection<Delta> deltas)
+	{
+		notificationQ.add(() -> listenerManager.notifyChangeListeners(deltas));
+	}
+
 	protected void notifyListeners(Delta delta)
 	{
-		notificationQ.add(() -> listenerManager.notifyChangeListeners(delta));
+		notifyListeners(List.of(delta));
 	}
 
 	//	run a query, which returns a value of type T, inside a read transaction on the database
@@ -111,13 +128,15 @@ public abstract class BaseAdapter implements IAdapter
 		try
 		{
 			return query.get();
-		} catch (Exception ex)
+		}
+		catch (Exception ex)
 		{
 			messageDatabase.abort();
-			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
+			LOGGER.severe(LoggerUtils.exceptionMessage(ex));
 			//noinspection unchecked
 			throw (E) ex;
-		} finally
+		}
+		finally
 		{
 			messageDatabase.end();
 		}
@@ -145,35 +164,50 @@ public abstract class BaseAdapter implements IAdapter
 
 	//	apply a change to the database represented by a delta (a collection of adds and deletes)
 
-	protected Delta apply(Delta delta)
+	protected Collection<Delta> apply(Collection<Delta> deltas)
 	{
 		messageDatabase.begin(ReadWrite.WRITE);
 		try
 		{
-			messageDatabase.getDefaultModel().remove(delta.getDeletes());
-			messageDatabase.getDefaultModel().add(delta.getAdds());
+			for (Delta delta : deltas)
+			{
+				messageDatabase.getDefaultModel().remove(delta.getDeletes());
+				messageDatabase.getDefaultModel().add(delta.getAdds());
+			}
 			messageDatabase.commit();
-		} catch (Exception ex)
+		}
+		catch (Exception ex)
 		{
 			//	if this happens were are in deep shit with no real way of recovering
-			LOGGER.severe(() -> LoggerUtils.exceptionMessage(ex));
+			LOGGER.severe(LoggerUtils.exceptionMessage(ex));
 			messageDatabase.abort();
-		} finally
+		}
+		finally
 		{
 			messageDatabase.end();
 		}
 
-		return delta;
+		return deltas;
 	}
 
 	//	apply a change to the database represented by the delta computed from a query running insides a read transaction
 
+	protected Collection<Delta> apply(Delta delta)
+	{
+		return apply(List.of(delta));
+	}
+
 	public <E extends Exception> Delta apply(ThrowingConsumer<Delta, E> computeChanges) throws E
 	{
-		return apply(query(computeChanges));
+		return apply(List.of(query(computeChanges))).iterator().next();
 	}
 
 	//	apply a change to the database represented by a delta and notify all listeners
+
+	protected void applyAndNotify(Collection<Delta> deltas)
+	{
+		notifyListeners(apply(deltas));
+	}
 
 	protected void applyAndNotify(Delta delta)
 	{

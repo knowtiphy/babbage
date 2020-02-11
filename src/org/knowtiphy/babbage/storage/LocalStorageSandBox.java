@@ -24,7 +24,6 @@ import javax.mail.Message;
 import javax.mail.MessagingException;
 import javax.mail.Transport;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -70,7 +69,7 @@ public class LocalStorageSandBox implements IStorage
 	private final Map<String, IAdapter> m_adapter;
 	private final BlockingDeque<Runnable> notificationQ;
 
-	public LocalStorageSandBox() throws IOException, NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException
+	public LocalStorageSandBox() throws Exception
 	{
 		//	data structures shared between accounts
 
@@ -115,6 +114,7 @@ public class LocalStorageSandBox implements IStorage
 			Class<IAdapter> cls = (Class<IAdapter>) m_Class.get(type.toString());
 			IAdapter adapter = cls.getConstructor(String.class, Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
 					.newInstance(name.toString(), messageDatabase, listenerManager, notificationQ, accountsModel);
+			adapter.initialize();
 			m_adapter.put(adapter.getId(), adapter);
 		}
 
@@ -135,12 +135,14 @@ public class LocalStorageSandBox implements IStorage
 						try
 						{
 							task.run();
-						} catch (RuntimeException ex)
+						}
+						catch (RuntimeException ex)
 						{
 							logger.warning("Notifier thread failed :: " + ex.getLocalizedMessage());
 						}
 					}
-				} catch (InterruptedException e)
+				}
+				catch (InterruptedException e)
 				{
 					return;
 				}
@@ -326,7 +328,8 @@ public class LocalStorageSandBox implements IStorage
 			{
 				m_adapter.get(model.getAccountId()).appendMessages(model.getCopyToId(), new Message[]{message});
 			}
-		} catch (MessagingException | IOException ex)
+		}
+		catch (MessagingException | IOException ex)
 		{
 			throw new StorageException(ex);
 		}

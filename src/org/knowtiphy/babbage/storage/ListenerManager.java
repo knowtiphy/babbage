@@ -1,10 +1,10 @@
 package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.logging.Logger;
 
 /**
@@ -21,8 +21,12 @@ public class ListenerManager
 		listeners.add(listener);
 	}
 
-	public void notifyChangeListeners(Delta delta)
+	public void notifyChangeListeners(Collection<Delta> deltas)
 	{
+		//	TODO -- this is a little inefficient
+		Delta delta = new Delta();
+		deltas.forEach(delta::merge);
+
 		if (!delta.getAdds().isEmpty() || !delta.getDeletes().isEmpty())
 		{
 			for (IStorageListener listener : listeners)
@@ -30,7 +34,8 @@ public class ListenerManager
 				try
 				{
 					listener.delta(delta.getAdds(), delta.getDeletes());
-				} catch (Exception ex)
+				}
+				catch (Exception ex)
 				{
 					logger.warning("Notifying change listener failed :: " + ex.getLocalizedMessage());
 				}
@@ -41,12 +46,6 @@ public class ListenerManager
 	//	got to go
 	public void notifyChangeListeners(Model added, Model removed)
 	{
-		notifyChangeListeners(new Delta(added, removed));
-	}
-
-	//	got to go
-	public void notifyChangeListeners(Model model)
-	{
-		notifyChangeListeners(model, ModelFactory.createDefaultModel());
+		notifyChangeListeners(List.of(new Delta(added, removed)));
 	}
 }

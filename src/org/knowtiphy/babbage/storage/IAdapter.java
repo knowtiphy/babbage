@@ -22,6 +22,8 @@ public interface IAdapter
 {
 	String getId();
 
+	void initialize() throws Exception;
+
 	void close();
 
 	void addListener();
