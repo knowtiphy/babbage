@@ -1,7 +1,16 @@
 package org.knowtiphy.babbage.storage;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.knowtiphy.babbage.messages.*;
+import org.apache.jena.rdf.model.Model;
+import org.knowtiphy.babbage.messages.CloseMessage;
+import org.knowtiphy.babbage.messages.CopyMessage;
+import org.knowtiphy.babbage.messages.DeleteMessage;
+import org.knowtiphy.babbage.messages.EnsureContentLoadedMessage;
+import org.knowtiphy.babbage.messages.IMessage;
+import org.knowtiphy.babbage.messages.MarkAsAnsweredMessage;
+import org.knowtiphy.babbage.messages.MarkAsJunkMessage;
+import org.knowtiphy.babbage.messages.MarkAsReadMessage;
+import org.knowtiphy.babbage.messages.MoveToJunkMessage;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.MessagingException;
@@ -52,6 +61,11 @@ public class RemoteStorage implements IStorage
 			throws StorageException, MessagingException, InterruptedException
 	{
 		//	TODO
+		return null;
+	}
+
+	public Future<?> send(Model model) throws StorageException
+	{
 		return null;
 	}
 

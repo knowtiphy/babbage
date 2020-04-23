@@ -5,6 +5,7 @@
  */
 package org.knowtiphy.babbage.storage;
 
+import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.Message;
@@ -50,4 +51,6 @@ public interface IAdapter
 	Future<?> ensureMessageContentLoaded(String messageId, String folderId);
 
 	Future<?> loadAhead(String folderId, Collection<String> messageIds);
+
+	Future<?> send(Model model);
 }

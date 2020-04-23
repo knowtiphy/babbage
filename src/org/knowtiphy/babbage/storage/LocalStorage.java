@@ -391,6 +391,11 @@ public class LocalStorage implements IStorage
 //		return account;
 //	}
 
+	public Future<?> send(Model model) throws StorageException
+	{
+		return null;
+	}
+
 	@Override
 	public void send(MessageModel model) throws StorageException
 	{

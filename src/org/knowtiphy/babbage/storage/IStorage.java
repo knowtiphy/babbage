@@ -1,5 +1,6 @@
 package org.knowtiphy.babbage.storage;
 
+import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 
 import javax.mail.MessagingException;
@@ -40,4 +41,6 @@ public interface IStorage
 	Future<?> markMessagesAsRead(String accountId, String folderId, Collection<String> messageIds, boolean flag);
 
 	Future<?> markMessagesAsJunk(String accountId, String folderId, Collection<String> messageIds, boolean flag);
+
+	Future<?> send(Model model) throws StorageException;
 }

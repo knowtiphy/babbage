@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.ReadWrite;
+import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.utils.LoggerUtils;
 import org.knowtiphy.utils.ThrowingConsumer;
@@ -90,6 +91,11 @@ public abstract class BaseAdapter implements IAdapter
 	}
 
 	public Message createMessage(MessageModel model) throws MessagingException, IOException
+	{
+		throw new UnsupportedOperationException();
+	}
+
+	public Future<?> send(Model model)
 	{
 		throw new UnsupportedOperationException();
 	}

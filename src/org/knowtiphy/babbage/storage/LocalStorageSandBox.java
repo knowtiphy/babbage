@@ -88,13 +88,8 @@ public class LocalStorageSandBox implements IStorage
 		Model model = ModelFactory.createDefaultModel();
 		RDFDataMgr.read(model, Files.newInputStream(Paths.get(OS.getSettingsDir(Babbage.class).toString(), ACCOUNTS_FILE)), Lang.TURTLE);
 
-		// Theoretically I want add all various subclass of accounts here
-		JenaUtils.addSubClasses(model, Vocabulary.IMAP_ACCOUNT, Vocabulary.ACCOUNT);
-		JenaUtils.addSubClasses(model, Vocabulary.CALDAV_ACCOUNT, Vocabulary.ACCOUNT);
-		JenaUtils.addSubClasses(model, Vocabulary.CARDDAV_ACCOUNT, Vocabulary.ACCOUNT);
-
 		// For each adapter pass them the model and then let them sort it out
-		Model accountsModel = ModelFactory.createRDFSModel(model);
+		Model accountsModel = createAccountsModel(model);
 
 		m_adapter = new HashMap<>(100);
 
@@ -318,6 +313,19 @@ public class LocalStorageSandBox implements IStorage
 	//	}
 
 	@Override
+	public Future<?> send(Model model) throws StorageException
+	{
+		try
+		{
+			return m_adapter.get(getAccountId(model)).send(model);
+		}
+		catch (Exception ex)
+		{
+			throw new StorageException(ex);
+		}
+	}
+
+	@Override
 	public void send(MessageModel model) throws StorageException
 	{
 		try
@@ -357,5 +365,34 @@ public class LocalStorageSandBox implements IStorage
 		//		{
 		//			throw new StorageException(ex);
 		//		}
+	}
+
+	private Model createAccountsModel(Model model)
+	{
+		Model dModel = ModelFactory.createDefaultModel();
+		// Theoretically I want add all various subclass of accounts here
+		JenaUtils.addSubClasses(dModel, Vocabulary.IMAP_ACCOUNT, Vocabulary.ACCOUNT);
+		JenaUtils.addSubClasses(dModel, Vocabulary.CALDAV_ACCOUNT, Vocabulary.ACCOUNT);
+		JenaUtils.addSubClasses(dModel, Vocabulary.CARDDAV_ACCOUNT, Vocabulary.ACCOUNT);
+		return ModelFactory.createRDFSModel(model);
+	}
+
+	//	extract the account id from a model
+	private Resource getAccountId(Model model)
+	{
+		Model dModel = createAccountsModel(model);
+		String getAccountType = "SELECT ?id ?type "
+				+ " WHERE {" + "      ?id <" + Vocabulary.RDF_TYPE + "> ?type \n."
+				+ "      ?type <http://www.w3.org/2000/01/rdf-schema#subClassOf> <" + Vocabulary.ACCOUNT + ">\n."
+				+ "       filter(?type != <" + Vocabulary.ACCOUNT + ">)" + "      }";
+
+		ResultSet result = QueryExecutionFactory.create(getAccountType, dModel).execSelect();
+
+		if (!result.hasNext())
+		{
+			// throw some kind of error because we couldn't find the account
+		}
+
+		return result.next().getResource("id");
 	}
 }

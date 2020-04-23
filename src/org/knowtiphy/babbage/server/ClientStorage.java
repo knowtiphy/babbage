@@ -58,7 +58,8 @@ public class ClientStorage implements IStorage
 
 					listener.delta(added, removed);
 
-				} catch (IOException e)
+				}
+				catch (IOException e)
 				{
 					e.printStackTrace();
 				}
@@ -108,6 +109,11 @@ public class ClientStorage implements IStorage
 	public void close()
 	{
 
+	}
+
+	public Future<?> send(Model model)
+	{
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
