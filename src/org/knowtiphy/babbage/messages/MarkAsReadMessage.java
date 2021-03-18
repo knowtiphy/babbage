@@ -21,6 +21,6 @@ public class MarkAsReadMessage implements IMessage
 
 	@Override public void perform(IStorage storage)
 	{
-		storage.markMessagesAsRead(accountID, folderID, mIDs, flag);
-	}
+	}//storage.markMessagesAsRead(accountID, folderID, mIDs, flag);
+
 }

@@ -17,10 +17,11 @@ import static org.knowtiphy.babbage.storage.CALDAV.DStore.R;
 
 public abstract class DaveAdapter extends BaseAdapter
 {
-	public DaveAdapter(Dataset messageDatabase, ListenerManager listenerManager,
-			BlockingDeque<Runnable> notificationQ)
+	public DaveAdapter(String type, Dataset messageDatabase,
+					   OldListenerManager listenerManager, ListenerManager newListenerManager,
+					   BlockingDeque<Runnable> notificationQ)
 	{
-		super(messageDatabase, listenerManager, notificationQ);
+		super(type, messageDatabase, listenerManager, newListenerManager, notificationQ);
 	}
 
 	public String getStoredTag(String query, String resType)
@@ -58,7 +59,7 @@ public abstract class DaveAdapter extends BaseAdapter
 	public <T> void updateTriple(Model messageDB, Delta delta, String resURI, String hasProp, T updated)
 	{
 		delta.delete(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
-		delta.addL(resURI, hasProp, updated);
+		delta.addDP(resURI, hasProp, updated);
 	}
 
 }

@@ -1,13 +1,12 @@
 package org.knowtiphy.babbage.server;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+//import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.knowtiphy.babbage.messages.CloseMessage;
 import org.knowtiphy.babbage.messages.CopyMessage;
 import org.knowtiphy.babbage.messages.DeleteMessage;
-import org.knowtiphy.babbage.messages.IMessage;
 import org.knowtiphy.babbage.messages.MarkAsAnsweredMessage;
 import org.knowtiphy.babbage.messages.MarkAsJunkMessage;
 import org.knowtiphy.babbage.messages.MarkAsReadMessage;
@@ -17,11 +16,8 @@ import org.knowtiphy.babbage.storage.IStorage;
 import org.knowtiphy.babbage.storage.StorageFactory;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -82,26 +78,26 @@ public class PinkPigMailServer
 		}
 	}
 
-	private static void processMessage(IStorage storage, String json) throws Exception
-	{
-		ObjectMapper mapper = new ObjectMapper();
-
-		int index = json.indexOf(' ');
-
-		String messageType = json.substring(0, index);
-		Class<?> cls = classMap.get(messageType);
-
-		if (null == cls)
-		{
-			System.err.println("Unknown message type: " + messageType);
-			//	TODO -- throw an exception here
-		}
-		else
-		{
-			String messageContent = json.substring(index + 1);
-			((IMessage) mapper.readValue(messageContent, cls)).perform(storage);
-		}
-	}
+//	private static void processMessage(IStorage storage, String json) throws Exception
+//	{
+//		ObjectMapper mapper = new ObjectMapper();
+//
+//		int index = json.indexOf(' ');
+//
+//		String messageType = json.substring(0, index);
+//		Class<?> cls = classMap.get(messageType);
+//
+//		if (null == cls)
+//		{
+//			System.err.println("Unknown message type: " + messageType);
+//			//	TODO -- throw an exception here
+//		}
+//		else
+//		{
+//			String messageContent = json.substring(index + 1);
+//			((IMessage) mapper.readValue(messageContent, cls)).perform(storage);
+//		}
+//	}
 
 	public static void main(String[] args) throws Exception
 	{
@@ -113,44 +109,44 @@ public class PinkPigMailServer
 		System.out.println("PINK PIG MAIL SERVER");
 
 		//	add a single listener on the storage that takes changes and sends them to connected clients
-		storage.addListener(PinkPigMailServer::notifyListeners);
+		storage.addOldListener(PinkPigMailServer::notifyListeners);
 
 		//	establish a server socket and listen for connections to it
-		try (ServerSocket clients = new ServerSocket(6789))
-		{
-			//noinspection InfiniteLoopStatement
-			while (true)
-			{
-				//	wait for a client to connection and spin up a thread to handle that connection
-				try (Socket clientSocket = clients.accept())
-				{
-					@SuppressWarnings("IOResourceOpenedButNotSafelyClosed")
-					DataInputStream clientInput = (new DataInputStream(clientSocket.getInputStream()));
-					oStreams.add(new DataOutputStream(clientSocket.getOutputStream()));
-					Thread clientThread = new Thread(() -> {
-						while (true)
-						{
-							try
-							{
-								processMessage(storage, clientInput.readUTF());
-							}
-							catch (Exception e)
-							{
-								e.printStackTrace();
-							}
-						}
-					});
-
-					clientThread.start();
-
-				}
-				catch (IOException ex)
-				{
-					ex.printStackTrace();
-				}
-
-				// Need a poison pill eventually as end condition
-			}
-		}
+//		try (ServerSocket clients = new ServerSocket(6789))
+//		{
+//			//noinspection InfiniteLoopStatement
+//			while (true)
+//			{
+//				//	wait for a client to connection and spin up a thread to handle that connection
+//				try (Socket clientSocket = clients.accept())
+//				{
+//					@SuppressWarnings("IOResourceOpenedButNotSafelyClosed")
+//					DataInputStream clientInput = (new DataInputStream(clientSocket.getInputStream()));
+//					oStreams.add(new DataOutputStream(clientSocket.getOutputStream()));
+//					Thread clientThread = new Thread(() -> {
+//						while (true)
+//						{
+//							try
+//							{
+//								processMessage(storage, clientInput.readUTF());
+//							}
+//							catch (Exception e)
+//							{
+//								e.printStackTrace();
+//							}
+//						}
+//					});
+//
+//					clientThread.start();
+//
+//				}
+//				catch (IOException ex)
+//				{
+//					ex.printStackTrace();
+//				}
+//
+//				// Need a poison pill eventually as end condition
+//			}
+//		}
 	}
 }

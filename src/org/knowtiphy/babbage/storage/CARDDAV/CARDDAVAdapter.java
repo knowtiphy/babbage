@@ -10,11 +10,14 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
 import org.knowtiphy.babbage.storage.DaveAdapter;
 import org.knowtiphy.babbage.storage.Delta;
-import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.OldListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.Pair;
@@ -36,8 +39,32 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.*;
-import static org.knowtiphy.babbage.storage.CARDDAV.DStore.*;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.ABOOKRES;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.CARDRES;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.CTAG;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.ETAG;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.GROUPRES;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.NAME;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.addressBookCTAG;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.addressBookProperties;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.addressBookURIs;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.cardETAG;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.cardURIs;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.groupProperties;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.groupURIs;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.initialStateCards;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.memberCardURI;
+import static org.knowtiphy.babbage.storage.CARDDAV.DFetch.skeleton;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.L;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.computeMemberCardDiffs;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.deleteGroup;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.deleteVCard;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.storeAddressBook;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.storeMemberCards;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.storeResource;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.storeResourceMeta;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.unStoreMeta;
+import static org.knowtiphy.babbage.storage.CARDDAV.DStore.unstoreRes;
 
 public class CARDDAVAdapter extends DaveAdapter
 {
@@ -65,10 +92,11 @@ public class CARDDAVAdapter extends DaveAdapter
 	private String nickName;
 	private Thread synchThread;
 
-	public CARDDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-			BlockingDeque<Runnable> notificationQ, Model model)
+	public CARDDAVAdapter(String name, String type, Dataset messageDatabase,
+						  OldListenerManager listenerManager, ListenerManager newListenerManager,
+						  BlockingDeque<Runnable> notificationQ, Model model)
 	{
-		super(messageDatabase, listenerManager, notificationQ);
+		super(type, messageDatabase, listenerManager, newListenerManager, notificationQ);
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
@@ -97,6 +125,17 @@ public class CARDDAVAdapter extends DaveAdapter
 		doWork = new Thread(new Worker(workQ));
 		doWork.start();
 
+	}
+
+	@Override
+	public Model getAccountInfo()
+	{
+		//	TODO -- fix this
+		Model model = ModelFactory.createDefaultModel();
+		model.add(model.createResource(getId()),
+				model.createProperty(RDF.type.toString()),
+				model.createResource(getType()));
+		return model;
 	}
 
 	protected String encodeAddressBook(DavResource addressBook)
@@ -219,12 +258,12 @@ public class CARDDAVAdapter extends DaveAdapter
 	@Override public void addListener()
 	{
 		Delta accountInfo = new Delta();
-		accountInfo.addR(id, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ACCOUNT)
-				.addL(id, Vocabulary.HAS_SERVER_NAME, serverName).addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
-				.addL(id, Vocabulary.HAS_PASSWORD, password);
+		accountInfo.addOP(id, RDF.type.toString(), Vocabulary.CARDDAV_ACCOUNT)
+				.addDP(id, Vocabulary.HAS_SERVER_NAME, serverName).addDP(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
+				.addDP(id, Vocabulary.HAS_PASSWORD, password);
 		if (nickName != null)
 		{
-			accountInfo.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
+			accountInfo.addDP(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
 
 		notifyListeners(accountInfo);
@@ -263,7 +302,7 @@ public class CARDDAVAdapter extends DaveAdapter
 		synchThread.start();
 	}
 
-	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	private FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		return new FutureTask<Void>(() -> {
 			startSynchThread();

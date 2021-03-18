@@ -4,7 +4,6 @@ import org.apache.jena.rdf.model.Model;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.logging.Logger;
 
 /**
@@ -21,31 +20,22 @@ public class ListenerManager
 		listeners.add(listener);
 	}
 
-	public void notifyChangeListeners(Collection<Delta> deltas)
+	public void notifyListeners(Model model)
 	{
-		//	TODO -- this is a little inefficient
-		Delta delta = new Delta();
-		deltas.forEach(delta::merge);
-
-		if (!delta.getAdds().isEmpty() || !delta.getDeletes().isEmpty())
+		if (!model.isEmpty())
 		{
 			for (IStorageListener listener : listeners)
 			{
 				try
 				{
-					listener.delta(delta.getAdds(), delta.getDeletes());
+					listener.handleEvent(model);
 				}
 				catch (Exception ex)
 				{
+					ex.printStackTrace();
 					logger.warning("Notifying change listener failed :: " + ex.getLocalizedMessage());
 				}
 			}
 		}
-	}
-
-	//	got to go
-	public void notifyChangeListeners(Model added, Model removed)
-	{
-		notifyChangeListeners(List.of(new Delta(added, removed)));
 	}
 }

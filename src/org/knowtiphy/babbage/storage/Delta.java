@@ -1,10 +1,7 @@
 package org.knowtiphy.babbage.storage;
 
-import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -18,37 +15,12 @@ public class Delta
 {
 	//	the added and deleted triples for the delta
 
-	private Model adds = ModelFactory.createDefaultModel();
-	private Model deletes = ModelFactory.createDefaultModel();
+	private final Model adds = ModelFactory.createDefaultModel();
+	private final Model deletes = ModelFactory.createDefaultModel();
 
-	public Delta()
-	{
-	}
-
-	//	needs to go
-	public Delta(Model adds, Model deletes)
-	{
-		this.adds = adds;
-		this.deletes = deletes;
-	}
-
-	//	helper methods
-
-	private static Resource R(Model model, String uri)
-	{
-		return model.createResource(uri);
-	}
-
-	private static Property P(Model model, String uri)
-	{
-		return model.createProperty(uri);
-	}
-
-	private static <T> Literal L(Model model, T value)
-	{
-		assert !(value instanceof Literal);
-		return model.createTypedLiteral(value);
-	}
+//	public Delta()
+//	{
+//	}
 
 	public Model getAdds()
 	{
@@ -60,31 +32,27 @@ public class Delta
 		return deletes;
 	}
 
-	public Delta addR(String subject, String predicate, String object)
+	public Delta addOP(String s, String p, String o)
 	{
-		adds.add(adds.createStatement(R(adds, subject), P(adds, predicate), R(adds, object)));
+		JenaUtils.addOP(adds, s, p, o);
 		return this;
 	}
 
-	public <T> Delta addL(String subject, String predicate, T object)
+	public <T> Delta addDP(String s, String p, T o)
 	{
-		adds.add(adds.createStatement(R(adds, subject), P(adds, predicate), L(adds, object)));
+		JenaUtils.addDP(adds, s, p, o);
 		return this;
 	}
 
-	public <T> Delta addLN(String subject, String predicate, T object)
+	public <T> Delta addDPN(String s, String p, T o)
 	{
-		if (object != null)
-		{
-			adds.add(adds.createStatement(R(adds, subject), P(adds, predicate), L(adds, object)));
-		}
+		JenaUtils.addDPN(adds, s, p, o);
 		return this;
 	}
-
 
 	public Delta add(StmtIterator stmts)
 	{
-		stmts.forEachRemaining(adds::add);
+		adds.add(stmts);
 		return this;
 	}
 
@@ -100,19 +68,9 @@ public class Delta
 		getDeletes().add(delta.getDeletes());
 	}
 
-//	public <T> void deleteR(String subject, String predicate, String object)
-//	{
-//		toDelete.add(toDelete.createStatement(R(toDelete, subject), P(toDelete, predicate), R(toDelete, object)));
-//	}
-//
-//	public <T> void deleteL(String subject, String predicate, T object)
-//	{
-//		toDelete.add(toDelete.createStatement(R(toDelete, subject), P(toDelete, predicate), L(toDelete, object)));
-//	}
-
 	public Delta delete(StmtIterator stmts)
 	{
-		stmts.forEachRemaining(deletes::add);
+		deletes.add(stmts);
 		return this;
 	}
 

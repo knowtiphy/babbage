@@ -13,6 +13,7 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.ThreeTuple;
@@ -42,7 +43,7 @@ public interface DStore
 	{
 		if (value != null)
 		{
-			delta.addL(subject, predicate, fn.apply(value));
+			delta.addDP(subject, predicate, fn.apply(value));
 		}
 	}
 
@@ -50,13 +51,13 @@ public interface DStore
 	{
 		//memberID.forEach(id -> addAttribute(delta, groupID, Vocabulary.HAS_CARD, id, x -> x));
 
-		memberID.forEach(id -> delta.addR(groupID, Vocabulary.HAS_CARD, id));
+		memberID.forEach(id -> delta.addOP(groupID, Vocabulary.HAS_CARD, id));
 	}
 
 	static void storeAddressBook(Delta delta, String adapterID, String addressBookId, DavResource addressBook)
 	{
-		delta.addR(addressBookId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ADDRESSBOOK)
-				.addR(adapterID, Vocabulary.CONTAINS, addressBookId);
+		delta.addOP(addressBookId, RDF.type.toString(), Vocabulary.CARDDAV_ADDRESSBOOK)
+				.addOP(adapterID, Vocabulary.CONTAINS, addressBookId);
 
 		addAttribute(delta, addressBookId, Vocabulary.HAS_NAME, addressBook.getDisplayName(), x -> x);
 
@@ -74,21 +75,21 @@ public interface DStore
 				.getValue().equals("group"))
 		{
 
-			delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP)
-					.addR(addressBookId, Vocabulary.HAS_GROUP, cardId);
+			delta.addOP(cardId, RDF.type.toString(), Vocabulary.CARDDAV_GROUP)
+					.addOP(addressBookId, Vocabulary.HAS_GROUP, cardId);
 		}
 		// I think at this point we can assume its a card
 		else
 		{
-			delta.addR(cardId, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD)
-					.addR(addressBookId, Vocabulary.CONTAINS, cardId);
+			delta.addOP(cardId, RDF.type.toString(), Vocabulary.CARDDAV_CARD)
+					.addOP(addressBookId, Vocabulary.CONTAINS, cardId);
 
 			for (Telephone telephone : vCard.getTelephoneNumbers())
 			{
 				String phoneNumber = telephone.getText().trim();
 				String phoneURI = cardId + "/phone/" + phoneNumber;
 
-				delta.addR(cardId, Vocabulary.HAS_PHONE, phoneURI);
+				delta.addOP(cardId, Vocabulary.HAS_PHONE, phoneURI);
 
 				// Potentially has 1+ types, such home and pref, can account for if we want to
 				addAttribute(delta, phoneURI, Vocabulary.HAS_NUMBER, phoneNumber, x -> x);
@@ -101,7 +102,7 @@ public interface DStore
 				String emailAddress = email.getValue().replaceAll("\\s", "");
 				String emailURI = cardId + "/email/" + emailAddress;
 
-				delta.addR(emailURI, Vocabulary.HAS_EMAIL, emailURI);
+				delta.addOP(emailURI, Vocabulary.HAS_EMAIL, emailURI);
 
 				// Potentially has 1+ types, such home and pref, can account for if we want to
 				addAttribute(delta, emailURI, Vocabulary.HAS_ADDRESS, emailAddress, x -> x);
@@ -175,7 +176,7 @@ public interface DStore
 		Resource groupRes = R(db, groupID);
 
 		delta.delete(db.listStatements(groupRes, P(db, Vocabulary.HAS_NAME), (RDFNode) null))
-				.delete(db.listStatements(groupRes, P(db, Vocabulary.RDF_TYPE), (RDFNode) null))
+				.delete(db.listStatements(groupRes, P(db, RDF.type.toString()), (RDFNode) null))
 				.delete(db.listStatements(groupRes, P(db, Vocabulary.HAS_CARD), (RDFNode) null))
 				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.HAS_GROUP), groupRes));
 
@@ -249,7 +250,7 @@ public interface DStore
 		}
 
 		delta.delete(db.listStatements(cardRes, P(db, Vocabulary.HAS_NAME), (RDFNode) null))
-				.delete(db.listStatements(cardRes, P(db, Vocabulary.RDF_TYPE), (RDFNode) null))
+				.delete(db.listStatements(cardRes, P(db, RDF.type.toString()), (RDFNode) null))
 				.delete(db.listStatements(R(db, bookID), P(db, Vocabulary.CONTAINS), cardRes));
 
 		System.out.println("DID ALL DELTA DELETES FOR A CARD");

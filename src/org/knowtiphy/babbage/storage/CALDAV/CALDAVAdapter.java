@@ -12,10 +12,13 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.DaveAdapter;
 import org.knowtiphy.babbage.storage.Delta;
-import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.OldListenerManager;
 import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -38,8 +41,28 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.knowtiphy.babbage.storage.CALDAV.DFetch.*;
-import static org.knowtiphy.babbage.storage.CALDAV.DStore.*;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CTAG;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATEEND;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DATESTART;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.DESCRIPTION;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.ETAG;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.EVENTRES;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.NAME;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.PRIORITY;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.SUMMARY;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.calendarCTag;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.calendarProperties;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.calendarURIs;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.eventETag;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.eventProperties;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.eventURIs;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.initialState;
+import static org.knowtiphy.babbage.storage.CALDAV.DFetch.skeleton;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.L;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.storeCalendar;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.storeEvent;
+import static org.knowtiphy.babbage.storage.CALDAV.DStore.unstoreRes;
 
 public class CALDAVAdapter extends DaveAdapter
 {
@@ -66,10 +89,11 @@ public class CALDAVAdapter extends DaveAdapter
 	private String nickName;
 	private Thread synchThread;
 
-	public CALDAVAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-			BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
+	public CALDAVAdapter(String name, String type, Dataset messageDatabase,
+						 OldListenerManager listenerManager, ListenerManager newListenerManager,
+						 BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
 	{
-		super(messageDatabase, listenerManager, notificationQ);
+		super(type, messageDatabase, listenerManager, newListenerManager, notificationQ);
 		// Query for serverName, emailAdress, and password
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
@@ -84,7 +108,8 @@ public class CALDAVAdapter extends DaveAdapter
 		try
 		{
 			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
-		} catch (NoSuchElementException ex)
+		}
+		catch (NoSuchElementException ex)
 		{
 			//	the account doesn't have a nick name
 		}
@@ -105,18 +130,26 @@ public class CALDAVAdapter extends DaveAdapter
 		return ZonedDateTime.ofInstant(date.toInstant(), ZoneId.systemDefault());
 	}
 
-	@Override public String getId()
+	@Override
+	public Model getAccountInfo()
 	{
-		return id;
+		//	TODO -- fix this
+		Model model = ModelFactory.createDefaultModel();
+		model.add(model.createResource(getId()),
+				model.createProperty(RDF.type.toString()),
+				model.createResource(getType()));
+		return model;
 	}
 
-	@Override public void close()
+	@Override
+	public void close()
 	{
 		try
 		{
 			workQ.add(POISON_PILL);
 			doWork.join();
-		} catch (InterruptedException ex)
+		}
+		catch (InterruptedException ex)
 		{
 			//  ignore
 		}
@@ -127,15 +160,16 @@ public class CALDAVAdapter extends DaveAdapter
 		}
 	}
 
-	@Override public void addListener()
+	@Override
+	public void addListener()
 	{
 		Delta accountInfo = new Delta();
-		accountInfo.addR(id, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_ACCOUNT)
-				.addL(id, Vocabulary.HAS_SERVER_NAME, serverName).addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
-				.addL(id, Vocabulary.HAS_PASSWORD, password);
+		accountInfo.addOP(id, RDF.type.toString(), Vocabulary.CALDAV_ACCOUNT)
+				.addDP(id, Vocabulary.HAS_SERVER_NAME, serverName).addDP(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
+				.addDP(id, Vocabulary.HAS_PASSWORD, password);
 		if (nickName != null)
 		{
-			accountInfo.addL(id, Vocabulary.HAS_NICK_NAME, nickName);
+			accountInfo.addDP(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
 		notifyListeners(accountInfo);
 
@@ -264,7 +298,8 @@ public class CALDAVAdapter extends DaveAdapter
 					workQ.add(new SyncTask());
 
 					Thread.sleep(FREQUENCY);
-				} catch (InterruptedException ex)
+				}
+				catch (InterruptedException ex)
 				{
 					return;
 				}
@@ -274,7 +309,7 @@ public class CALDAVAdapter extends DaveAdapter
 		synchThread.start();
 	}
 
-	@Override public FutureTask<?> getSynchTask() throws UnsupportedOperationException
+	private FutureTask<?> getSynchTask() throws UnsupportedOperationException
 	{
 		return new FutureTask<Void>(() -> {
 			startSynchThread();
@@ -300,7 +335,8 @@ public class CALDAVAdapter extends DaveAdapter
 			this.queue = queue;
 		}
 
-		@Override public void run()
+		@Override
+		public void run()
 		{
 			while (true)
 			{
@@ -324,12 +360,14 @@ public class CALDAVAdapter extends DaveAdapter
 						try
 						{
 							task.run();
-						} catch (RuntimeException ex)
+						}
+						catch (RuntimeException ex)
 						{
 							LOGGER.warning(ex.getLocalizedMessage());
 						}
 					}
-				} catch (InterruptedException e)
+				}
+				catch (InterruptedException e)
 				{
 					return;
 				}
@@ -339,7 +377,8 @@ public class CALDAVAdapter extends DaveAdapter
 
 	public class SyncTask implements Runnable
 	{
-		@Override public void run()
+		@Override
+		public void run()
 		{
 			try
 			{
@@ -399,7 +438,8 @@ public class CALDAVAdapter extends DaveAdapter
 									storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
 											Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents()
 													.get(0), event);
-								} catch (IOException e)
+								}
+								catch (IOException e)
 								{
 									e.printStackTrace();
 								}
@@ -497,7 +537,8 @@ public class CALDAVAdapter extends DaveAdapter
 										storeEvent(delta, serverCalURI, encodeEvent(serverCal, event),
 												Biweekly.parse(sardine.get(serverHeader + event)).first().getEvents()
 														.get(0), event);
-									} catch (IOException e)
+									}
+									catch (IOException e)
 									{
 										e.printStackTrace();
 									}
@@ -544,7 +585,8 @@ public class CALDAVAdapter extends DaveAdapter
 				}
 
 				accountLock.unlock();
-			} catch (Exception e)
+			}
+			catch (Exception e)
 			{
 				e.printStackTrace();
 			}

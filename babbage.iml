@@ -22,7 +22,6 @@
         <SOURCES />
       </library>
     </orderEntry>
-    <orderEntry type="library" name="org.apache.jena:jena-tdb2:3.13.1" level="project" />
     <orderEntry type="module-library">
       <library name="net.sf.biweekly:biweekly:0.6.3" type="repository">
         <properties maven-id="net.sf.biweekly:biweekly:0.6.3" />
@@ -49,6 +48,8 @@
         <SOURCES />
       </library>
     </orderEntry>
-    <orderEntry type="library" name="com.sun.mail:javax.mail:1.6.2" level="project" />
+    <orderEntry type="library" name="org.apache.jena:jena-tdb2:3.14.0" level="application" />
+    <orderEntry type="library" name="org.apache.jena:jena-querybuilder:3.14.0" level="application" />
+    <orderEntry type="library" name="com.sun.mail:javax.mail:1.5.6" level="project" />
   </component>
 </module>

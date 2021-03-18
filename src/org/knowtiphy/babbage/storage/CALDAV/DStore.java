@@ -11,6 +11,7 @@ import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
@@ -42,15 +43,15 @@ public interface DStore
 	{
 		if (value != null)
 		{
-			delta.addL(subject, predicate, fn.apply(value));
+			delta.addDP(subject, predicate, fn.apply(value));
 		}
 	}
 
 
 	static void storeCalendar(Delta delta, String adapterID, String encodedCalendar, DavResource calendar)
 	{
-		delta.addR(encodedCalendar, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR)
-				.addR(adapterID, Vocabulary.CONTAINS, encodedCalendar);
+		delta.addOP(encodedCalendar, RDF.type.toString(), Vocabulary.CALDAV_CALENDAR)
+				.addOP(adapterID, Vocabulary.CONTAINS, encodedCalendar);
 
 		addAttribute(delta, encodedCalendar, Vocabulary.HAS_NAME, calendar.getDisplayName(), x -> x);
 		addAttribute(delta, encodedCalendar, Vocabulary.HAS_CTAG, calendar.getCustomProps().get("getctag"), x -> x);
@@ -58,8 +59,8 @@ public interface DStore
 
 	static void storeEvent(Delta delta, String calendarId, String eventId, VEvent vEvent, DavResource event)
 	{
-		delta.addR(eventId, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT)
-				.addR(calendarId, Vocabulary.CONTAINS, eventId);
+		delta.addOP(eventId, RDF.type.toString(), Vocabulary.CALDAV_EVENT)
+				.addOP(calendarId, Vocabulary.CONTAINS, eventId);
 
 		addAttribute(delta, eventId, Vocabulary.HAS_ETAG, event.getEtag(), x -> x);
 

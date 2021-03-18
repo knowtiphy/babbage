@@ -1,5 +1,6 @@
 package org.knowtiphy.babbage.storage.CALDAV;
 
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
@@ -29,7 +30,7 @@ public interface DFetch
     {
         return "SELECT ?" + EVENTRES + " "
                 + "WHERE {"
-                + "      ?" + EVENTRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+                + "      ?" + EVENTRES + " <" + RDF.type.toString() + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
                 + "      <" + calURI + "> <" + Vocabulary.CONTAINS + "> ?event.\n"
                 + "      }";
     }
@@ -38,7 +39,7 @@ public interface DFetch
     {
         return "SELECT ?" + CALRES + " "
                 + "WHERE {"
-                + "      ?" + CALRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
+                + "      ?" + CALRES + " <" + RDF.type.toString() + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
                 + "          <" + adapterURI + "> <" + Vocabulary.CONTAINS + "> ?calendar.\n"
                 + "          }";
     }
@@ -47,7 +48,7 @@ public interface DFetch
     {
         return "SELECT ?" + CTAG + " "
                 + "WHERE {"
-                + "      <" + calendarURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
+                + "      <" + calendarURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
                 + "      <" + calendarURI + "> <" + Vocabulary.HAS_CTAG + "> ?" + CTAG + ".\n"
                 + "      }";
     }
@@ -56,7 +57,7 @@ public interface DFetch
     {
         return "SELECT ?name"
                 + " WHERE {"
-                + "      <" + calendarURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
+                + "      <" + calendarURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CALDAV_CALENDAR + ">.\n"
                 + "      <" + calendarURI + "> <" + Vocabulary.HAS_NAME + "> ?name.\n"
                 + "      }";
     }
@@ -65,7 +66,7 @@ public interface DFetch
     {
         return "SELECT ?" + ETAG + " "
                 + "WHERE {"
-                + "      <" + eventURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+                + "      <" + eventURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
                 + "      <" + eventURI + "> <" + Vocabulary.HAS_ETAG + "> ?" + ETAG + ".\n"
                 + "      }";
     }
@@ -75,7 +76,7 @@ public interface DFetch
     {
         return "SELECT ?" + SUMMARY + " ?" + DATESTART + " ?" + DATEEND + " ?" + DESCRIPTION + " ?" + PRIORITY + " "
                 + " WHERE {"
-                + "      <" + evenURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
+                + "      <" + evenURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CALDAV_EVENT + ">.\n"
                 + "      <" + evenURI + "> <" + Vocabulary.HAS_SUMMARY + "> ?" + SUMMARY + ".\n"
                 + "      <" + evenURI + "> <" + Vocabulary.HAS_DATE_START + "> ?" + DATESTART + ".\n"
                 + "      <" + evenURI + "> <" + Vocabulary.HAS_DATE_END + "> ?" + DATEEND + ".\n"
@@ -95,11 +96,11 @@ public interface DFetch
 								"?%s <%s> ?%s .  " +
 								" }",
 						// START OF CONSTRUCT
-						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
+						Vars.VAR_CALENDAR_ID, RDF.type.toString(), Vocabulary.CALDAV_CALENDAR,
 						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
 						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME,
 						// START OF WHERE
-						Vars.VAR_CALENDAR_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_CALENDAR,
+						Vars.VAR_CALENDAR_ID, RDF.type.toString(), Vocabulary.CALDAV_CALENDAR,
 						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_CALENDAR_ID,
 						Vars.VAR_CALENDAR_ID, Vocabulary.HAS_NAME, Vars.VAR_CALENDAR_NAME);
 	}
@@ -124,7 +125,7 @@ public interface DFetch
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								" }",
 						// START OF CONSTRUCT
-						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
+						Vars.VAR_EVENT_ID, RDF.type.toString(), Vocabulary.CALDAV_EVENT,
 						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,
@@ -132,7 +133,7 @@ public interface DFetch
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DESCRIPTION, Vars.VAR_DESCRIPTION,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_PRIORITY, Vars.VAR_PRIORITY,
 						// START OF WHERE
-						Vars.VAR_EVENT_ID, Vocabulary.RDF_TYPE, Vocabulary.CALDAV_EVENT,
+						Vars.VAR_EVENT_ID, RDF.type.toString(), Vocabulary.CALDAV_EVENT,
 						Vars.VAR_CALENDAR_ID, Vocabulary.CONTAINS, Vars.VAR_EVENT_ID,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_SUMMARY, Vars.VAR_SUMMARY,
 						Vars.VAR_EVENT_ID, Vocabulary.HAS_DATE_START, Vars.VAR_DATE_START,

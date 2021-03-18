@@ -5,27 +5,23 @@ import com.sun.mail.imap.IMAPStore;
 import com.sun.mail.imap.IdleManager;
 import com.sun.mail.util.MailConnectException;
 import org.apache.jena.query.Dataset;
-import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.StmtIterator;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.babbage.storage.BaseAdapter;
-import org.knowtiphy.babbage.storage.CustomThreadFactory;
 import org.knowtiphy.babbage.storage.Delta;
+import org.knowtiphy.babbage.storage.EventSetBuilder;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
-import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.OldListenerManager;
 import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.Vocabulary;
-import org.knowtiphy.utils.FileUtils;
+import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
 import org.knowtiphy.utils.PriorityExecutor;
+import org.knowtiphy.utils.Triple;
 
-import javax.activation.DataHandler;
-import javax.activation.DataSource;
-import javax.activation.FileDataSource;
-import javax.mail.Address;
-import javax.mail.Authenticator;
 import javax.mail.FetchProfile;
 import javax.mail.Flags;
 import javax.mail.Folder;
@@ -33,25 +29,19 @@ import javax.mail.FolderClosedException;
 import javax.mail.Message;
 import javax.mail.MessageRemovedException;
 import javax.mail.MessagingException;
-import javax.mail.Multipart;
-import javax.mail.PasswordAuthentication;
 import javax.mail.Session;
 import javax.mail.Store;
 import javax.mail.StoreClosedException;
 import javax.mail.UIDFolder;
+import javax.mail.URLName;
 import javax.mail.event.MessageChangedEvent;
 import javax.mail.event.MessageChangedListener;
 import javax.mail.event.MessageCountAdapter;
 import javax.mail.event.MessageCountEvent;
-import javax.mail.internet.AddressException;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeBodyPart;
-import javax.mail.internet.MimeMessage;
-import javax.mail.internet.MimeMultipart;
 import javax.mail.search.FlagTerm;
 import javax.mail.search.SearchTerm;
 import java.io.IOException;
-import java.nio.file.Path;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -65,24 +55,19 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.function.BiFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-import static org.knowtiphy.babbage.storage.IMAP.DStore.P;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.R;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolder;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addFolderCounts;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageContent;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.addMessageHeaders;
-import static org.knowtiphy.babbage.storage.IMAP.DStore.deleteMessageFlags;
-import static org.knowtiphy.utils.IProcedure.doAndIgnore;
+import static org.knowtiphy.utils.JenaUtils.P;
+import static org.knowtiphy.utils.JenaUtils.R;
 
 /**
  * @author graham
@@ -91,237 +76,194 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(IMAPAdapter.class.getName());
 
-	//private final String id;
 	private final String serverName;
 	private final String emailAddress;
 	private final String password;
+	private final Collection<String> trustedSenders, trustedContentProviders;
 	private String nickName;
-	private final Set<String> trustedSenders, trustedContentProviders;
 
-	//	RDF ids to javax mail folder and message objects
-	private final Map<String, Folder> m_folder = new HashMap<>(100);
-	private final Map<Folder, Map<String, Message>> m_PerFolderMessage = new HashMap<>(1000);
+	private final Map<String, BiFunction<String, Model, Future<?>>> operations = new HashMap<>();
 
-	//	map org.knowtiphy.pinkpigmail.messages to ids of those org.knowtiphy.pinkpigmail.messages for org.knowtiphy.pinkpigmail.messages being deleted
-	//private final Map<Message, String> m_toDelete = new HashMap<>();
+	//	TODO -- can we get rid of these?
+	//	map from sub-type of IMAPFolder to folder ID for special folders
+	final Map<String, String> specialType2ID = new HashMap<>();
 
-	private Store store;
-	private IdleManager idleManager;
+	//	maps from folder id to sub-type of IMAPFolder for special folders
+	final Map<String, String> specialId2Type = new HashMap<>();
 
-	//private final LinkedBlockingDeque<Runnable> workQ;
 	private final ExecutorService workService;
-	//	private final ScheduledExecutorService pingService;
+	private final ScheduledExecutorService pingService;
 	//	these are really the same thing, but having two allows fetching the content of a message immediately, even
 	//	if the load ahead service is completely busy.
 	private final ExecutorService contentService;
 	private final ExecutorService loadAheadService;
 	private final ExecutorService eventService;
 
-	private Thread pingThread;
-
-	private final Mutex accountLock;
-
+	private Store store;
+	private IdleManager idleManager;
 	private Properties incomingProperties;
 
-	//	special folders
-	Folder archive;
-	Folder drafts;
-	Folder inbox;
-	Folder junk;
-	Folder sent;
-	Folder trash;
-
-	public IMAPAdapter(String name, Dataset messageDatabase, ListenerManager listenerManager,
-					   BlockingDeque<Runnable> notificationQ, Model model) throws InterruptedException
+	public IMAPAdapter(String name, String type, Dataset messageDatabase,
+					   OldListenerManager listenerManager, ListenerManager newListenerManager,
+					   BlockingDeque<Runnable> notificationQ, Model model)
 	{
-		super(messageDatabase, listenerManager, notificationQ);
+		super(type, messageDatabase, listenerManager, newListenerManager, notificationQ);
 
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
 		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_PASSWORD));
 
-		this.serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
-		this.emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
-		this.password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
-		this.id = Vocabulary.E(Vocabulary.IMAP_ACCOUNT, emailAddress);
+		serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
+		emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
+		password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
+		id = Vocabulary.E(Vocabulary.IMAP_ACCOUNT, emailAddress);
 
 		try
 		{
-			this.nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
+			nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
 		}
 		catch (NoSuchElementException ex)
 		{
 			//	the account doesn't have a nick name
 		}
 
-		this.trustedSenders = new HashSet<>(100);
-		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_SENDER).forEachRemaining(x -> trustedSenders.add(x.toString()));
-		this.trustedContentProviders = new HashSet<>(100);
-		JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER).forEachRemaining(x -> trustedContentProviders.add(x.toString()));
+		trustedSenders = JenaUtils.collect(new HashSet<>(100),
+				model, name, Vocabulary.HAS_TRUSTED_SENDER, RDFNode::toString);
+		trustedContentProviders = JenaUtils.collect(new HashSet<>(100),
+				model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, RDFNode::toString);
 
-		accountLock = new Mutex();
-		accountLock.lock();
-
-		workService = new PriorityExecutor(new CustomThreadFactory("WorkService"));
-		//pingService = Executors.newSingleThreadScheduledExecutor();
+		workService = new PriorityExecutor();
 		contentService = Executors.newFixedThreadPool(4);
 		loadAheadService = Executors.newFixedThreadPool(4);
-		eventService = Executors.newCachedThreadPool(new CustomThreadFactory("EventService"));
-	}
+		eventService = Executors.newCachedThreadPool();
+		pingService = Executors.newSingleThreadScheduledExecutor();
 
-	private void establishIncomingProperties()
-	{
-		LOGGER.entering(this.getClass().getCanonicalName(), logName("establishIncomingProperties"));
-		incomingProperties = new Properties();
-		incomingProperties.put("mail.store.protocol", "imaps");
-		incomingProperties.put("mail.imaps.host", serverName);
-		incomingProperties.put("mail.imaps.usesocketchannels", "true");
-		incomingProperties.put("mail.imaps.peek", "true");
-		//	TODO -- all these need to be in RDF
-		incomingProperties.put("mail.imaps.compress.enable", "true");
-		incomingProperties.put("mail.imaps.connectionpoolsize", "20");
-		//	TODO -- what is a sane number for this?
-		incomingProperties.put("mail.imaps.fetchsize", "3000000");
-		incomingProperties.setProperty("mail.imaps.connectiontimeout", "5000");
-		incomingProperties.setProperty("mail.imaps.timeout", "5000");
-		// incoming.setProperty("mail.imaps.port", "993");
-
-		incomingProperties.put("mail.event.executor", eventService);
-		//incoming.put("mail.event.scope", "session"); // or "application"
-
-		//	we need system properties to pick up command line flags
-		incomingProperties.putAll(System.getProperties());
-		LOGGER.exiting(this.getClass().getCanonicalName(), logName("establishIncomingProperties"));
+		operations.put(Vocabulary.MARK_READ, this::markMessagesAsRead);
+		operations.put(Vocabulary.DELETE_MESSAGE, this::deleteMessages);
 	}
 
 	public void initialize() throws MessagingException, IOException
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), logName("initialize"));
+		LOGGER.entering(this.getClass().getCanonicalName(), "initialize");
 		establishIncomingProperties();
-		Session session = Session.getInstance(incomingProperties, null);
+		var session = Session.getInstance(incomingProperties, null);
 		//session.setDebug(true);
 		store = session.getStore("imaps");
 		store.connect(serverName, emailAddress, password);
 		//	TODO -- one idle manager for all accounts ..
+		//	TODO -- check if the provider has IDLE capabilities
 		idleManager = new IdleManager(session, eventService);
 //		System.out.println("CAPABILITES ----------------------- " + nickName);
 //		System.out.println(((IMAPStore) store).hasCapability("LIST-EXTENDED"));
 //		System.out.println(((IMAPStore) store).hasCapability("SPECIAL-USE"));
-		LOGGER.exiting(this.getClass().getCanonicalName(), logName("initialize"));
+//		System.out.println(((IMAPStore) store).hasCapability("IDLE"));
+
+		//	TODO -- really only want to add these once
+//		var delta = new Delta();
+//		Vocabulary.folderSubClasses.forEach((sub, sup) -> delta.addOP(sub, RDFS.subClassOf.toString(), sup));
+//		apply(delta);
+
+		initializeFolders();
+		startPinger();
+
+		LOGGER.exiting(this.getClass().getCanonicalName(), "initialize");
 	}
 
+	@SuppressWarnings("ResultOfMethodCallIgnored")
 	public void close()
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), logName("close"));
+		LOGGER.entering(this.getClass().getCanonicalName(), "close");
 
-		LOGGER.log(Level.INFO, "{0} :: shutting down ping thread", emailAddress);
-		if (pingThread != null)
-		{
-			pingThread.interrupt();
-		}
-//		doAndIgnore(pingService::shutdown);
-//		doAndIgnore(() -> pingService.awaitTermination(10, TimeUnit.SECONDS));
+		LOGGER.log(Level.INFO, "Shutting down ping service");
+		IProcedure.doAndIgnore(pingService::shutdown);
+		IProcedure.doAndIgnore(() -> pingService.awaitTermination(10, TimeUnit.SECONDS));
 
-		LOGGER.log(Level.INFO, "{0} :: shutting down worker pools", emailAddress);
-		doAndIgnore(workService::shutdown);
-		doAndIgnore(() -> workService.awaitTermination(10, TimeUnit.SECONDS));
-		doAndIgnore(contentService::shutdown);
-		doAndIgnore(() -> contentService.awaitTermination(10, TimeUnit.SECONDS));
-		doAndIgnore(loadAheadService::shutdown);
-		doAndIgnore(() -> loadAheadService.awaitTermination(10, TimeUnit.SECONDS));
+		LOGGER.log(Level.INFO, "shutting down worker pools");
+		IProcedure.doAndIgnore(workService::shutdown);
+		IProcedure.doAndIgnore(() -> workService.awaitTermination(10, TimeUnit.SECONDS));
+		IProcedure.doAndIgnore(contentService::shutdown);
+		IProcedure.doAndIgnore(() -> contentService.awaitTermination(10, TimeUnit.SECONDS));
+		IProcedure.doAndIgnore(loadAheadService::shutdown);
+		IProcedure.doAndIgnore(() -> loadAheadService.awaitTermination(10, TimeUnit.SECONDS));
 
-		LOGGER.log(Level.INFO, "{0} :: shutting down idle manager", emailAddress);
-		idleManager.stop();
+		LOGGER.log(Level.INFO, "closing store");
+		IProcedure.doAndIgnore(store::close);
 
-		m_folder.values().forEach(folder ->
-		{
-			LOGGER.info(emailAddress + " :: " + folder.getName() + " :: closing ");
-			doAndIgnore(folder::close);
-		});
-
-		LOGGER.log(Level.INFO, "{0} :: closing store", emailAddress);
-		doAndIgnore(store::close);
-
-		LOGGER.exiting(this.getClass().getCanonicalName(), logName("close"));
-	}
-
-	public FutureTask<?> getSynchTask()
-	{
-		return new FutureTask<Void>(() -> {
-			LOGGER.entering(this.getClass().getCanonicalName(), logName("SYNCH START"));
-
-			//	open folders setting up m_folder map, compute special folders
-
-			inbox = store.getFolder("INBOX");
-			for (Folder folder : store.getDefaultFolder().list())//"*"))
-			{
-				openFolder(folder);
-			}
-
-			computeSpecialFolders();
-
-			//	start folder watchers
-
-			for (Folder folder : m_folder.values())
-			{
-				watchFolder(folder);
-			}
-
-			//	synchronize folders
-
-			for (Folder folder : m_folder.values())
-			{
-				applyAndNotify(() -> synchronizeFolder(folder));
-			}
-
-			for (Folder folder : m_folder.values())
-			{
-				synchMessageIdsAndHeaders(folder);
-			}
-
-			accountLock.unlock();
-
-			startPingThread();
-			LOGGER.exiting(this.getClass().getCanonicalName(), logName("SYNCH START"));
-			return null;
-		});
+		LOGGER.exiting(this.getClass().getCanonicalName(), "close");
 	}
 
 	@Override
-	public void addListener()
+	public Model getAccountInfo()
 	{
-		Delta delta = new Delta()
-				.addR(id, Vocabulary.RDF_TYPE, Vocabulary.IMAP_ACCOUNT)
-				.addL(id, Vocabulary.HAS_SERVER_NAME, serverName)
-				.addL(id, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress)
-				.addL(id, Vocabulary.HAS_PASSWORD, password)
-				.addLN(id, Vocabulary.HAS_NICK_NAME, nickName);
-		trustedSenders.forEach(x -> delta.addL(id, Vocabulary.HAS_TRUSTED_SENDER, x));
-		trustedContentProviders.forEach(x -> delta.addL(id, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, x));
-		notifyListeners(delta);
+		Model model = ModelFactory.createDefaultModel();
+		if (nickName != null)
+		{
+			JenaUtils.addDP(model, getId(), Vocabulary.HAS_NICK_NAME, nickName);
+		}
+		JenaUtils.addDP(model, getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
+		JenaUtils.addDP(model, getId(), Vocabulary.HAS_SERVER_NAME, serverName);
 
-		queryAndNotify(d ->
-				d.add(QueryExecutionFactory.create(DFetch.skeleton(id), messageDatabase.getDefaultModel()).execConstruct()));
-		queryAndNotify(d ->
-				d.add(QueryExecutionFactory.create(DFetch.initialState(id), messageDatabase.getDefaultModel()).execConstruct()));
+		return model;
+	}
+
+	@Override
+	public Future<?> doOperation(String oid, String type, Model operation)
+	{
+		//	TODO -- check we have such an operation
+		return operations.get(type).apply(oid, operation);
+	}
+
+	@Override
+	public Model getSpecialFolders()
+	{
+		Model folders = ModelFactory.createDefaultModel();
+		specialId2Type.forEach((id, type) -> JenaUtils.addType(folders, id, type));
+		return folders;
+	}
+
+	public void sync(String fid) throws ExecutionException, InterruptedException
+	{
+		LOGGER.entering(this.getClass().getCanonicalName(), "sync");
+
+		addEventWork(() -> {
+			Folder folder = F(fid);
+			watch(folder);
+
+			var delta = new Delta();
+			synchronizeFolder(folder, delta);
+
+			var event = new EventSetBuilder();
+			var eid = event.newEvent(Vocabulary.FOLDER_SYNCED);
+			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id).
+					addOP(eid, Vocabulary.HAS_FOLDER, fid);
+
+			LOGGER.exiting(this.getClass().getCanonicalName(), "sync");
+			return new Triple<>(folder, delta, event);
+		});
 	}
 
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
 	{
 		return addWork(new MessageWork(() -> {
-			Message[] messages = U(folderId, messageIds);
+			Message[] messages = Encode.U(F(folderId), messageIds);
 			mark(messages, new Flags(Flags.Flag.ANSWERED), flag);
-			return messages[0].getFolder();
+			return List.of(messages[0].getFolder());
 		}));
 	}
 
-	//	AUDIT -- I think this one is ok
-	public Future<?> markMessagesAsRead(Collection<String> messageIds, String folderId, boolean flag)
+	private Future<?> markMessagesAsRead(String oid, Model operation)
 	{
+		var fid = JenaUtils.getR(operation, oid, Vocabulary.HAS_FOLDER).toString();
+		var flag = JenaUtils.getB(operation, oid, Vocabulary.HAS_FLAG);
+		var mids = getMessageIDs(oid, operation);
+
 		return addWork(new MessageWork(() -> {
-			Message[] messages = U(folderId, messageIds);
+			Folder folder = F(fid);
+			Message[] messages = Encode.U(folder, mids);
+			System.out.println("MARKING MESSSAGES ARE READ " + mids);
+			System.out.println(messages[0]);
 			mark(messages, new Flags(Flags.Flag.SEEN), flag);
-			return messages[0].getFolder();
+			return List.of(folder);
 		}));
 	}
 
@@ -329,9 +271,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	public Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag)
 	{
 		return addWork(new MessageWork(() -> {
-			Message[] messages = U(folderId, messageIds);
+			Message[] messages = Encode.U(F(folderId), messageIds);
 			mark(messages, new Flags(Constants.JUNK_FLAG), flag);
-			return messages[0].getFolder();
+			return List.of(messages[0].getFolder());
 		}));
 	}
 
@@ -341,51 +283,30 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		return addWork(() -> {
 			LOGGER.log(Level.INFO, "moveMessagesToJunk : {0}", delete);
-			Message[] messages = U(sourceFolderId, messageIds);
-			Folder sourceFolder = m_folder.get(sourceFolderId);
-			assert sourceFolder != null;
-			Folder targetFolder = m_folder.get(targetFolderId);
-			assert targetFolder != null;
+			Message[] messages = Encode.U(F(sourceFolderId), messageIds);
+			Folder sourceFolder = F(sourceFolderId);
+			Folder targetFolder = F(targetFolderId);
 			mark(messages, new Flags(Constants.JUNK_FLAG), true);
 			sourceFolder.copyMessages(messages, targetFolder);
 			if (delete)
 			{
-				//					for (String mID : messageIds)
-				//					{
-				//						logger.info("moveMessagesToJunk " + mID);
-				//						assert m_PerFolderMessage.get(sourceFolder).get(mID) != null;
-				//						m_toDelete.put(m_PerFolderMessage.get(sourceFolder).get(mID), mID);
-				//					}
 				mark(messages, new Flags(Flags.Flag.DELETED), true);
 				sourceFolder.expunge();
 			}
 
-			idleManager.watch(sourceFolder);
-			idleManager.watch(targetFolder);
-			return null;
+			return List.of(sourceFolder, targetFolder);
 		});
 	}
 
 	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-								  boolean delete)
+								  boolean delete) throws MessagingException
 	{
-		Folder source = m_folder.get(sourceFolderId);
-		assert source != null;
-		Folder target = m_folder.get(targetFolderId);
-		assert target != null;
-
-		//		for (String mID : messageIds)
-		//		{
-		////			assert m_message.get(mID) != null;
-		////			m_toDelete.put(m_message.get(mID), mID);
-		//			System.out.println(m_folder.get(sourceFolderId));
-		//			assert m_PerFolderMessage.get(m_folder.get(sourceFolderId)).get(mID) != null;
-		//			m_toDelete.put(m_PerFolderMessage.get(m_folder.get(sourceFolderId)).get(mID), mID);
-		//		}
+		Folder source = F(sourceFolderId);
+		Folder target = F(targetFolderId);
 
 		return addWork(new MessageWork(() -> {
 			//  TODO -- this is wrong, since can have both source and target close/fail
-			Message[] messages = U(sourceFolderId, messageIds);
+			Message[] messages = Encode.U(F(sourceFolderId), messageIds);
 			source.copyMessages(messages, target);
 			//  is this even necessary, or is the semantics of copy already a delete in the original folder?
 			if (delete)
@@ -393,181 +314,52 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				mark(messages, new Flags(Flags.Flag.DELETED), true);
 				source.expunge();
 			}
-			return source;
+			return List.of(source);
 		}));
 	}
 
 	//	AUDIT -- I DONT think this is correct -- we can mark a message deleted as many times as we
 	//	like, and if the expunge fails, we can therefore just retry?
-	public Future<?> deleteMessages(String folderId, Collection<String> messageIds)
+	private Future<?> deleteMessages(String oid, Model operation)
 	{
-		Folder folder = m_folder.get(folderId);
-		assert folder != null;
-		//		for (String mID : messageIds)
-		//		{
-		//			assert m_PerFolderMessage.get(folder).get(mID) != null;
-		//			m_toDelete.put(m_PerFolderMessage.get(folder).get(mID), mID);
-		//		}
+		var fid = JenaUtils.getR(operation, oid, Vocabulary.HAS_FOLDER).toString();
+		var mids = getMessageIDs(oid, operation);
 
 		return addWork(new MessageWork(() -> {
-			Message[] messages = U(folderId, messageIds);
+			var folder = F(fid);
+			Message[] messages = Encode.U(folder, mids);
+			System.out.println("MARKING MESSSAGES ARE DELETED " + mids);
 			mark(messages, new Flags(Flags.Flag.DELETED), true);
-			messages[0].getFolder().expunge();
-			return messages[0].getFolder();
+			folder.expunge();
+			return List.of(folder);
 		}));
 	}
 
-	public Future<?> appendMessages(String folderId, Message[] messages)
+	public Future<?> appendMessages(String fid, Message[] messages)
 	{
 		return addWork(new MessageWork(() -> {
-			m_folder.get(folderId).appendMessages(messages);
-			return m_folder.get(folderId);
+			var folder = F(fid);
+			folder.appendMessages(messages);
+			return List.of(folder);
 		}));
 	}
 
-	//	re-open a closed folder, re-synchronizing the org.knowtiphy.pinkpigmail.messages in the folder and rebuilding
-	//	the per folder message map
-	//	TODO -- what about the m_delete map?
-
-	public Message createMessage(MessageModel model) throws MessagingException, IOException
+	public Future<?> ensureMessageContentLoaded(String fid, String mid)
 	{
-		Message message = createMessage();
-
-		//			ReadContext context = getReadContext();
-		//			context.start();
-		//			try
-		//			{
-		//				ResultSet resultSet = QueryExecutionFactory
-		//						.create(DFetch.outboxMessage(accountId, messageId), context.getModel()).execSelect();
-		//				QuerySolution s = resultSet.next();
-		//				recipients = s.get(Vars.VAR_TO) == null ? null : s.get(Vars.VAR_TO).asLiteral().getString();
-		//				ccs = s.get("cc") == null ? null : s.get("cc").asLiteral().getString();
-		//				subject = s.get(Vars.VAR_SUBJECT) == null ? null : s.get(Vars.VAR_SUBJECT).asLiteral().getString();
-		//				content = s.get(Vars.VAR_CONTENT) == null ? null : s.get(Vars.VAR_CONTENT).asLiteral().getString();
-		//			} finally
-		//			{
-		//				context.end();
-		//			}
-
-		message.setFrom(new InternetAddress(emailAddress));
-		message.setReplyTo(new Address[]{new InternetAddress(emailAddress)});
-		//  TODO -- get rid of the toList stuff
-		if (model.getTo() != null)
-		{
-			for (Address address : toList(model.getTo()))
-			{
-				try
-				{
-					message.addRecipient(Message.RecipientType.TO, address);
-				}
-				catch (AddressException ex)
-				{
-					//  ignore
-				}
-			}
-		}
-
-		if (model.getCc() != null)
-		{
-			for (Address address : toList(model.getCc()))
-			{
-				try
-				{
-					message.addRecipient(Message.RecipientType.CC, address);
-				}
-				catch (AddressException ex)
-				{
-					//  ignore
-				}
-			}
-		}
-
-		if (model.getSubject() != null)
-		{
-			message.setSubject(model.getSubject());
-		}
-		//  have to have non null content
-		((Multipart) message.getContent()).getBodyPart(0)
-				.setContent(model.getContent() == null ? "" : model.getContent(), model.getMimeType());
-
-		//	setup attachments
-		for (Path path : model.getAttachments())
-		{
-			MimeBodyPart messageBodyPart = new MimeBodyPart();
-			DataSource source = new FileDataSource(path.toFile());
-			messageBodyPart.setDataHandler(new DataHandler(source));
-			messageBodyPart.setFileName(FileUtils.baseName(path.toFile()));
-			((Multipart) message.getContent()).addBodyPart(messageBodyPart);
-		}
-
-		return message;
+		return contentService.submit(new MessageWork(() -> load(fid, List.of(mid))));
 	}
 
-	private Folder load(String folderId, Collection<String> messageIds) throws Exception
-	{
-		ensureMapsLoaded();
-
-		//	TODO -- not sure this is correct -- what happens if we get a delete/add between checking its stored and
-		//	the fetch of the message -- perhaps the single threadedness helps us?
-		//	definitely incorrect? Need to hold a write lock for the whole thing
-
-		List<String> needToFetch = new ArrayList<>();
-		for (String messageId : messageIds)
-		{
-			boolean stored = query(() -> messageDatabase.getDefaultModel().
-					listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
-							P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
-			if (!stored)
-			{
-				needToFetch.add(messageId);
-			}
-		}
-		System.out.println("load WORKER : " + needToFetch);
-
-		if (!needToFetch.isEmpty())
-		{
-			assert m_folder.containsKey(folderId);
-			Folder folder = m_folder.get(folderId);
-			Message[] msgs = U(encode(folder), needToFetch);
-
-			///how do we set a profile for the actual content?
-			FetchProfile fp = new FetchProfile();
-			fp.add(IMAPFolder.FetchProfileItem.MESSAGE);
-			//	fp.add(FetchProfile.Item.CONTENT_INFO);
-			folder.fetch(msgs, fp);
-
-			//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-			List<MessageContent> contents = new LinkedList<>();
-			for (Message message : msgs)
-			{
-				contents.add(new MessageContent(message, this, true).process());
-			}
-
-			apply(delta -> contents.forEach(content -> addMessageContent(delta, content)));
-
-			System.out.println("load WORKER DONE : " + needToFetch);
-			return folder;
-		}
-
-		return null;
-	}
-
-	public Future<?> ensureMessageContentLoaded(String messageId, String folderId)
-	{
-		return contentService.submit(new MessageWork(() -> load(folderId, List.of(messageId))));
-	}
-
-	public Future<?> loadAhead(String folderId, Collection<String> messageIds)
+	public Future<?> loadAhead(String fid, Collection<String> mids)
 	{
 		return loadAheadService.submit(() ->
 		{
 			try
 			{
-				load(folderId, messageIds);
+				load(fid, mids);
 			}
 			catch (Exception ex)
 			{
-				ex.printStackTrace(System.err);
+				ex.printStackTrace(System.out);
 				//	ignore -- any errors will be picked up elsewhere
 			}
 		});
@@ -575,179 +367,173 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	//	private methods start here
 
-	private void ensureMapsLoaded() throws InterruptedException
+	private void establishIncomingProperties()
 	{
-		accountLock.lock();
-		accountLock.unlock();
+		LOGGER.entering(this.getClass().getCanonicalName(), "establishIncomingProperties");
+		incomingProperties = new Properties();
+		incomingProperties.put("mail.store.protocol", "imaps");
+		incomingProperties.put("mail.imaps.host", serverName);
+		incomingProperties.put("mail.imaps.usesocketchannels", "true");
+		incomingProperties.put("mail.imaps.peek", "true");
+		//	TODO -- all these need to be in RDF
+		//	this should be set to true/false depending on whether the store has the
+		//	COMPRESS capability, but we have to create the session with properties
+		//	before we get a store!?
+		//incomingProperties.put("mail.imaps.compress.enable", "true");
+		incomingProperties.put("mail.imaps.connectionpoolsize", "20");
+		//	TODO -- what is a sane number for this?
+		incomingProperties.put("mail.imaps.fetchsize", "3000000");
+		incomingProperties.setProperty("mail.imaps.connectiontimeout", "2000");
+		incomingProperties.setProperty("mail.imaps.timeout", "2000");
+		// incoming.setProperty("mail.imaps.port", "993");
+
+		incomingProperties.put("mail.event.scope", "session"); // or "application"
+		incomingProperties.put("mail.event.executor", eventService);
+
+		//	we need system properties to pick up command line flags
+		incomingProperties.putAll(System.getProperties());
+
+		LOGGER.exiting(this.getClass().getCanonicalName(), "establishIncomingProperties");
 	}
 
-//	private static void openFolder(Folder folder) throws MessagingException
-//	{
-//		MessagingException failure = null;
-//		for (int i = 0; i < 1; i++)
-//		{
-//			try
-//			{
-//				folder.open(Folder.READ_WRITE);
-//				return;
-//			}
-//			catch (IllegalStateException ex)
-//			{
-//				//	the folder is already open
-//				return;
-//			}
-//			catch (MessagingException ex)
-//			{
-//				//	ignore and try again
-//				//	TODO -- does it matter that we only remember the last exception -- can there be different
-//				//	exceptions on different attempts?
-//				failure = ex;
-//			}
-//		}
-//
-//		throw failure;
-//	}
-
-	private static UIDFolder U(Folder folder)
+	private Folder open(Folder folder) throws MessagingException
 	{
-		return (UIDFolder) folder;
+		LOGGER.entering(this.getClass().getCanonicalName(), "openFolder");
+		folder.open(Folder.READ_WRITE);
+		LOGGER.exiting(this.getClass().getCanonicalName(), "openFolder");
+		return folder;
 	}
 
-	//	Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
-	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
+	private Folder F(String id) throws MessagingException
 	{
-		assert messages.length > 0;
-		messages[0].getFolder().setFlags(messages, flags, value);
+		Folder f = store.getFolder(new URLName(id).getFile());
+		//	this assertion will be crap later but for the moment it will do
+		assert f != null;
+		assert f.exists();
+		return open(f);
 	}
 
-	private static List<Address> toList(String raw) throws AddressException
+	private Folder[] getFolders() throws MessagingException
 	{
-		if (raw == null)
+		return store.getDefaultFolder().list();
+	}
+
+	private List<Folder> load(String folderId, Collection<String> messageIds)
+	{
+		//System.out.println("LOAD " + folderId + " :: " + messageIds);
+
+		//	TODO -- not sure this is correct -- what happens if we get a delete/add between checking its stored and
+		//	the fetch of the message -- perhaps the single threadedness helps us?
+		//	definitely incorrect? Need to hold a write lock for the whole thing
+
+		//	System.out.println("load WORKER : calcing need to fetch");
+		try
 		{
-			return new LinkedList<>();
+			List<String> needToFetch = new ArrayList<>();
+			for (String messageId : messageIds)
+			{
+				boolean stored = query(() -> messageDatabase.getDefaultModel().
+						listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
+								P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
+				if (!stored)
+				{
+					needToFetch.add(messageId);
+				}
+
+				if (!needToFetch.isEmpty())
+				{
+					//assert m_folder.containsKey(folderId);
+					Folder folder = F(folderId);
+					Message[] msgs = Encode.U(folder, needToFetch);
+
+					///how do we set a profile for the actual content?
+					FetchProfile fp = new FetchProfile();
+					fp.add(IMAPFolder.FetchProfileItem.MESSAGE);
+					//	fp.add(FetchProfile.Item.CONTENT_INFO);
+					folder.fetch(msgs, fp);
+
+					//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
+					List<MessageContent> contents = new LinkedList<>();
+					for (Message message : msgs)
+					{
+						contents.add(new MessageContent(message, this, true).process());
+					}
+
+					apply(delta -> contents.forEach(content -> DStore.addMessageContent(delta, content)));
+
+					//System.out.println("load WORKER DONE : " + needToFetch);
+					return List.of(folder);
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			System.out.println("load WORKER : FAILED");
+			ex.printStackTrace();
 		}
 
-		String trim = raw.trim();
-		if (trim.isEmpty())
-		{
-			return new LinkedList<>();
-		}
-
-		String[] tos = trim.split(",");
-		List<Address> result = new ArrayList<>(10);
-		for (String to : tos)
-		{
-			result.add(new InternetAddress(to.trim()));
-		}
-
-		return result;
+		return new LinkedList<>();
 	}
 
-	private void startPingThread()
+	private void startPinger() throws MessagingException
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), emailAddress + "::startPingThread");
-		if (inbox != null)
-		{
-			LOGGER.log(Level.INFO, "Starting ping server for {0}", inbox.getName());
-//			pingService.scheduleAtFixedRate(new Ping(this, inbox),
-//					Constants.PING_FREQUENCY, Constants.PING_FREQUENCY, TimeUnit.MINUTES);
-			pingThread = new Thread(new PingThread(this, inbox, Constants.FREQUENCY));
-			pingThread.start();
-		}
-		LOGGER.exiting(this.getClass().getCanonicalName(), emailAddress + "::startPingThread");
+		LOGGER.entering(this.getClass().getCanonicalName(), "::startPinger");
+		var inbox = specialType2ID.get(Vocabulary.INBOX_FOLDER);
+		assert inbox != null;
+		pingService.scheduleAtFixedRate(new Ping(this, F(inbox)),
+				Constants.PING_FREQUENCY, Constants.PING_FREQUENCY, TimeUnit.MINUTES);
+		LOGGER.exiting(this.getClass().getCanonicalName(), "startPinger");
 	}
 
-	protected void reStartPingThread()
+	private void setSpecialFolder(String type, Folder folder, Pattern[] alternatives) throws MessagingException//, Consumer<String> setFolder) throws MessagingException
 	{
-		if (inbox != null && !inbox.isOpen())
-		{
-			//reOpenFolder(inbox);
-			startPingThread();
-		}
-	}
-
-	//	methods to encode javax mail objects as URIs
-
-	String encode(Folder folder) throws MessagingException
-	{
-		return Vocabulary.E(Vocabulary.IMAP_FOLDER, emailAddress, U(folder).getUIDValidity());
-	}
-
-	String encode(Message message) throws MessagingException
-	{
-		UIDFolder folder = U(message.getFolder());
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE, emailAddress, folder.getUIDValidity(), folder.getUID(message));
-	}
-
-	String encode(Message message, String cidName) throws MessagingException
-	{
-		UIDFolder folder = U(message.getFolder());
-		return Vocabulary.E(Vocabulary.IMAP_MESSAGE_CID_PART, emailAddress, folder.getUIDValidity(), folder.getUID(message), cidName);
-	}
-
-	//	AUDIT -- safe
-	private Message[] U(String folderId, Collection<String> messageIds)
-	{
-		Message[] messages = new Message[messageIds.size()];
-		int i = 0;
-		Folder folder = m_folder.get(folderId);
-		for (String message : messageIds)
-		{
-			assert m_PerFolderMessage.get(folder).get(message) != null;
-			messages[i] = m_PerFolderMessage.get(folder).get(message);
-			i++;
-		}
-
-		return messages;
-	}
-
-	private void setSpecialFolder(Folder special, Folder folder, Pattern[] alternatives, Consumer<Folder> setFolder)
-	{
+		String special = specialType2ID.get(type);
 		if (special == null)
 		{
 			for (Pattern p : alternatives)
 			{
 				if (p.matcher(folder.getName()).matches())
 				{
-					setFolder.accept(folder);
+					specialType2ID.put(type, Encode.encode(folder));
 					return;
 				}
 			}
 		}
 	}
 
-	private void computeSpecialFolders() throws MessagingException
+	private void initializeFolders() throws MessagingException, MalformedURLException
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), emailAddress + "::computeSpecialFolders");
-		assert !m_folder.isEmpty();
+		LOGGER.entering(this.getClass().getCanonicalName(), "initializeFolders");
 
+		//	compute special folders
+		specialType2ID.put(Vocabulary.INBOX_FOLDER, Encode.encode(F("INBOX")));
 		if (((IMAPStore) store).hasCapability("SPECIAL-USE"))
 		{
-			for (Folder folder : m_folder.values())
+			for (Folder folder : getFolders())
 			{
-				LOGGER.log(Level.INFO, "{0} :: Folder = {1}, attributes = {2}",
+				LOGGER.log(Level.CONFIG, "{0} :: Folder = {1}, attributes = {2}",
 						new String[]{emailAddress, folder.getName(), Arrays.toString(((IMAPFolder) folder).getAttributes())});
 				for (String attr : ((IMAPFolder) folder).getAttributes())
 				{
 					if (Constants.ARCHIVES_ATTRIBUTE.matcher(attr).matches())
 					{
-						archive = folder;
+						specialType2ID.put(Vocabulary.ARCHIVE_FOLDER, Encode.encode(folder));
 					}
 					if (Constants.DRAFTS_ATTRIBUTE.matcher(attr).matches())
 					{
-						drafts = folder;
+						specialType2ID.put(Vocabulary.DRAFTS_FOLDER, Encode.encode(folder));
 					}
 					if (Constants.JUNK_ATTRIBUTE.matcher(attr).matches())
 					{
-						junk = folder;
+						specialType2ID.put(Vocabulary.JUNK_FOLDER, Encode.encode(folder));
 					}
 					if (Constants.SENT_ATTRIBUTE.matcher(attr).matches())
 					{
-						sent = folder;
+						specialType2ID.put(Vocabulary.SENT_FOLDER, Encode.encode(folder));
 					}
 					if (Constants.TRASH_ATTRIBUTE.matcher(attr).matches())
 					{
-						trash = folder;
+						specialType2ID.put(Vocabulary.TRASH_FOLDER, Encode.encode(folder));
 					}
 				}
 			}
@@ -755,167 +541,156 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		//	we run this code to cover two scenarios:
 		//	a) we didn't have the SPECIAL-USE capability
-		//	b) we did have SPECIAL-USE but did not detect all the special folders (some IMAP servers don't have every
-		//	special folder marked as such)
+		//	b) we did have SPECIAL-USE but did not detect all the special folders (some IMAP servers
+		//	don't have every special folder marked as such)
 
-		for (Folder folder : m_folder.values())
+		for (Folder folder : getFolders())
 		{
-			setSpecialFolder(archive, folder, Constants.ARCHIVE_PATTERNS, f -> archive = f);
-			setSpecialFolder(drafts, folder, Constants.DRAFT_PATTERNS, f -> drafts = f);
-			setSpecialFolder(junk, folder, Constants.JUNK_PATTERNS, f -> junk = f);
-			setSpecialFolder(sent, folder, Constants.SENT_PATTERNS, f -> sent = f);
-			setSpecialFolder(trash, folder, Constants.TRASH_PATTERNS, f -> trash = f);
+			setSpecialFolder(Vocabulary.ARCHIVE_FOLDER, folder, Constants.ARCHIVE_PATTERNS);//, f -> archive = f);
+			setSpecialFolder(Vocabulary.DRAFTS_FOLDER, folder, Constants.DRAFT_PATTERNS);//, f -> drafts = f);
+			setSpecialFolder(Vocabulary.JUNK_FOLDER, folder, Constants.JUNK_PATTERNS);//, f -> junk = f);
+			setSpecialFolder(Vocabulary.SENT_FOLDER, folder, Constants.SENT_PATTERNS);//, f -> sent = f);
+			setSpecialFolder(Vocabulary.TRASH_FOLDER, folder, Constants.TRASH_PATTERNS);//, f -> trash = f);
 		}
 
-		LOGGER.exiting(this.getClass().getCanonicalName(), emailAddress + "::computeSpecialFolders");
+		//	TODO -- two maps, or even any maps, IS A BUT CLUMSY
+		specialType2ID.forEach((type, id) -> specialId2Type.put(id, type));
 
-		LOGGER.log(Level.INFO, "{0} :: Special Folders :: inbox = {1}, sent = {2}, trash = {3}, junk = {3}",
-				new String[]{emailAddress, inbox.getName(), sent.getName(), trash.getName(), junk.getName()});
-	}
-
-	private void openFolder(Folder folder) throws MessagingException
-	{
-		LOGGER.entering(this.getClass().getCanonicalName(), emailAddress + "::openFolder");
-
-		folder.open(Folder.READ_WRITE);
-		//openFolder(folder);
-		m_folder.put(encode(folder), folder);
-		//	we may get a different folder object, so have to re-remember it -- i hate IMAP and java mail
-		//	TODO can we just check for INBOX as a name and avoud this crap?
-		if (folder.getName().equals(inbox.getName()))
+		var storedFIDs = query(() -> DFetch.folderIDs(messageDatabase, getId()));
+		var imapFIDS = new HashSet<String>();
+		for (Folder folder : getFolders())
 		{
-			inbox = folder;
+			imapFIDS.add(Encode.encode(folder));
 		}
 
-		LOGGER.exiting(this.getClass().getCanonicalName(), emailAddress + "::openFolder");
+		//	need to add folders in imap but not stored
+		var addUID = new HashSet<String>();
+		imapFIDS.forEach(mid -> {
+			if (!storedFIDs.contains(mid))
+			{
+				addUID.add(mid);
+			}
+		});
+
+		//	need to delete folders in stored but not in imap
+		var removeUID = new HashSet<String>();
+		storedFIDs.forEach(mid ->
+		{
+			if (!imapFIDS.contains(mid))
+			{
+				removeUID.add(mid);
+			}
+		});
+
+		Delta delta = new Delta();
+
+		for (Folder folder : getFolders())
+		{
+			var fid = Encode.encode(folder);
+			if (addUID.contains(fid))
+			{
+				DStore.addFolder(delta, this, folder);
+			}
+			if (removeUID.contains(fid))
+			{
+				DStore.deleteFolder(messageDatabase, delta, fid);
+			}
+		}
+
+		//	update the database
+		apply(delta);
+
+		LOGGER.log(Level.CONFIG, "{0} :: Special Folders :: {1}", new String[]{emailAddress, specialType2ID.toString()});
+
+		LOGGER.exiting(this.getClass().getCanonicalName(), "initializeFolders");
 	}
 
-	private void watchFolder(Folder folder) throws MessagingException
+	private void watch(Folder folder) throws MessagingException
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), folder.getName() + "::watchFolder");
-		folder.addMessageCountListener(new WatchCountChanges(folder));
-		folder.addMessageChangedListener(new WatchMessageChanges(folder));
+		assert folder != null;
+		LOGGER.entering(this.getClass().getCanonicalName(), folder.getName() + "::watch");
+		folder.addMessageCountListener(new WatchCountChanges());
+		folder.addMessageChangedListener(new WatchMessageChanges());
+		//System.out.println("WATCHING " + folder + " " + folder.isOpen());
 		idleManager.watch(folder);
-		LOGGER.exiting(this.getClass().getCanonicalName(), folder.getName() + "::watchFolder");
+		LOGGER.exiting(this.getClass().getCanonicalName(), folder.getName() + "::watch");
 	}
 
-	//	recover from a closed folder
-
-	Void recoverFromClosedFolder(Folder folder) throws MessagingException
+	void rewatch(Folder folder) throws MessagingException
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), emailAddress + "::recoverFromClosedFolder");
-
-		openFolder(folder);
-		synchMessageIdsAndHeaders(folder);
-
-		LOGGER.exiting(this.getClass().getCanonicalName(), emailAddress + "::recoverFromClosedFolder");
-		return null;
+		LOGGER.entering(this.getClass().getCanonicalName(), folder.getName() + "::rewatch");
+		//System.out.println("REWATCHING " + folder + " " + folder.isOpen());
+		idleManager.watch(folder);
+		LOGGER.exiting(this.getClass().getCanonicalName(), folder.getName() + "::rewatch");
 	}
 
 	//	synch methods
 
-	private Delta synchronizeFolder(Folder folder) throws MessagingException
+	private void synchronizeFolder(Folder folder, Delta delta) throws Exception
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), folder.getName() + "::synchronizeFolder");
 
-		Delta delta = new Delta();
-		String folderId = encode(folder);
-		StmtIterator storedFolder = DFetch.folder(messageDatabase.getDefaultModel(), folderId);
-		boolean isStored = storedFolder.hasNext();
-		assert !isStored || JenaUtils.checkUnique(storedFolder);
+		String fid = Encode.encode(folder);
 
-		//	if we have the folder delete its folder counts as they may have changed
+		//	check if we have already stored this folder
+		var isStored = query(() -> DFetch.hasFolder(messageDatabase.getDefaultModel(), fid));
+
+		//	if we have stored the folder delete its folder counts as they may have changed
 		if (isStored)
 		{
 			//  TODO -- should really check that the validity hasn't changed
-			DStore.deleteFolderCounts(messageDatabase.getDefaultModel(), delta, folderId);
+			query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
 		}
 		//	add a new folder
 		else
 		{
-			addFolder(delta, this, folder);
+			System.out.println("ADDING FOLDER " + folder);
+			DStore.addFolder(delta, this, folder);
 		}
 
-		addFolderCounts(delta, folder, folderId);
+		//	set the new folder counts
+		DStore.addFolderCounts(delta, folder, fid);
 
-		LOGGER.exiting(this.getClass().getCanonicalName(), folder.getName() + "::synchronizeFolder");
-		return delta;
-	}
+		//  get the stored message IDs and the IMAP message ids
 
-	private Delta synchMessageIds(Folder folder) throws MessagingException
-	{
-		LOGGER.log(Level.INFO, "synchMessageIds {0}", folder.getName());
+		var stored = getStoredMessageIDs(fid);
+		var imap = getIMAPMessageIDs(folder);
 
-		String folderId = encode(folder);
-
-		//  get the stored message IDs
-
-		Set<String> stored = query(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
-
-		//  get the set of message IDst that IMAP reports
-		//  TODO -- this is dumb, sequence is bad
-		//        if (!folder.isOpen())
-		//        {
-		//            folder.open(javax.mail.Folder.READ_WRITE);
-		//        }
-		SearchTerm st = new FlagTerm(new Flags(Flags.Flag.DELETED), false);
-		Message[] msgs = folder.search(st);
-		FetchProfile fp = new FetchProfile();
-		fp.add(UIDFolder.FetchProfileItem.UID);
-		folder.fetch(msgs, fp);
-
-		Map<String, Message> perMessageMap = new HashMap<>(1000);
-		Collection<String> removeUID = new HashSet<>(1000);
-		Collection<String> addUID = new HashSet<>(1000);
-
-		//  we need to add org.knowtiphy.pinkpigmail.messages in the set (folder - stored)
-		for (Message msg : msgs)
-		{
-			String messageName = encode(msg);
-
-			// implementation of perFolderMessageMap
-			perMessageMap.put(messageName, msg);
-
-			if (!stored.contains(messageName))
+		//	need to add messages in imap but not stored
+		var addUID = new HashSet<String>();
+		imap.forEach(mid -> {
+			if (!stored.contains(mid))
 			{
-				//System.out.println("Adding a message");
-				addUID.add(messageName);
+				addUID.add(mid);
 			}
-		}
-
-		// Associate the folder ID to a map of org.knowtiphy.pinkpigmail.messages
-		m_PerFolderMessage.put(folder, perMessageMap);
-
-		//  we need to remove org.knowtiphy.pinkpigmail.messages in the set (stored - folder) - stored - m_message,keys() at this point
-		for (String messageName : stored)
-		{
-			if (!m_PerFolderMessage.get(folder).containsKey(messageName))
-			{
-				removeUID.add(messageName);
-			}
-		}
-
-		return apply(delta -> {
-			removeUID.forEach(message -> DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, message));
-			addUID.forEach(message -> DStore.addMessage(delta, folderId, message));
 		});
-	}
 
-	private void synchMessageHeaders(Delta hdrsDelta, Folder folder) throws MessagingException
-	{
-		String folderId = encode(folder);
-
-		//  get the stored message IDs for those messages for which we have headers
-		Set<String> stored = query(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDs(folderId)));
-		//  get message headers for message ids that we don't have headers for
-		Set<String> withHeaders = query(() -> DFetch.messageIds(messageDatabase.getDefaultModel(), DFetch.messageUIDsWithHeaders(id, folderId)));
-
-		stored.removeAll(withHeaders);
-
-		//  fetch headers we don't have
-		if (!stored.isEmpty())
+		//	need to delete messages in stored but not in imap
+		var removeUID = new HashSet<String>();
+		stored.forEach(mid ->
 		{
-			Message[] msgs = U(encode(folder), stored);
+			if (!imap.contains(mid))
+			{
+				removeUID.add(mid);
+			}
+		});
+
+		removeUID.forEach(message -> query(() -> DStore.deleteMessage(messageDatabase, delta, fid, message)));
+		addUID.forEach(message -> DStore.addMessage(delta, fid, message));
+
+		//  get message headers for message ids that we don't have headers for
+		var withHeaders = query(() -> DFetch.messageIds(messageDatabase, DFetch.messageUIDsWithHeaders(id, fid)));
+
+		//	we need to fetch headers for messages that are stored but don't have headers, or new
+		//	messages that are being added
+
+		var fetchHeaders = new HashSet<>(stored);
+		fetchHeaders.removeAll(withHeaders);
+		fetchHeaders.addAll(addUID);
+
+		if (!fetchHeaders.isEmpty())
+		{
+			Message[] msgs = Encode.U(folder, addUID);
 			FetchProfile fp = new FetchProfile();
 			//fp.add(FetchProfile.Item.ENVELOPE);
 			//	TODO: headers vs envelope?
@@ -923,57 +698,28 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			fp.add(FetchProfile.Item.FLAGS);
 			folder.fetch(msgs, fp);
 
-			hdrsDelta.merge(apply(delta -> {
-				delta.merge(hdrsDelta);
-				for (Message msg : msgs)
+			for (Message msg : msgs)
+			{
+				String mid = Encode.encode(msg);
+				if (stored.contains(mid))
 				{
-					String messageId = encode(msg);
-					addMessageHeaders(delta, msg, messageId);
-					deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
+					DStore.deleteMessageFlags(messageDatabase, delta, mid);
 				}
-			}));
+				DStore.addMessageFlags(delta, msg, mid);
+				DStore.addMessageHeaders(delta, msg, mid);
+			}
 		}
 
-		notifyListeners(hdrsDelta);
+		//	TODO -- what about stored messages whose headers have changed?
+
+		LOGGER.exiting(this.getClass().getCanonicalName(), folder.getName() + "::synchronizeFolder");
 	}
 
-	//	TODO -- should combine methods
-	//	todo -- get rid of this crap with hdrsDelta and the merging -- hackery for the UI
-
-	private Delta synchMessageIdsAndHeaders(Folder folder) throws MessagingException
+	//	TODO --- ?? Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
+	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), emailAddress + "::synchMessageIdsAndHeaders");
-		Delta hdrsDelta = synchMessageIds(folder);
-		synchMessageHeaders(hdrsDelta, folder);
-		LOGGER.exiting(this.getClass().getCanonicalName(), emailAddress + "::synchMessageIdsAndHeaders");
-		return hdrsDelta;
-	}
-
-	//	reconnect, reopen folders, etc methods
-
-	void reconnect() //throws MessagingException
-	{
-		//	TODO -- have to work out how to do this -- leave till later
-		//	the docs says its fatal and all messaging objects are now toast -- not sure if that means messages or
-		//	folders as well
-		LOGGER.log(Level.INFO, "RECONNECTING WITH NO RECOVERY :: {0}", emailAddress);
-		//		if (store.isConnected())
-		//		{
-		//			store.close();
-		//		}
-		//		store.connect(serverName, emailAddress, password);
-		//		logger.info("END RECONNECTING");
-		//		for (Folder folder : folders)
-		//		{
-		//			logger.info("REOPENING :: " + folder.getName());
-		//			if (folder.isOpen())
-		//			{
-		//				folder.close();
-		//			}
-		//
-		//			folder.open(javax.mail.Folder.READ_WRITE);
-		//			logger.info("END REOPENING");
-		//		}
+		assert messages.length > 0;
+		messages[0].getFolder().setFlags(messages, flags, value);
 	}
 
 	//	work stuff
@@ -983,45 +729,84 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return workService.submit(() -> {
 			try
 			{
-				ensureMapsLoaded();
 				return operation.call();
 			}
-			catch (Exception ex)
+			catch (Throwable ex)
 			{
+				//	TODO -- make an event and notify about it
+				ex.printStackTrace(System.out);
 				LOGGER.warning(ex.getLocalizedMessage());
 				return null;
 			}
 		});
 	}
 
-	protected <T> Future<T> addPriorityWork(Callable<T> operation)
+	protected void addEventWork(Callable<Triple<Folder, Delta, EventSetBuilder>> operation)
 	{
-		return workService.submit(new PriorityWork<>(operation, Constants.SYNCH_PRIORITY));
+		//	TODO -- if event work fails we need to tell the client and let them resync
+		addWork(() -> {
+			var t = operation.call();
+			rewatch(t.fst());
+			applyAndNotify(t.snd(), t.thd());
+			return t.fst();
+		});
 	}
 
-	private class MessageWork implements Callable<Folder>
+	private Collection<String> getMessageIDs(String from, Model model)
 	{
-		private final Callable<? extends Folder> work;
+		var mids = new LinkedList<String>();
+		JenaUtils.listObjectsOfProperty(model, from, Vocabulary.HAS_MESSAGE).
+				forEachRemaining(mid -> mids.add(mid.toString()));
+		return mids;
+	}
 
-		MessageWork(Callable<? extends Folder> work)
+	private Set<String> getStoredMessageIDs(String fid)
+	{
+		return query(() -> DFetch.messageIds(messageDatabase, DFetch.messageUIDs(fid)));
+	}
+
+	private Set<String> getIMAPMessageIDs(Folder folder) throws MessagingException
+	{
+		SearchTerm st = new FlagTerm(new Flags(Flags.Flag.DELETED), false);
+		Message[] msgs = folder.search(st);
+		FetchProfile fp = new FetchProfile();
+		fp.add(UIDFolder.FetchProfileItem.UID);
+		folder.fetch(msgs, fp);
+
+		Set<String> folderMessages = new HashSet<>();
+		for (Message msg : msgs)
+		{
+			folderMessages.add(Encode.encode(msg));
+		}
+
+		return folderMessages;
+	}
+
+	//	TODO -- this needs to be upgraded to a list of folders to rewatch and hence no folders
+	private class MessageWork implements Callable<Collection<Folder>>
+	{
+		private final Callable<Collection<Folder>> work;
+
+		MessageWork(Callable<Collection<Folder>> work)
 		{
 			this.work = work;
 		}
 
 		@Override
-		public Folder call() throws Exception
+		public Collection<Folder> call() throws Exception
 		{
 			for (int attempts = 0; attempts < Constants.NUM_ATTEMPTS; attempts++)
 			{
 				try
 				{
-					Folder folder = work.call();
-					if (folder != null)
+					//	System.out.println("DOING MESSAGE WORK");
+					Collection<Folder> folders = work.call();
+					for (Folder f : folders)
 					{
-						//	TODO -- what happens if the rewatch fails? Can it fail?
-						idleManager.watch(folder);
+						//	what do we do if rewatch fails?
+						rewatch(f);
 					}
-					return null;
+					return folders;
 				}
 				catch (MessageRemovedException ex)
 				{
@@ -1032,12 +817,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				catch (StoreClosedException ex)
 				{
 					LOGGER.info("----- MessageWork :: store closed -----");
-					reconnect();
+					//reconnect();
 				}
 				catch (FolderClosedException ex)
 				{
 					LOGGER.info("----- MessageWork :: folder closed -----");
-					recoverFromClosedFolder(ex.getFolder());
+					//recoverFromClosedFolder(ex.getFolder());
 				}
 				catch (MailConnectException ex)
 				{
@@ -1062,16 +847,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
-	// handle incoming messages from the IMAP server, new ones not caught in the synch of initial start up state
+	// handle incoming messages from the IMAP server
 	private class WatchMessageChanges implements MessageChangedListener
 	{
-		private Folder folder;
-
-		WatchMessageChanges(Folder folder)
-		{
-			this.folder = folder;
-		}
-
 		private boolean isDeleted(Message message) throws MessagingException
 		{
 			try
@@ -1089,192 +867,203 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		@Override
 		public void messageChanged(MessageChangedEvent messageChangedEvent)
 		{
-			System.out.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
 			LOGGER.log(Level.INFO, "HAVE A MESSAGE CHANGED {0}", messageChangedEvent);
 
-			Message message = messageChangedEvent.getMessage();
+			var folder = (Folder) messageChangedEvent.getSource();
+			var message = messageChangedEvent.getMessage();
 
-			folder = (Folder) messageChangedEvent.getSource();
-			addWork(new MessageWork(() -> {
+			var delta = new Delta();
+			var event = new EventSetBuilder();
+			var eid = event.newEvent(Vocabulary.MESSAGE_FLAGS_CHANGED);
+			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id);
+
+			addEventWork(() ->
+			{
+				var fid = Encode.encode(folder);
 				if (messageChangedEvent.getMessageChangeType() == MessageChangedEvent.FLAGS_CHANGED)
 				{
-					applyAndNotify(delta ->
+					event.addOP(eid, Vocabulary.HAS_FOLDER, fid);
+
+					//	message flag changing can indicate that folder counts have changed
+					query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+					DStore.addFolderCounts(delta, folder, fid);
+
+					//	as long as the change is not a delete, adjust the flags (deletes are handled
+					//	in WatchCountChanges.messagesRemoved
+					if (!isDeleted(message))
 					{
-						String folderId = encode(folder);
-
-						//	message flag changing can indicate that folder counts have changed
-						DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
-
-						//	deletes are handled elsewhere
-						if (!isDeleted(message))
-						{
-							String messageId = encode(message);
-
-							if (m_PerFolderMessage.get(folder).containsKey(messageId))
-							{
-								deleteMessageFlags(messageDatabase.getDefaultModel(), delta, messageId);
-								DStore.addMessageFlags(delta, message, messageId);
-							}
-							else
-							{
-								//  not sure if this is possible -- probably not
-								LOGGER.info("OUT OF ORDER CHANGE");
-							}
-//							JenaUtils.printModel(delta.getAdds(), "DELTA");
-//							JenaUtils.printModel(delta.getDeletes(), "DELTA");
-//							System.out.println("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
-						}
-					});
+						String mid = Encode.encode(message);
+						query(() -> DStore.deleteMessageFlags(messageDatabase, delta, mid));
+						DStore.addMessageFlags(delta, message, mid);
+						event.addOP(eid, Vocabulary.HAS_MESSAGE, mid);
+					}
 				}
 				else
 				{
+					//	TODO -- have to handle this case
 					LOGGER.info("XXXXXXXXXXXXXXXXXXXXXXXXXXXXX---WTF -- the envelope changed????");
 				}
 
-				return folder;
-			}));
+				return new Triple<>(folder, delta, event);
+			});
 		}
 	}
 
 	private class WatchCountChanges extends MessageCountAdapter
 	{
-		private Folder folder;
-
-		WatchCountChanges(Folder folder)
-		{
-			this.folder = folder;
-		}
-
 		@Override
 		public void messagesRemoved(MessageCountEvent e)
 		{
-			System.out.println("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 			LOGGER.log(Level.INFO, "WatchCountChanges::messagesRemoved {0}", e.getMessages().length);
 
-			folder = (Folder) e.getSource();
-			addWork(new MessageWork(() -> {
-				applyAndNotify(delta -> {
-					for (Message message : e.getMessages())
-					{
-						String folderId = encode(folder);
-						//	delete event for a delete message that a client connected to this org.knowtiphy.pinkpigmail.server initiated
-						//						if (m_toDelete.containsKey(message))
-						//						{
-						//							String messageName = m_toDelete.get(message);
-						//							m_PerFolderMessage.get(folder).remove(messageName);
-						//							m_toDelete.remove(message);
-						//							DStore.unstoreMessage(messageDatabase.getDefaultModel(), encode(folder), messageName);
-						//						}
-						//						else
-						//						{
+			//	TODO-- ASSUMING this folder is the same for all messages?
+			var folder = (Folder) e.getSource();
 
-						//System.out.println("UPDATING FOLDER COUNTS");
-						DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
-						DStore.deleteMessage(messageDatabase.getDefaultModel(), delta, folderId, encode(message));
+			var delta = new Delta();
+			var event = new EventSetBuilder();
+
+			var eid = event.newEvent(Vocabulary.MESSAGE_DELETED);
+			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id);
+
+			addEventWork(() ->
+			{
+				var fid = Encode.encode(folder);
+				event.addOP(eid, Vocabulary.HAS_FOLDER, fid);
+
+				DStore.addFolderCounts(delta, folder, fid);
+				query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+
+				//	we cannot loop through the messages to get the ids of the deleted messages
+				//	so we have to compute folder's stored - imap messages
+
+				var stored = getStoredMessageIDs(fid);
+				var imap = getIMAPMessageIDs(folder);
+				var deleted = new HashSet<String>();
+
+				//  we need to remove messages in the set (stored - folder)
+				stored.forEach(mid ->
+				{
+					if (!imap.contains(mid))
+					{
+						deleted.add(mid);
 					}
 				});
 
-				return folder;
+				deleted.forEach(mid -> {
+					query(() -> DStore.deleteMessage(messageDatabase, delta, fid, mid));
+					event.addOP(eid, Vocabulary.HAS_MESSAGE, mid);
+				});
 
-			}));
+				return new Triple<>(folder, delta, event);
+			});
 		}
 
 		@Override
 		public void messagesAdded(MessageCountEvent e)
 		{
-			System.out.println("YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");
-			LOGGER.log(Level.INFO, "HAVE A MESSAGE ADDED {0}", Arrays.toString(e.getMessages()));
+			LOGGER.log(Level.INFO, "messagesAdded {0}", Arrays.toString(e.getMessages()));
 
-			folder = (Folder) e.getSource();
-			addWork(new MessageWork(() -> {
-				applyAndNotify(delta ->
+			//	TODO-- ASSUMING this  is the same for all messages?
+			var folder = (Folder) e.getSource();
+
+			var delta = new Delta();
+			var event = new EventSetBuilder();
+			var eid = event.newEvent(Vocabulary.MESSAGE_ARRIVED);
+			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id);
+
+			addEventWork(() ->
+			{
+				var fid = Encode.encode(folder);
+				event.addOP(eid, Vocabulary.HAS_FOLDER, fid);
+
+				DStore.addFolderCounts(delta, folder, fid);
+				query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+
+				for (Message message : e.getMessages())
 				{
-//					System.out.println("MESSAGE ADDED XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+					var mid = Encode.encode(message);
+					DStore.addMessage(delta, fid, mid);
+					DStore.addMessageFlags(delta, message, mid);
+					DStore.addMessageHeaders(delta, message, mid);
+					event.addOP(eid, Vocabulary.HAS_MESSAGE, mid);
+				}
 
-					String folderId = encode(folder);
-					DStore.updateFolderCounts(messageDatabase.getDefaultModel(), delta, folder, folderId);
-//					System.out.println("MESSAGE ADDED YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY");
-
-					for (Message message : e.getMessages())
-					{
-						String messageId = encode(message);
-						DStore.addMessage(delta, folderId, messageId);
-						DStore.addMessageFlags(delta, message, messageId);
-						addMessageHeaders(delta, message, messageId);
-						m_PerFolderMessage.get(folder).put(messageId, message);
-					}
-//					System.out.println("MESSAGE ADDED ZZZZZZZZZZZZZZZZZZZZZZZZ");
-				});
-
-				return folder;
-			}));
+				return new Triple<>(folder, delta, event);
+			});
 		}
 	}
 
-	private MimeMessage createMessage() throws MessagingException
+	@Override
+	public void addListener()
 	{
-		//	we need system properties to pick up command line flags
-		Properties outGoing = System.getProperties();
-		//  TODO -- need to get this from the database and per account
-		outGoing.setProperty("mail.transport.protocol", "smtp");
-		outGoing.setProperty("mail.smtp.host", "chimail.midphase.com");
-		outGoing.setProperty("mail.smtp.ssl.enable", "true");
-		outGoing.setProperty("mail.smtp.port", "465");
-		//	do I need this?
-		outGoing.setProperty("mail.smtp.auth", "true");
-		//	TODO -- can do this another way?
-		Properties props = System.getProperties();
-		props.putAll(outGoing);
-		Session session = Session.getInstance(props, new Authenticator()
-		{
-			@Override
-			protected PasswordAuthentication getPasswordAuthentication()
-			{
-				return new PasswordAuthentication(emailAddress, password);
-			}
-		});
-
-		MimeMessage message = new MimeMessage(session);
-		MimeMultipart multipart = new MimeMultipart();
-		MimeBodyPart body = new MimeBodyPart();
-		multipart.addBodyPart(body);
-		message.setContent(multipart);
-		return message;
-	}
-
-	private String logName(String methodName)
-	{
-		return emailAddress + "::" + methodName;
+		//	TODO -- this will go away at some point
 	}
 }
 
-//	private void reWatchFolder(Folder folder) throws StorageException
+//protected void reStartPingThread() throws MessagingException
+//{
+//	String inbox = specialFolders.get(Vocabulary.INBOX_FOLDER);
+//	if (inbox != null && !F(inbox).isOpen())
 //	{
-//		LOGGER.log(Level.INFO, "REWATCH :: {0}", folder.getName());
-//		assert idleManager != null;
-//
-//		try
-//		{
-//			idleManager.watch(folder);
-//			return;
-//		}
-//		catch (MessagingException ex)
-//		{
-//			for (int i = 0; i < Constants.NUM_ATTEMPTS; i++)
-//			{
-//				try
-//				{
-//					LOGGER.log(Level.INFO, "REWATCH :: {0} :: {1}", new Object[]{i, folder.getName()});
-//					reOpenFolder(folder);
-//					idleManager.watch(folder);
-//					return;
-//				}
-//				catch (InterruptedException | MessagingException e)
-//				{
-//					//	ignore and try again -- all the exceptions are folder related
-//				}
-//			}
-//		}
-//
-//		throw new StorageException("Failed to re-watch folder");
+//		//reOpenFolder(inbox);
+//		startPingThread();
 //	}
+//}
+
+
+//	reconnect, reopen folders, etc methods
+
+//	void reconnect() //throws MessagingException
+//	{
+//		//	TODO -- have to work out how to do this -- leave till later
+//		//	the docs says its fatal and all messaging objects are now toast -- not sure if that means messages or
+//		//	folders as well
+//		LOGGER.log(Level.INFO, "RECONNECTING WITH NO RECOVERY :: {0}", emailAddress);
+//		//		if (store.isConnected())
+//		//		{
+//		//			store.close();
+//		//		}
+//		//		store.connect(serverName, emailAddress, password);
+//		//		logger.info("END RECONNECTING");
+//		//		for (Folder folder : folders)
+//		//		{
+//		//			logger.info("REOPENING :: " + folder.getName());
+//		//			if (folder.isOpen())
+//		//			{
+//		//				folder.close();
+//		//			}
+//		//
+//		//			folder.open(javax.mail.Folder.READ_WRITE);
+//		//			logger.info("END REOPENING");
+//		//		}
+//	}
+//	protected <T> Future<T> addPriorityWork(Callable<T> operation)
+//	{
+//		return workService.submit(new PriorityWork<>(operation, Constants.SYNCH_PRIORITY));
+//	}
+//	recover from a closed folder
+
+//	void recoverFromClosedFolder(Folder folder) throws Exception
+//	{
+//		LOGGER.entering(this.getClass().getCanonicalName(), emailAddress + "::recoverFromClosedFolder");
+//
+//		open(folder);
+//		//	synchMessageIdsAndHeaders(folder);
+//
+//		LOGGER.exiting(this.getClass().getCanonicalName(), emailAddress + "::recoverFromClosedFolder");
+//	}
+//
+
+//		doAndIgnore(pingService::shutdown);
+//		doAndIgnore(() -> pingService.awaitTermination(10, TimeUnit.SECONDS));
+//			pingService.scheduleAtFixedRate(new Ping(this, inbox),
+//					Constants.PING_FREQUENCY, Constants.PING_FREQUENCY, TimeUnit.MINUTES);
+//pingService = Executors.newSingleThreadScheduledExecutor();
+////		if (pingThread != null)
+//		{
+//				pingThread.interrupt();
+//				}
+//private Thread pingThread;
+//			pingThread = new Thread(new PingThread(this, F(inbox), Constants.FREQUENCY));
+//			pingThread.setDaemon(true);
+//			pingThread.start();

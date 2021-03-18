@@ -210,7 +210,7 @@ public class MessageContent
 
 	private void addAttachment(Part part) throws MessagingException, IOException
 	{
-		regularAttachments.add(new RegularAttachment(adapter.encode(message, "" + count++),
+		regularAttachments.add(new RegularAttachment(Encode.encode(message, "" + count++),
 				mimeType(part), IOUtils.toByteArray(part.getInputStream()), fileName(part)));
 	}
 
@@ -243,14 +243,14 @@ public class MessageContent
 		for (Part part : inline)
 		{
 			String cidName = cid(part.getHeader("Content-Id")[0]);
-			inlineAttachments.add(new InlineAttachment(adapter.encode(message, cidName), mimeType(part),
+			inlineAttachments.add(new InlineAttachment(Encode.encode(message, cidName), mimeType(part),
 					IOUtils.toByteArray(part.getInputStream()), "cid:" + cidName));
 		}
 	}
 
 	protected MessageContent process() throws Exception
 	{
-		id = adapter.encode(message);
+		id = Encode.encode(message);
 		Part part = getText(message);
 		if (part != null)
 		{

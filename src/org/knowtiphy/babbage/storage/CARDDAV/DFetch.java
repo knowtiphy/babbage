@@ -1,5 +1,6 @@
 package org.knowtiphy.babbage.storage.CARDDAV;
 
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.Vars;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
@@ -18,7 +19,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + CARDRES + " "
 				+ "WHERE {"
-				+ "      ?" + CARDRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
+				+ "      ?" + CARDRES + " <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
 				+ "      <" + bookURI + "> <" + Vocabulary.CONTAINS + "> ?" + CARDRES + ".\n"
 				+ "      }";
 	}
@@ -27,7 +28,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + ABOOKRES + " "
 				+ "WHERE {"
-				+ "      ?" + ABOOKRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
+				+ "      ?" + ABOOKRES + " <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
 				+ "          <" + adapterURI + "> <" + Vocabulary.CONTAINS + "> ?" + ABOOKRES + ".\n"
 				+ "          }";
 	}
@@ -36,7 +37,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + CTAG + " "
 				+ "WHERE {"
-				+ "      <" + addressBookURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
+				+ "      <" + addressBookURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
 				+ "      <" + addressBookURI + "> <" + Vocabulary.HAS_CTAG + "> ?" + CTAG + ".\n"
 				+ "      }";
 	}
@@ -45,7 +46,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + ETAG + " "
 				+ "WHERE {"
-				+ "      <" + contactURI + "> <" + Vocabulary.RDF_TYPE + "> ?type.\n"
+				+ "      <" + contactURI + "> <" + RDF.type.toString() + "> ?type.\n"
 				+ "      <" + contactURI + "> <" + Vocabulary.HAS_ETAG + "> ?" + ETAG + ".\n"
 				+ " FILTER ( ?type = <" + Vocabulary.CARDDAV_CARD + "> || ?type = <" + Vocabulary.CARDDAV_GROUP + "> )\n"
 				+ "      }";
@@ -55,7 +56,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + NAME + " "
 				+ " WHERE {"
-				+ "      <" + addressBookURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
+				+ "      <" + addressBookURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_ADDRESSBOOK + ">.\n"
 				+ "      <" + addressBookURI + "> <" + Vocabulary.HAS_NAME + "> ?" + NAME + ".\n"
 				+ "      }";
 	}
@@ -64,7 +65,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + NAME + " "
 				+ " WHERE {"
-				+ "      <" + groupURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
+				+ "      <" + groupURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
 				+ "      <" + groupURI + "> <" + Vocabulary.HAS_NAME + "> ?" + NAME + ".\n"
 				+ "      }";
 	}
@@ -73,7 +74,7 @@ public interface DFetch
 	{
 		return "SELECT ?" + GROUPRES + " "
 				+ "WHERE {"
-				+ "      ?" + GROUPRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
+				+ "      ?" + GROUPRES + " <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
 				+ "      <" + bookURI + "> <" + Vocabulary.HAS_GROUP + "> ?" + GROUPRES + ".\n"
 				+ "      }";
 	}
@@ -82,11 +83,11 @@ public interface DFetch
 	{
 		return "SELECT ?" + CARDRES + " "
 				+ " WHERE {"
-				+ " ?" + CARDRES + " <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
+				+ " ?" + CARDRES + " <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_CARD + ">.\n"
 				+ " ?" + CARDRES + " <" + Vocabulary.HAS_UID + "> ?uid.\n"
 				+ " { SELECT ?uid "
 				+ "   WHERE { "
-				+ "   		<" + groupURI + "> <" + Vocabulary.RDF_TYPE + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
+				+ "   		<" + groupURI + "> <" + RDF.type.toString() + "> <" + Vocabulary.CARDDAV_GROUP + ">.\n"
 				+ "			<" + groupURI + "> <" + Vocabulary.HAS_MEMBER_UID + "> ?uid.\n"
 				+ "			}\n"
 				+ "  }\n"
@@ -104,11 +105,11 @@ public interface DFetch
 								"?%s <%s> ?%s .  " +
 								" }",
 						// START OF CONSTRUCT
-						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ADDRESSBOOK,
+						Vars.VAR_ADDRESSBOOK_ID, RDF.type.toString(), Vocabulary.CARDDAV_ADDRESSBOOK,
 						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_ADDRESSBOOK_ID,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_NAME, Vars.VAR_ADDRESSBOOK_NAME,
 						// START OF WHERE
-						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_ADDRESSBOOK,
+						Vars.VAR_ADDRESSBOOK_ID, RDF.type.toString(), Vocabulary.CARDDAV_ADDRESSBOOK,
 						Vars.VAR_ACCOUNT_ID, Vocabulary.CONTAINS, Vars.VAR_ADDRESSBOOK_ID,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_NAME, Vars.VAR_ADDRESSBOOK_NAME);
 	}
@@ -145,7 +146,7 @@ public interface DFetch
 								"OPTIONAL {  ?%s <%s> ?%s }\n " +
 								" }",
 						// START OF CONSTRUCT
-						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
+						Vars.VAR_CARD_ID, RDF.type.toString(), Vocabulary.CARDDAV_CARD,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_NAME, Vars.VAR_FORMATTED_NAME,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE, Vars.VAR_PHONE_ID,
@@ -154,12 +155,12 @@ public interface DFetch
 						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL, Vars.VAR_EMAIL_ID,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL_ADDRESS,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_TYPE, Vars.VAR_EMAIL_TYPE,
-						Vars.VAR_GROUP_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP,
+						Vars.VAR_GROUP_ID, RDF.type.toString(), Vocabulary.CARDDAV_GROUP,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_GROUP, Vars.VAR_GROUP_ID,
 						Vars.VAR_GROUP_ID, Vocabulary.HAS_NAME, Vars.VAR_NAME,
 						Vars.VAR_GROUP_ID, Vocabulary.HAS_CARD, Vars.VAR_MEMBER_CARD,
 						// START OF WHERE
-						Vars.VAR_CARD_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_CARD,
+						Vars.VAR_CARD_ID, RDF.type.toString(), Vocabulary.CARDDAV_CARD,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.CONTAINS, Vars.VAR_CARD_ID,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_NAME, Vars.VAR_FORMATTED_NAME,
 						Vars.VAR_CARD_ID, Vocabulary.HAS_PHONE, Vars.VAR_PHONE_ID,
@@ -168,7 +169,7 @@ public interface DFetch
 						Vars.VAR_CARD_ID, Vocabulary.HAS_EMAIL, Vars.VAR_EMAIL_ID,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_EMAIL_ADDRESS, Vars.VAR_EMAIL_ADDRESS,
 						Vars.VAR_EMAIL_ID, Vocabulary.HAS_TYPE, Vars.VAR_EMAIL_TYPE,
-						Vars.VAR_GROUP_ID, Vocabulary.RDF_TYPE, Vocabulary.CARDDAV_GROUP,
+						Vars.VAR_GROUP_ID, RDF.type.toString(), Vocabulary.CARDDAV_GROUP,
 						Vars.VAR_ADDRESSBOOK_ID, Vocabulary.HAS_GROUP, Vars.VAR_GROUP_ID,
 						Vars.VAR_GROUP_ID, Vocabulary.HAS_NAME, Vars.VAR_NAME,
 						Vars.VAR_GROUP_ID, Vocabulary.HAS_CARD, Vars.VAR_MEMBER_CARD);

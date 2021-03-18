@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
 
+import javax.mail.MessagingException;
 import java.util.Collection;
 
 public class CopyMessage implements IMessage
@@ -23,7 +24,7 @@ public class CopyMessage implements IMessage
 	}
 
 	@Override
-	public void perform(IStorage storage)
+	public void perform(IStorage storage) throws MessagingException
 	{
 		storage.copyMessages(accountID, sourceFolderID, mIDs, targetFolderID, flag);
 	}

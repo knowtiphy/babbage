@@ -2,6 +2,7 @@ package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
 
+import javax.mail.MessagingException;
 import java.util.Collection;
 
 public class DeleteMessage implements IMessage
@@ -18,7 +19,7 @@ public class DeleteMessage implements IMessage
 	}
 
 	@Override
-	public void perform(IStorage storage)
+	public void perform(IStorage storage) throws MessagingException
 	{
 		storage.deleteMessages(accountID, folderID, mIDs);
 	}
