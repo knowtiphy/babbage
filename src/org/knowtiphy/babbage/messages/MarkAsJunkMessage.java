@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
+import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 
 import java.util.Collection;
 
@@ -19,7 +20,7 @@ public class MarkAsJunkMessage implements IMessage
 		this.flag = flag;
 	}
 
-	@Override public void perform(IStorage storage)
+	@Override public void perform(IStorage storage) throws NoSuchAccountException
 	{
 		storage.markMessagesAsJunk(accountID, folderID, mIDs, flag);
 	}

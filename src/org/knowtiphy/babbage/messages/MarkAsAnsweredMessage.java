@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
+import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 
 import java.util.Collection;
 
@@ -20,7 +21,7 @@ public class MarkAsAnsweredMessage implements IMessage
 	}
 
 	@Override
-	public void perform(IStorage storage)
+	public void perform(IStorage storage) throws NoSuchAccountException
 	{
 		storage.markMessagesAsAnswered(accountID, folderID, mIDs, flag);
 	}

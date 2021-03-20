@@ -15,9 +15,9 @@ import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
 import org.knowtiphy.babbage.storage.DaveAdapter;
 import org.knowtiphy.babbage.storage.Delta;
-import org.knowtiphy.babbage.storage.OldListenerManager;
-import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.OldListenerManager;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.Pair;
@@ -127,17 +127,6 @@ public class CARDDAVAdapter extends DaveAdapter
 
 	}
 
-	@Override
-	public Model getAccountInfo()
-	{
-		//	TODO -- fix this
-		Model model = ModelFactory.createDefaultModel();
-		model.add(model.createResource(getId()),
-				model.createProperty(RDF.type.toString()),
-				model.createResource(getType()));
-		return model;
-	}
-
 	protected String encodeAddressBook(DavResource addressBook)
 	{
 		return Vocabulary.E(Vocabulary.CARDDAV_ADDRESSBOOK, emailAddress, addressBook.getHref());
@@ -238,7 +227,7 @@ public class CARDDAVAdapter extends DaveAdapter
 
 	}
 
-	@Override public void close()
+	@Override public void close(Model model)
 	{
 		try
 		{
@@ -266,7 +255,7 @@ public class CARDDAVAdapter extends DaveAdapter
 			accountInfo.addDP(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
 
-		notifyListeners(accountInfo);
+		notifyOldListeners(accountInfo);
 
 		queryAndNotify(delta -> delta
 				.add(QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));

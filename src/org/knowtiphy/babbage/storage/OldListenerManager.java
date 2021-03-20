@@ -18,11 +18,11 @@ public class OldListenerManager
 		listeners.add(listener);
 	}
 
-	public void notifyChangeListeners(Collection<Delta> deltas)
+	public void notifyChangeListeners(Delta delta)
 	{
 		//	TODO -- this is a little inefficient
-		Delta delta = new Delta();
-		deltas.forEach(delta::merge);
+//		Delta delta = new Delta();
+//		deltas.forEach(delta::merge);
 
 		if (!delta.getAdds().isEmpty() || !delta.getDeletes().isEmpty())
 		{

@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
+import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 
 import javax.mail.MessagingException;
 import java.util.Collection;
@@ -24,7 +25,7 @@ public class CopyMessage implements IMessage
 	}
 
 	@Override
-	public void perform(IStorage storage) throws MessagingException
+	public void perform(IStorage storage) throws MessagingException, NoSuchAccountException
 	{
 		storage.copyMessages(accountID, sourceFolderID, mIDs, targetFolderID, flag);
 	}

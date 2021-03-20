@@ -6,7 +6,6 @@ import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.knowtiphy.babbage.messages.CloseMessage;
 import org.knowtiphy.babbage.messages.CopyMessage;
-import org.knowtiphy.babbage.messages.DeleteMessage;
 import org.knowtiphy.babbage.messages.MarkAsAnsweredMessage;
 import org.knowtiphy.babbage.messages.MarkAsJunkMessage;
 import org.knowtiphy.babbage.messages.MarkAsReadMessage;
@@ -36,7 +35,7 @@ public class PinkPigMailServer
 
 	static
 	{
-		for (Class<?> cls : List.of(CloseMessage.class, CopyMessage.class, DeleteMessage.class,
+		for (Class<?> cls : List.of(CloseMessage.class, CopyMessage.class,
 				MarkAsAnsweredMessage.class, MarkAsJunkMessage.class, MarkAsReadMessage.class,
 				MoveToJunkMessage.class, SendMessage.class))
 		{

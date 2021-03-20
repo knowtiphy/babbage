@@ -43,6 +43,7 @@ public class Vocabulary
 	public final static String IMAP_MESSAGE_CID_PART = TBASE + "IMAPMessageCIDPart";
 	public final static String IMAP_MESSAGE_ATTACHMENT = TBASE + "Attachment";
 
+	public final static String HAS_SPECIAL = TBASE + "hasSpecial";
 	public final static String HAS_NAME = TBASE + "hasName";
 	public final static String HAS_UID_VALIDITY = TBASE + "hasUIDValidity";
 	public final static String HAS_MESSAGE_COUNT = TBASE + "hasMessageCount";

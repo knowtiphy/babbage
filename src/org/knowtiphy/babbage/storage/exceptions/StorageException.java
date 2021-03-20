@@ -1,4 +1,4 @@
-package org.knowtiphy.babbage.storage;
+package org.knowtiphy.babbage.storage.exceptions;
 
 /**
  *
@@ -7,10 +7,6 @@ package org.knowtiphy.babbage.storage;
 public class StorageException extends Exception
 {
 	private static final long serialVersionUID = 1L;
-
-    public StorageException()
-    {
-    }
 
     public StorageException(String message)
     {

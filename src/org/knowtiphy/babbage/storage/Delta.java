@@ -18,10 +18,6 @@ public class Delta
 	private final Model adds = ModelFactory.createDefaultModel();
 	private final Model deletes = ModelFactory.createDefaultModel();
 
-//	public Delta()
-//	{
-//	}
-
 	public Model getAdds()
 	{
 		return adds;
@@ -44,12 +40,6 @@ public class Delta
 		return this;
 	}
 
-	public <T> Delta addDPN(String s, String p, T o)
-	{
-		JenaUtils.addDPN(adds, s, p, o);
-		return this;
-	}
-
 	public Delta add(StmtIterator stmts)
 	{
 		adds.add(stmts);
@@ -62,15 +52,38 @@ public class Delta
 		return this;
 	}
 
-	public void merge(Delta delta)
-	{
-		getAdds().add(delta.getAdds());
-		getDeletes().add(delta.getDeletes());
-	}
-
 	public Delta delete(StmtIterator stmts)
 	{
 		deletes.add(stmts);
+		return this;
+	}
+
+	public Delta deleteOP(String s, String p, String o)
+	{
+		JenaUtils.addOP(deletes, s, p, o);
+		return this;
+	}
+
+	//	TODO -- check this is right (trying to ensure they are only in the dbase once)
+	public Delta bothOP(String s, String p, String o)
+	{
+		JenaUtils.addOP(deletes, s, p, o);
+		JenaUtils.addOP(adds, s, p, o);
+		return this;
+	}
+
+	//	TODO -- check this is right (trying to ensure they are only in the dbase once)
+	public Delta bothDP(String s, String p, String o)
+	{
+		JenaUtils.addDP(deletes, s, p, o);
+		JenaUtils.addDP(adds, s, p, o);
+		return this;
+	}
+
+	public Delta bothDPN(String s, String p, String o)
+	{
+		JenaUtils.addDPN(deletes, s, p, o);
+		JenaUtils.addDPN(adds, s, p, o);
 		return this;
 	}
 

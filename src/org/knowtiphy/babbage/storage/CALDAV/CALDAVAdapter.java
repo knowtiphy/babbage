@@ -12,13 +12,12 @@ import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.DaveAdapter;
 import org.knowtiphy.babbage.storage.Delta;
-import org.knowtiphy.babbage.storage.OldListenerManager;
-import org.knowtiphy.babbage.storage.Mutex;
 import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.Mutex;
+import org.knowtiphy.babbage.storage.OldListenerManager;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -131,18 +130,7 @@ public class CALDAVAdapter extends DaveAdapter
 	}
 
 	@Override
-	public Model getAccountInfo()
-	{
-		//	TODO -- fix this
-		Model model = ModelFactory.createDefaultModel();
-		model.add(model.createResource(getId()),
-				model.createProperty(RDF.type.toString()),
-				model.createResource(getType()));
-		return model;
-	}
-
-	@Override
-	public void close()
+	public void close(Model model)
 	{
 		try
 		{
@@ -171,7 +159,7 @@ public class CALDAVAdapter extends DaveAdapter
 		{
 			accountInfo.addDP(id, Vocabulary.HAS_NICK_NAME, nickName);
 		}
-		notifyListeners(accountInfo);
+		notifyOldListeners(accountInfo);
 
 		queryAndNotify(delta -> delta
 				.add(QueryExecutionFactory.create(skeleton(), messageDatabase.getDefaultModel()).execConstruct()));

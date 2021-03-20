@@ -6,16 +6,17 @@ import com.sun.mail.imap.IdleManager;
 import com.sun.mail.util.MailConnectException;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.BaseAdapter;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.EventSetBuilder;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
+import org.knowtiphy.babbage.storage.LocalStorageSandBox;
 import org.knowtiphy.babbage.storage.OldListenerManager;
-import org.knowtiphy.babbage.storage.StorageException;
 import org.knowtiphy.babbage.storage.Vocabulary;
+import org.knowtiphy.babbage.storage.exceptions.StorageException;
 import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
@@ -41,7 +42,6 @@ import javax.mail.event.MessageCountEvent;
 import javax.mail.search.FlagTerm;
 import javax.mail.search.SearchTerm;
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -97,7 +97,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	if the load ahead service is completely busy.
 	private final ExecutorService contentService;
 	private final ExecutorService loadAheadService;
-	private final ExecutorService eventService;
 
 	private Store store;
 	private IdleManager idleManager;
@@ -135,17 +134,17 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		workService = new PriorityExecutor();
 		contentService = Executors.newFixedThreadPool(4);
 		loadAheadService = Executors.newFixedThreadPool(4);
-		eventService = Executors.newCachedThreadPool();
 		pingService = Executors.newSingleThreadScheduledExecutor();
 
 		operations.put(Vocabulary.MARK_READ, this::markMessagesAsRead);
 		operations.put(Vocabulary.DELETE_MESSAGE, this::deleteMessages);
 	}
 
-	public void initialize() throws MessagingException, IOException
+	public void initialize(Delta delta) throws MessagingException, IOException
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "initialize");
-		establishIncomingProperties();
+		var eventService = Executors.newCachedThreadPool();
+		establishIncomingProperties(eventService);
 		var session = Session.getInstance(incomingProperties, null);
 		//session.setDebug(true);
 		store = session.getStore("imaps");
@@ -153,26 +152,48 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- one idle manager for all accounts ..
 		//	TODO -- check if the provider has IDLE capabilities
 		idleManager = new IdleManager(session, eventService);
-//		System.out.println("CAPABILITES ----------------------- " + nickName);
-//		System.out.println(((IMAPStore) store).hasCapability("LIST-EXTENDED"));
-//		System.out.println(((IMAPStore) store).hasCapability("SPECIAL-USE"));
-//		System.out.println(((IMAPStore) store).hasCapability("IDLE"));
-
-		//	TODO -- really only want to add these once
-//		var delta = new Delta();
-//		Vocabulary.folderSubClasses.forEach((sub, sup) -> delta.addOP(sub, RDFS.subClassOf.toString(), sup));
-//		apply(delta);
 
 		initializeFolders();
+		addInitialTriples(delta);
+
 		startPinger();
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "initialize");
 	}
 
+	//	add account triples to the message cache
+	//	note: it's a cache -- so we can't simply store these triples in the cache permnantly, as
+	//	the cache is designed to be deleteable at any point in time.
+
+	private void addInitialTriples(Delta delta)
+	{
+		delta.bothOP(id, RDF.type.toString(), type);
+
+		specialId2Type.forEach((fid, type) ->
+		{
+			delta.bothOP(id, Vocabulary.HAS_SPECIAL, fid);
+			//	this isn't necessary as addFolder will do this
+			//delta.bothOP(fid, RDF.type.toString(), type);
+		});
+
+		delta.bothOP(id, RDF.type.toString(), type);
+
+		delta.bothDPN(getId(), Vocabulary.HAS_NICK_NAME, nickName);
+		delta.bothDP(getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
+		delta.bothDP(getId(), Vocabulary.HAS_SERVER_NAME, serverName);
+
+		trustedSenders.forEach(s -> delta.bothDP(getId(), Vocabulary.HAS_TRUSTED_SENDER, s));
+		trustedContentProviders.forEach(s -> delta.bothDP(getId(), Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, s));
+	}
+
+
 	@SuppressWarnings("ResultOfMethodCallIgnored")
-	public void close()
+	public void close(Model model)
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "close");
+
+		LOGGER.log(Level.INFO, "Saving account information");
+		IProcedure.doAndIgnore(() -> save(model));
 
 		LOGGER.log(Level.INFO, "Shutting down ping service");
 		IProcedure.doAndIgnore(pingService::shutdown);
@@ -192,40 +213,42 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		LOGGER.exiting(this.getClass().getCanonicalName(), "close");
 	}
 
-	@Override
-	public Model getAccountInfo()
+	private void save(Model model)
 	{
-		Model model = ModelFactory.createDefaultModel();
-		if (nickName != null)
-		{
-			JenaUtils.addDP(model, getId(), Vocabulary.HAS_NICK_NAME, nickName);
-		}
-		JenaUtils.addDP(model, getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
-		JenaUtils.addDP(model, getId(), Vocabulary.HAS_SERVER_NAME, serverName);
-
-		return model;
+		String name = LocalStorageSandBox.nameSource.get();
+		JenaUtils.addType(model, name, Vocabulary.IMAP_ACCOUNT);
+		JenaUtils.addDP(model, name, Vocabulary.HAS_SERVER_NAME, serverName);
+		JenaUtils.addDP(model, name, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
+		JenaUtils.addDP(model, name, Vocabulary.HAS_PASSWORD, password);
+		trustedContentProviders.forEach(cp ->
+				JenaUtils.addDP(model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, cp));
+		trustedSenders.forEach(s -> JenaUtils.addDP(model, name, Vocabulary.HAS_TRUSTED_SENDER, s));
 	}
 
+	//	TODO -- this needs to call initialize since initialize is really just the initial sync
 	@Override
-	public Future<?> doOperation(String oid, String type, Model operation)
+	public Model sync()
 	{
-		//	TODO -- check we have such an operation
-		return operations.get(type).apply(oid, operation);
+//		var model = JenaUtils.createRDFSModel(Vocabulary.folderSubClasses);
+//		if (nickName != null)
+//		{
+//			JenaUtils.addDP(model, getId(), Vocabulary.HAS_NICK_NAME, nickName);
+//		}
+//		JenaUtils.addDP(model, getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
+//		JenaUtils.addDP(model, getId(), Vocabulary.HAS_SERVER_NAME, serverName);
+//
+//		trustedSenders.forEach(s -> JenaUtils.addDP(model, getId(), Vocabulary.HAS_TRUSTED_SENDER, s));
+//		trustedContentProviders.forEach(s -> JenaUtils.addDP(model, getId(), Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, s));
+
+	//	return model;
+		return null;
 	}
 
-	@Override
-	public Model getSpecialFolders()
-	{
-		Model folders = ModelFactory.createDefaultModel();
-		specialId2Type.forEach((id, type) -> JenaUtils.addType(folders, id, type));
-		return folders;
-	}
-
-	public void sync(String fid) throws ExecutionException, InterruptedException
+	public Future<?> sync(String fid) throws ExecutionException, InterruptedException
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "sync");
 
-		addEventWork(() -> {
+		return addEventWork(() -> {
 			Folder folder = F(fid);
 			watch(folder);
 
@@ -240,6 +263,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			LOGGER.exiting(this.getClass().getCanonicalName(), "sync");
 			return new Triple<>(folder, delta, event);
 		});
+	}
+
+	@Override
+	public Future<?> doOperation(String oid, String type, Model operation)
+	{
+		//	TODO -- check we have such an operation
+		return operations.get(type).apply(oid, operation);
 	}
 
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
@@ -320,6 +350,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	//	AUDIT -- I DONT think this is correct -- we can mark a message deleted as many times as we
 	//	like, and if the expunge fails, we can therefore just retry?
+	//  TODO -- mark vs expunge
+
 	private Future<?> deleteMessages(String oid, Model operation)
 	{
 		var fid = JenaUtils.getR(operation, oid, Vocabulary.HAS_FOLDER).toString();
@@ -365,9 +397,19 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
+	@Override
+	public String toString()
+	{
+		return "IMAPAdapter{" +
+				"id='" + id + '\'' +
+				", type='" + type + '\'' +
+				", emailAddress='" + emailAddress + '\'' +
+				'}';
+	}
+
 	//	private methods start here
 
-	private void establishIncomingProperties()
+	private void establishIncomingProperties(ExecutorService eventService)
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "establishIncomingProperties");
 		incomingProperties = new Properties();
@@ -501,7 +543,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 	}
 
-	private void initializeFolders() throws MessagingException, MalformedURLException
+	private void initializeFolders() throws MessagingException
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "initializeFolders");
 
@@ -741,14 +783,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
-	protected void addEventWork(Callable<Triple<Folder, Delta, EventSetBuilder>> operation)
+	protected Future<Triple<Folder, Delta, EventSetBuilder>> addEventWork(Callable<Triple<Folder, Delta, EventSetBuilder>> operation)
 	{
 		//	TODO -- if event work fails we need to tell the client and let them resync
-		addWork(() -> {
+		return addWork(() -> {
 			var t = operation.call();
 			rewatch(t.fst());
 			applyAndNotify(t.snd(), t.thd());
-			return t.fst();
+			return t;
 		});
 	}
 
@@ -991,6 +1033,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				return new Triple<>(folder, delta, event);
 			});
 		}
+
 	}
 
 	@Override
@@ -999,6 +1042,25 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- this will go away at some point
 	}
 }
+
+//		System.out.println("CAPABILITES ----------------------- " + nickName);
+//		System.out.println(((IMAPStore) store).hasCapability("LIST-EXTENDED"));
+//		System.out.println(((IMAPStore) store).hasCapability("SPECIAL-USE"));
+//		System.out.println(((IMAPStore) store).hasCapability("IDLE"));
+
+//		specialId2Type.forEach((id, type) -> {
+//			JenaUtils.addOP(model, getId(), Vocabulary.HAS_SPECIAL, id);
+//			JenaUtils.addType(model, id, type);
+//		});
+
+
+//	@Override
+//	public Model getSpecialFolders()
+//	{
+//		Model folders = ModelFactory.createDefaultModel();
+//		specialId2Type.forEach((id, type) -> JenaUtils.addType(folders, id, type));
+//		return folders;
+//	}
 
 //protected void reStartPingThread() throws MessagingException
 //{

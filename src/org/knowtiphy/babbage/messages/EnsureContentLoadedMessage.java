@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.messages;
 
 import org.knowtiphy.babbage.storage.IStorage;
+import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 
 public class EnsureContentLoadedMessage implements IMessage
 {
@@ -16,7 +17,7 @@ public class EnsureContentLoadedMessage implements IMessage
 	}
 
 	@Override
-	public void perform(IStorage storage)
+	public void perform(IStorage storage) throws NoSuchAccountException
 	{
 		storage.ensureMessageContentLoaded(accountID, folderID, mID);
 	}

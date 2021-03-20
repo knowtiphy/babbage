@@ -26,23 +26,23 @@ public interface IAdapter
 
 	String getType();
 
-	Model getAccountInfo();
+	void addListener();
 
-	ResultSet query(String query);
+	void initialize(Delta delta) throws Exception;
 
-	void initialize() throws Exception;
+	//void addInitialTriples(Delta delta);
+
+	void close(Model model);
+
+	Model sync() throws ExecutionException, InterruptedException;
+
+	Future<?> sync(String fid) throws ExecutionException, InterruptedException;
 
 	Future<?> doOperation(String oid, String type, Model operation);
 
-	void sync(String fid) throws ExecutionException, InterruptedException;
-
-	void close();
-
-	void addListener();
-
 	//	all this code has to go away
 
-	Model getSpecialFolders();
+	ResultSet query(String query);
 
 	Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag);
 
@@ -52,8 +52,6 @@ public interface IAdapter
 								 boolean delete);
 
 	Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId, boolean delete) throws MessagingException;
-
-	Future<?> deleteMessages(String folderId, Collection<String> messageIds) throws MessagingException;
 
 	Future<?> appendMessages(String folderId, Message[] messages);
 
