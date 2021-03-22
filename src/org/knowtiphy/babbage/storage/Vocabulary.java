@@ -113,6 +113,7 @@ public class Vocabulary
 	public final static String MESSAGE_ARRIVED = TBASE + "MessageArrived";
 	public final static String MESSAGE_DELETED = TBASE + "MessageDeleted";
 	public final static String HAS_ACCOUNT = TBASE + "hasAcount";
+	public final static String HAS_OPERATION = TBASE + "hasAcount";
 	public final static String HAS_FOLDER = TBASE + "hasFolder";
 	public final static String HAS_MESSAGE = TBASE + "hasMessage";
 	public final static String HAS_FLAG = TBASE + "hasFlag";

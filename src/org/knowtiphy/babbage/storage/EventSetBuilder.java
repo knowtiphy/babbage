@@ -15,6 +15,18 @@ public class EventSetBuilder
 		JenaUtils.addSubClasses(model, Vocabulary.eventSubClasses);
 	}
 
+	public String newEvent(String type, String aid)
+	{
+		var eid = Vocabulary.E(type, ids + "");
+		ids++;
+		JenaUtils.addOP(model, eid, RDF.type.toString(), type);
+		if (aid != null)
+		{
+			JenaUtils.addOP(model, eid, Vocabulary.HAS_ACCOUNT, aid);
+		}
+		return eid;
+	}
+
 	public String newEvent(String type)
 	{
 		var eid = Vocabulary.E(type, ids + "");

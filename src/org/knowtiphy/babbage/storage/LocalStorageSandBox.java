@@ -183,7 +183,6 @@ public class LocalStorageSandBox implements IStorage
 
 		//	add all the new triples
 		BaseAdapter.apply(messageDatabase, delta);
-		System.out.println(delta);
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "()");
 	}
@@ -234,15 +233,15 @@ public class LocalStorageSandBox implements IStorage
 		var op = JenaUtils.createRDFSModel(operation, Vocabulary.operationsubClasses);
 
 		var rs = QueryExecutionFactory.create(OPERATION_QUERY, op).execSelect();
-		while (rs.hasNext())
+		//	the operation model didn't contain something recognizable as an operation
+		if (!rs.hasNext())
 		{
-			var sol = rs.next();
-			return A(sol.getResource("aid").toString()).doOperation(
-					sol.getResource("id").toString(), sol.getResource("type").toString(), op);
+			throw new NoOperationSpecifiedException();
 		}
 
-		//	the operation model didn't contain something recognizable as an operation
-		throw new NoOperationSpecifiedException();
+		var sol = rs.next();
+		return A(sol.getResource("aid").toString()).doOperation(
+				sol.getResource("id").toString(), sol.getResource("type").toString(), op);
 	}
 
 	//	TODO -- have to work out sync vs initialize
