@@ -5,7 +5,6 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.utils.JenaUtils;
 
-import java.io.PrintWriter;
 import java.io.StringWriter;
 
 /**
@@ -26,6 +25,12 @@ public class Delta
 	public Model getDeletes()
 	{
 		return deletes;
+	}
+
+	public Delta addType(String s, String type)
+	{
+		JenaUtils.addType(adds, s, type);
+		return this;
 	}
 
 	public Delta addOP(String s, String p, String o)
@@ -90,9 +95,8 @@ public class Delta
 	public String toString()
 	{
 		StringWriter sw = new StringWriter();
-		PrintWriter pw = new PrintWriter(sw);
-		JenaUtils.printModel(adds.listStatements(), "+", pw);
-		JenaUtils.printModel(deletes.listStatements(), "-", pw);
+		JenaUtils.printModel(adds, "+", sw);
+		JenaUtils.printModel(deletes, "-", sw);
 		return sw.toString();
 	}
 }

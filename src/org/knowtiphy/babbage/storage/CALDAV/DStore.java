@@ -3,14 +3,7 @@ package org.knowtiphy.babbage.storage.CALDAV;
 import biweekly.component.VEvent;
 import com.github.sardine.DavResource;
 import org.apache.jena.datatypes.xsd.XSDDateTime;
-import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelCon;
-import org.apache.jena.rdf.model.Property;
-import org.apache.jena.rdf.model.RDFNode;
-import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.rdf.model.Statement;
-import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.Vocabulary;
@@ -24,40 +17,24 @@ import java.util.function.Function;
  */
 public interface DStore
 {
-	static Resource R(Model model, String name)
-	{
-		return model.createResource(name);
-	}
-
-	static Property P(ModelCon model, String name)
-	{
-		return model.createProperty(name);
-	}
-
-	static <T> Literal L(ModelCon model, T value)
-	{
-		return model.createTypedLiteral(value);
-	}
-
-	static <S, T> void addAttribute(Delta delta, String subject, String predicate, S value, Function<S, T> fn)
+	static <S, T> void addAttribute(Delta delta, String s, String p, S value, Function<S, T> f)
 	{
 		if (value != null)
 		{
-			delta.addDP(subject, predicate, fn.apply(value));
+			delta.addDP(s, p, f.apply(value));
 		}
 	}
 
-
-	static void storeCalendar(Delta delta, String adapterID, String encodedCalendar, DavResource calendar)
+	static void addCalendar(Delta delta, String aid, String cid, DavResource calendar)
 	{
-		delta.addOP(encodedCalendar, RDF.type.toString(), Vocabulary.CALDAV_CALENDAR)
-				.addOP(adapterID, Vocabulary.CONTAINS, encodedCalendar);
+		delta.addType(cid, Vocabulary.CALDAV_CALENDAR)
+				.addOP(aid, Vocabulary.CONTAINS, cid);
 
-		addAttribute(delta, encodedCalendar, Vocabulary.HAS_NAME, calendar.getDisplayName(), x -> x);
-		addAttribute(delta, encodedCalendar, Vocabulary.HAS_CTAG, calendar.getCustomProps().get("getctag"), x -> x);
+		addAttribute(delta, cid, Vocabulary.HAS_NAME, calendar.getDisplayName(), x -> x);
+		addAttribute(delta, cid, Vocabulary.HAS_CTAG, calendar.getCustomProps().get("getctag"), x -> x);
 	}
 
-	static void storeEvent(Delta delta, String calendarId, String eventId, VEvent vEvent, DavResource event)
+	static void addEvent(Delta delta, String calendarId, String eventId, VEvent vEvent, DavResource event)
 	{
 		delta.addOP(eventId, RDF.type.toString(), Vocabulary.CALDAV_EVENT)
 				.addOP(calendarId, Vocabulary.CONTAINS, eventId);
@@ -87,20 +64,19 @@ public interface DStore
 	//  TODO -- have to delete the CIDS, content, etc
 	static void unstoreRes(Model messageDB, Delta delta, String containerName, String resName)
 	{
-		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
-		Resource res = R(messageDB, resName);
-		//  TODO -- delete everything reachable from messageName
-		StmtIterator it = messageDB.listStatements(res, null, (RDFNode) null);
-		while (it.hasNext())
-		{
-			Statement stmt = it.next();
-			if (stmt.getObject().isResource())
-			{
-				delta.delete(messageDB.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
-			}
-		}
-		delta.delete(messageDB.listStatements(res, null, (RDFNode) null));
-		delta.delete(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res));
+//		// System.err.println("DELETING M(" + messageName + ") IN F(" + folderName + " )");
+//		Resource res = R(messageDB, resName);
+//		//  TODO -- delete everything reachable from messageName
+//		StmtIterator it = messageDB.listStatements(res, null, (RDFNode) null);
+//		while (it.hasNext())
+//		{
+//			Statement stmt = it.next();
+//			if (stmt.getObject().isResource())
+//			{
+//				delta.delete(messageDB.listStatements(stmt.getObject().asResource(), null, (RDFNode) null));
+//			}
+//		}
+//		delta.delete(messageDB.listStatements(res, null, (RDFNode) null));
+//		delta.delete(messageDB.listStatements(R(messageDB, containerName), P(messageDB, Vocabulary.CONTAINS), res));
 	}
-
 }

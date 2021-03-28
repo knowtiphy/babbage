@@ -38,7 +38,6 @@ public class LocalStorage // implements IStorage
 //		//JenaUtils.addSubClasses(model, Vocabulary.CALDAV_ACCOUNT, Vocabulary.ACCOUNT);
 //		//JenaUtils.addSubClasses(model, Vocabulary.CARDDAV_ACCOUNT, Vocabulary.ACCOUNT);
 //
-//		Model accountsModel = ModelFactory.createRDFSModel(model);
 //		m_account = new HashMap<>(100);
 //
 //		ResIterator it = JenaUtils.listSubjectsWithProperty(accountsModel, RDF.type.toString(), Vocabulary.ACCOUNT);

@@ -14,7 +14,6 @@ import org.knowtiphy.babbage.storage.EventSetBuilder;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.LocalStorageSandBox;
-import org.knowtiphy.babbage.storage.OldListenerManager;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
 import org.knowtiphy.utils.IProcedure;
@@ -59,9 +58,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BiFunction;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -79,10 +78,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private final String serverName;
 	private final String emailAddress;
 	private final String password;
+	//	these seem kina of pointless since all we do with trust senders and providers
+	//	is store them in the database
 	private final Collection<String> trustedSenders, trustedContentProviders;
 	private String nickName;
-
-	private final Map<String, BiFunction<String, Model, Future<?>>> operations = new HashMap<>();
 
 	//	TODO -- can we get rid of these?
 	//	map from sub-type of IMAPFolder to folder ID for special folders
@@ -103,41 +102,45 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Properties incomingProperties;
 
 	public IMAPAdapter(String name, String type, Dataset messageDatabase,
-					   OldListenerManager listenerManager, ListenerManager newListenerManager,
-					   BlockingDeque<Runnable> notificationQ, Model model)
+					   ListenerManager listenerManager, BlockingDeque<Runnable> notificationQ, Model model)
 	{
-		super(type, messageDatabase, listenerManager, newListenerManager, notificationQ);
+		super(type, messageDatabase, listenerManager, notificationQ);
 
-		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_SERVER_NAME));
-		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
-		assert JenaUtils.checkUnique(JenaUtils.listObjectsOfProperty(model, name, Vocabulary.HAS_PASSWORD));
+		JenaUtils.printModel(model, "Accounts Model");
+		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_SERVER_NAME);
+		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_EMAIL_ADDRESS);
+		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_PASSWORD);
 
-		serverName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_SERVER_NAME));
-		emailAddress = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_EMAIL_ADDRESS));
-		password = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_PASSWORD));
+		serverName = JenaUtils.getS(model, name, Vocabulary.HAS_SERVER_NAME);
+		emailAddress = JenaUtils.getS(model, name, Vocabulary.HAS_EMAIL_ADDRESS);
+		password = JenaUtils.getS(model, name, Vocabulary.HAS_PASSWORD);
 		id = Vocabulary.E(Vocabulary.IMAP_ACCOUNT, emailAddress);
 
 		try
 		{
-			nickName = JenaUtils.getS(JenaUtils.listObjectsOfPropertyU(model, name, Vocabulary.HAS_NICK_NAME));
+			nickName = JenaUtils.getS(model, name, Vocabulary.HAS_NICK_NAME);
 		}
 		catch (NoSuchElementException ex)
 		{
 			//	the account doesn't have a nick name
 		}
 
-		trustedSenders = JenaUtils.collect(new HashSet<>(100),
-				model, name, Vocabulary.HAS_TRUSTED_SENDER, RDFNode::toString);
-		trustedContentProviders = JenaUtils.collect(new HashSet<>(100),
-				model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, RDFNode::toString);
+		trustedSenders = JenaUtils.apply(model, name, Vocabulary.HAS_TRUSTED_SENDER,
+				RDFNode::toString, new HashSet<>(100));
+		trustedContentProviders = JenaUtils.apply(model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER,
+				RDFNode::toString, new HashSet<>(100));
 
 		workService = new PriorityExecutor();
 		contentService = Executors.newFixedThreadPool(4);
 		loadAheadService = Executors.newFixedThreadPool(4);
 		pingService = Executors.newSingleThreadScheduledExecutor();
 
+		operations.put(Vocabulary.SYNC, this::syncOp);
+		operations.put(Vocabulary.SYNC_AHEAD, this::syncAhead);
 		operations.put(Vocabulary.MARK_READ, this::markMessagesAsRead);
 		operations.put(Vocabulary.DELETE_MESSAGE, this::deleteMessages);
+		operations.put(Vocabulary.TRUST_SENDER, this::trustSender);
+		operations.put(Vocabulary.TRUST_PROVIDER, this::trustProvider);
 	}
 
 	public void initialize(Delta delta) throws MessagingException, IOException
@@ -175,8 +178,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			//	this isn't necessary as addFolder will do this
 			//delta.bothOP(fid, RDF.type.toString(), type);
 		});
-
-		delta.bothOP(id, RDF.type.toString(), type);
 
 		delta.bothDPN(getId(), Vocabulary.HAS_NICK_NAME, nickName);
 		delta.bothDP(getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
@@ -223,25 +224,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		trustedContentProviders.forEach(cp ->
 				JenaUtils.addDP(model, name, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, cp));
 		trustedSenders.forEach(s -> JenaUtils.addDP(model, name, Vocabulary.HAS_TRUSTED_SENDER, s));
+
+		JenaUtils.printModel(model, "Saved Model");
 	}
 
 	//	TODO -- this needs to call initialize since initialize is really just the initial sync
 	@Override
-	public Model sync()
+	public void sync()
 	{
-//		var model = JenaUtils.createRDFSModel(Vocabulary.folderSubClasses);
-//		if (nickName != null)
-//		{
-//			JenaUtils.addDP(model, getId(), Vocabulary.HAS_NICK_NAME, nickName);
-//		}
-//		JenaUtils.addDP(model, getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
-//		JenaUtils.addDP(model, getId(), Vocabulary.HAS_SERVER_NAME, serverName);
-//
-//		trustedSenders.forEach(s -> JenaUtils.addDP(model, getId(), Vocabulary.HAS_TRUSTED_SENDER, s));
-//		trustedContentProviders.forEach(s -> JenaUtils.addDP(model, getId(), Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, s));
-
-	//	return model;
-		return null;
 	}
 
 	public Future<?> sync(String fid) throws ExecutionException, InterruptedException
@@ -265,13 +255,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
-	@Override
-	public Future<?> doOperation(String oid, String type, Model operation)
-	{
-		//	TODO -- check we have such an operation
-		return operations.get(type).apply(oid, operation);
-	}
-
 	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
 	{
 		return addWork(new MessageWork(() -> {
@@ -283,15 +266,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private Future<?> markMessagesAsRead(String oid, Model operation)
 	{
-		var fid = JenaUtils.getR(operation, oid, Vocabulary.HAS_FOLDER).toString();
+		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var flag = JenaUtils.getB(operation, oid, Vocabulary.HAS_FLAG);
 		var mids = getMessageIDs(oid, operation);
 
 		return addWork(new MessageWork(() -> {
 			Folder folder = F(fid);
 			Message[] messages = Encode.U(folder, mids);
-			System.out.println("MARKING MESSSAGES ARE READ " + mids);
-			System.out.println(messages[0]);
 			mark(messages, new Flags(Flags.Flag.SEEN), flag);
 			return List.of(folder);
 		}));
@@ -354,7 +335,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private Future<?> deleteMessages(String oid, Model operation)
 	{
-		var fid = JenaUtils.getR(operation, oid, Vocabulary.HAS_FOLDER).toString();
+		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var mids = getMessageIDs(oid, operation);
 
 		return addWork(new MessageWork(() -> {
@@ -367,6 +348,32 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}));
 	}
 
+	private Future<?> trustSender(String oid, Model operation)
+	{
+		System.out.println("TRUST SENDER ");
+		JenaUtils.printModel(operation);
+		Delta delta = new Delta();
+		JenaUtils.apply(operation, oid, Vocabulary.HAS_TRUSTED_SENDER,
+				s -> delta.addDP(id, Vocabulary.HAS_TRUSTED_SENDER, s.toString()));
+		System.out.println(delta);
+		apply(delta);
+		//	TODO -- fire off an event
+		return new FutureTask<>(() -> true);
+	}
+
+	private Future<?> trustProvider(String oid, Model operation)
+	{
+		System.out.println("TRUST PROVIDER ");
+		JenaUtils.printModel(operation);
+		Delta delta = new Delta();
+		JenaUtils.apply(operation, oid, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER,
+				s -> delta.addDP(id, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, s.toString()));
+		System.out.println(delta);
+		apply(delta);
+		//	TODO -- fire off an event
+		return new FutureTask<>(() -> true);
+	}
+
 	public Future<?> appendMessages(String fid, Message[] messages)
 	{
 		return addWork(new MessageWork(() -> {
@@ -376,25 +383,22 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}));
 	}
 
-	public Future<?> ensureMessageContentLoaded(String fid, String mid)
+	private Future<?> syncOp(String oid, Model operation)
 	{
+		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
+		var mid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_MESSAGE).toString();
+		System.out.println("syncOp = " + mid);
+
 		return contentService.submit(new MessageWork(() -> load(fid, List.of(mid))));
 	}
 
-	public Future<?> loadAhead(String fid, Collection<String> mids)
+	private Future<?> syncAhead(String oid, Model operation)
 	{
-		return loadAheadService.submit(() ->
-		{
-			try
-			{
-				load(fid, mids);
-			}
-			catch (Exception ex)
-			{
-				ex.printStackTrace(System.out);
-				//	ignore -- any errors will be picked up elsewhere
-			}
-		});
+		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
+		var mids = getMessageIDs(oid, operation);
+		System.out.println("syncOp = " + mids);
+
+		return loadAheadService.submit(() -> load(fid, mids));
 	}
 
 	@Override
@@ -474,9 +478,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			List<String> needToFetch = new ArrayList<>();
 			for (String messageId : messageIds)
 			{
-				boolean stored = query(() -> messageDatabase.getDefaultModel().
-						listObjectsOfProperty(R(messageDatabase.getDefaultModel(), messageId),
-								P(messageDatabase.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
+				boolean stored = query(() -> cache.getDefaultModel().
+						listObjectsOfProperty(R(cache.getDefaultModel(), messageId),
+								P(cache.getDefaultModel(), Vocabulary.HAS_CONTENT)).hasNext());
 				if (!stored)
 				{
 					needToFetch.add(messageId);
@@ -484,6 +488,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				if (!needToFetch.isEmpty())
 				{
+					System.out.println("NEED TO FETCH = " + needToFetch);
+					long t = System.currentTimeMillis();
 					//assert m_folder.containsKey(folderId);
 					Folder folder = F(folderId);
 					Message[] msgs = Encode.U(folder, needToFetch);
@@ -491,17 +497,23 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					///how do we set a profile for the actual content?
 					FetchProfile fp = new FetchProfile();
 					fp.add(IMAPFolder.FetchProfileItem.MESSAGE);
-					//	fp.add(FetchProfile.Item.CONTENT_INFO);
+					fp.add(FetchProfile.Item.CONTENT_INFO);
+					fp.add(FetchProfile.Item.ENVELOPE);
 					folder.fetch(msgs, fp);
 
 					//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
+					System.out.println("FETCHED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
+					t = System.currentTimeMillis();
 					List<MessageContent> contents = new LinkedList<>();
 					for (Message message : msgs)
 					{
 						contents.add(new MessageContent(message, this, true).process());
 					}
+					System.out.println("CONTENT LOADED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
 
-					apply(delta -> contents.forEach(content -> DStore.addMessageContent(delta, content)));
+					var delta = new Delta();
+					contents.forEach(content -> DStore.addMessageContent(delta, content));
+					apply(delta);
 
 					//System.out.println("load WORKER DONE : " + needToFetch);
 					return List.of(folder);
@@ -598,7 +610,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- two maps, or even any maps, IS A BUT CLUMSY
 		specialType2ID.forEach((type, id) -> specialId2Type.put(id, type));
 
-		var storedFIDs = query(() -> DFetch.folderIDs(messageDatabase, getId()));
+		var storedFIDs = query(() -> DFetch.folderIDs(cache, getId()));
 		var imapFIDS = new HashSet<String>();
 		for (Folder folder : getFolders())
 		{
@@ -635,7 +647,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 			if (removeUID.contains(fid))
 			{
-				DStore.deleteFolder(messageDatabase, delta, fid);
+				DStore.deleteFolder(cache, delta, fid);
 			}
 		}
 
@@ -675,18 +687,17 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		String fid = Encode.encode(folder);
 
 		//	check if we have already stored this folder
-		var isStored = query(() -> DFetch.hasFolder(messageDatabase.getDefaultModel(), fid));
+		var isStored = query(() -> DFetch.hasFolder(cache.getDefaultModel(), fid));
 
 		//	if we have stored the folder delete its folder counts as they may have changed
 		if (isStored)
 		{
 			//  TODO -- should really check that the validity hasn't changed
-			query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+			query(() -> DStore.deleteFolderCounts(cache, delta, fid));
 		}
 		//	add a new folder
 		else
 		{
-			System.out.println("ADDING FOLDER " + folder);
 			DStore.addFolder(delta, this, folder);
 		}
 
@@ -717,11 +728,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		});
 
-		removeUID.forEach(message -> query(() -> DStore.deleteMessage(messageDatabase, delta, fid, message)));
+		removeUID.forEach(message -> query(() -> DStore.deleteMessage(cache, delta, fid, message)));
 		addUID.forEach(message -> DStore.addMessage(delta, fid, message));
 
 		//  get message headers for message ids that we don't have headers for
-		var withHeaders = query(() -> DFetch.messageIds(messageDatabase, DFetch.messageUIDsWithHeaders(id, fid)));
+		var withHeaders = query(() -> DFetch.messageIds(cache, DFetch.messageUIDsWithHeaders(id, fid)));
 
 		//	we need to fetch headers for messages that are stored but don't have headers, or new
 		//	messages that are being added
@@ -745,7 +756,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				String mid = Encode.encode(msg);
 				if (stored.contains(mid))
 				{
-					DStore.deleteMessageFlags(messageDatabase, delta, mid);
+					DStore.deleteMessageFlags(cache, delta, mid);
 				}
 				DStore.addMessageFlags(delta, msg, mid);
 				DStore.addMessageHeaders(delta, msg, mid);
@@ -804,7 +815,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private Set<String> getStoredMessageIDs(String fid)
 	{
-		return query(() -> DFetch.messageIds(messageDatabase, DFetch.messageUIDs(fid)));
+		return query(() -> DFetch.messageIds(cache, DFetch.messageUIDs(fid)));
 	}
 
 	private Set<String> getIMAPMessageIDs(Folder folder) throws MessagingException
@@ -927,7 +938,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					event.addOP(eid, Vocabulary.HAS_FOLDER, fid);
 
 					//	message flag changing can indicate that folder counts have changed
-					query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+					query(() -> DStore.deleteFolderCounts(cache, delta, fid));
 					DStore.addFolderCounts(delta, folder, fid);
 
 					//	as long as the change is not a delete, adjust the flags (deletes are handled
@@ -935,7 +946,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					if (!isDeleted(message))
 					{
 						String mid = Encode.encode(message);
-						query(() -> DStore.deleteMessageFlags(messageDatabase, delta, mid));
+						query(() -> DStore.deleteMessageFlags(cache, delta, mid));
 						DStore.addMessageFlags(delta, message, mid);
 						event.addOP(eid, Vocabulary.HAS_MESSAGE, mid);
 					}
@@ -973,7 +984,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				event.addOP(eid, Vocabulary.HAS_FOLDER, fid);
 
 				DStore.addFolderCounts(delta, folder, fid);
-				query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+				query(() -> DStore.deleteFolderCounts(cache, delta, fid));
 
 				//	we cannot loop through the messages to get the ids of the deleted messages
 				//	so we have to compute folder's stored - imap messages
@@ -992,7 +1003,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				});
 
 				deleted.forEach(mid -> {
-					query(() -> DStore.deleteMessage(messageDatabase, delta, fid, mid));
+					query(() -> DStore.deleteMessage(cache, delta, fid, mid));
 					event.addOP(eid, Vocabulary.HAS_MESSAGE, mid);
 				});
 
@@ -1019,7 +1030,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				event.addOP(eid, Vocabulary.HAS_FOLDER, fid);
 
 				DStore.addFolderCounts(delta, folder, fid);
-				query(() -> DStore.deleteFolderCounts(messageDatabase, delta, fid));
+				query(() -> DStore.deleteFolderCounts(cache, delta, fid));
 
 				for (Message message : e.getMessages())
 				{
@@ -1034,12 +1045,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			});
 		}
 
-	}
-
-	@Override
-	public void addListener()
-	{
-		//	TODO -- this will go away at some point
 	}
 }
 

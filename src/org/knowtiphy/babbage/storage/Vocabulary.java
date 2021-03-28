@@ -108,6 +108,7 @@ public class Vocabulary
 	//  event vocabulary
 
 	public final static String EVENT = TBASE + "EVENT";
+	public final static String ACCOUNT_SYNCED = TBASE + "AccountSynced";
 	public final static String FOLDER_SYNCED = TBASE + "FolderSynced";
 	public final static String MESSAGE_FLAGS_CHANGED = TBASE + "MessageFlagsChanged";
 	public final static String MESSAGE_ARRIVED = TBASE + "MessageArrived";
@@ -121,8 +122,12 @@ public class Vocabulary
 	//	operations vocabulary
 
 	public final static String OPERATION = TBASE + "Operation";
+	public final static String SYNC = TBASE + "Sync";
+	public final static String SYNC_AHEAD = TBASE + "SyncAhead";
 	public final static String MARK_READ = TBASE + "MarkReadOperation";
 	public final static String DELETE_MESSAGE = TBASE + "DeleteMessageOperation";
+	public final static String TRUST_SENDER = TBASE + "TrustSender";
+	public final static String TRUST_PROVIDER = TBASE + "TrustProvider";
 
 	//	sub-classing structure
 
@@ -130,6 +135,7 @@ public class Vocabulary
 
 	static
 	{
+		eventSubClasses.put(ACCOUNT_SYNCED, EVENT);
 		eventSubClasses.put(FOLDER_SYNCED, EVENT);
 		eventSubClasses.put(MESSAGE_FLAGS_CHANGED, EVENT);
 		eventSubClasses.put(MESSAGE_ARRIVED, EVENT);
@@ -161,8 +167,12 @@ public class Vocabulary
 
 	static
 	{
+		operationsubClasses.put(SYNC, OPERATION);
+		operationsubClasses.put(SYNC_AHEAD, OPERATION);
 		operationsubClasses.put(MARK_READ, OPERATION);
 		operationsubClasses.put(DELETE_MESSAGE, OPERATION);
+		operationsubClasses.put(TRUST_SENDER, OPERATION);
+		operationsubClasses.put(TRUST_PROVIDER, OPERATION);
 	}
 
 	public final static Map<String, String> allSubClasses = new HashMap<>();
@@ -175,7 +185,7 @@ public class Vocabulary
 		allSubClasses.putAll(folderSubClasses);
 	}
 
-	public final static String E(Object... parts)
+	public static String E(Object... parts)
 	{
 		var builder = new StringBuilder();
 		for (int i = 0; i < parts.length - 1; i++)

@@ -1,12 +1,12 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.vocabulary.RDF;
 import org.knowtiphy.babbage.storage.Vocabulary;
-import org.knowtiphy.utils.JenaUtils;
 
 import java.util.Collection;
 import java.util.HashSet;
@@ -38,8 +38,12 @@ public interface DFetch
 
 		Model mod = dbase.getDefaultModel();//, Vocabulary.folderSubClasses);
 		Set<String> fids = new HashSet<>(1000);
-		var resultSet = QueryExecutionFactory.create(query, mod).execSelect();
-		fids.addAll(JenaUtils.set(resultSet, soln -> soln.get("fid").asResource().toString()));
+		try (QueryExecution qexec = QueryExecutionFactory.create(query, dbase.getDefaultModel()))
+		{
+			ResultSet results = qexec.execSelect();
+			results.forEachRemaining(soln -> fids.add(soln.get("fid").asResource().toString()));
+		}
+
 		return fids;
 	}
 
@@ -71,8 +75,12 @@ public interface DFetch
 	static Set<String> messageIds(Dataset dbase, String query)
 	{
 		Set<String> stored = new HashSet<>(1000);
-		ResultSet resultSet = QueryExecutionFactory.create(query, dbase.getDefaultModel()).execSelect();
-		stored.addAll(JenaUtils.set(resultSet, soln -> soln.get("mid").asResource().toString()));
+		try (QueryExecution qexec = QueryExecutionFactory.create(query, dbase.getDefaultModel()))
+		{
+			ResultSet results = qexec.execSelect();
+			results.forEachRemaining(soln -> stored.add(soln.get("mid").asResource().toString()));
+		}
+
 		return stored;
 	}
 }

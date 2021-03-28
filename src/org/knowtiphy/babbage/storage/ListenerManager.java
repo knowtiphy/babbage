@@ -11,7 +11,7 @@ import java.util.logging.Logger;
  */
 public class ListenerManager
 {
-	private static final Logger logger = Logger.getLogger(ListenerManager.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(ListenerManager.class.getName());
 
 	private final Collection<IStorageListener> listeners = new ArrayList<>(100);
 
@@ -33,7 +33,7 @@ public class ListenerManager
 				catch (Exception ex)
 				{
 					ex.printStackTrace();
-					logger.warning("Notifying change listener failed :: " + ex.getLocalizedMessage());
+					LOGGER.warning("Notifying change listener failed :: " + ex.getLocalizedMessage());
 				}
 			}
 		}

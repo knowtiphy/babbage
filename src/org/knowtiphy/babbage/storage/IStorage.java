@@ -9,7 +9,6 @@ import org.knowtiphy.babbage.storage.exceptions.StorageException;
 
 import javax.mail.MessagingException;
 import java.util.Collection;
-import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -18,34 +17,24 @@ import java.util.concurrent.Future;
  */
 public interface IStorage extends AutoCloseable
 {
-	Model getAccounts();
-
-	Model sync(String id) throws ExecutionException, InterruptedException, NoSuchAccountException;
-
-	Future<?> sync(String id, String fid) throws ExecutionException, InterruptedException, NoSuchAccountException;
-
 	Future<?> doOperation(Model operation) throws NoSuchAccountException, NoOperationSpecifiedException;
 
-	ResultSet query(String id, String query) throws NoSuchAccountException;
+	ResultSet query(String query) throws StorageException;
 
 	void addListener(IStorageListener listener) throws InterruptedException, StorageException, MessagingException;
 
 	void close();
 
-	//Model getSpecialFolders();
-
 	// For time being, stick all extra methods in here
-	Map<String, Future<?>> addOldListener(IOldStorageListener listener) throws InterruptedException, StorageException, MessagingException, ExecutionException;
+	//	should be in doOp
+	Model sync(String id) throws ExecutionException, InterruptedException, NoSuchAccountException;
+
+	//	should be in doOp
+	Future<?> sync(String id, String fid) throws ExecutionException, InterruptedException, NoSuchAccountException;
 
 	IReadContext getReadContext();
 
-
-	Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId) throws NoSuchAccountException;
-
-	Future<?> loadAhead(String accountId, String folderId, Collection<String> messageIds) throws NoSuchAccountException;
-
 	void send(MessageModel model) throws StorageException;
-
 
 	Future<?> moveMessagesToJunk(String accountId, String sourceFolderId, Collection<String> messageIds,
 								 String targetFolderId, boolean delete) throws NoSuchAccountException;

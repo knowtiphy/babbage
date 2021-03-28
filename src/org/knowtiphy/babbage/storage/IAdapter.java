@@ -5,9 +5,9 @@
  */
 package org.knowtiphy.babbage.storage;
 
-import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
+import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 
 import javax.mail.Message;
 import javax.mail.MessagingException;
@@ -26,23 +26,17 @@ public interface IAdapter
 
 	String getType();
 
-	void addListener();
-
 	void initialize(Delta delta) throws Exception;
-
-	//void addInitialTriples(Delta delta);
 
 	void close(Model model);
 
-	Model sync() throws ExecutionException, InterruptedException;
-
-	Future<?> sync(String fid) throws ExecutionException, InterruptedException;
-
-	Future<?> doOperation(String oid, String type, Model operation);
+	Future<?> doOperation(String oid, String type, Model operation) throws NoOperationSpecifiedException;
 
 	//	all this code has to go away
 
-	ResultSet query(String query);
+	void sync() throws ExecutionException, InterruptedException;
+
+	Future<?> sync(String fid) throws ExecutionException, InterruptedException;
 
 	Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag);
 
@@ -56,10 +50,6 @@ public interface IAdapter
 	Future<?> appendMessages(String folderId, Message[] messages);
 
 	Message createMessage(MessageModel model) throws MessagingException, IOException;
-
-	Future<?> ensureMessageContentLoaded(String messageId, String folderId);
-
-	Future<?> loadAhead(String folderId, Collection<String> messageIds);
 
 	Future<?> send(Model model);
 }

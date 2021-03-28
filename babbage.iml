@@ -8,48 +8,11 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="utils" />
-    <orderEntry type="module-library">
-      <library name="com.github.lookfirst:sardine:5.9" type="repository">
-        <properties maven-id="com.github.lookfirst:sardine:5.9" />
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/com/github/lookfirst/sardine/5.9/sardine-5.9.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/apache/httpcomponents/httpclient/4.5.1/httpclient-4.5.1.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/apache/httpcomponents/httpcore/4.4.3/httpcore-4.4.3.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/commons-logging/commons-logging/1.2/commons-logging-1.2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/commons-codec/commons-codec/1.9/commons-codec-1.9.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library">
-      <library name="net.sf.biweekly:biweekly:0.6.3" type="repository">
-        <properties maven-id="net.sf.biweekly:biweekly:0.6.3" />
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/net/sf/biweekly/biweekly/0.6.3/biweekly-0.6.3.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/com/github/mangstadt/vinnie/2.0.2/vinnie-2.0.2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/com/fasterxml/jackson/core/jackson-core/2.9.8/jackson-core-2.9.8.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-      </library>
-    </orderEntry>
-    <orderEntry type="module-library">
-      <library name="com.googlecode.ez-vcard:ez-vcard:0.10.5" type="repository">
-        <properties maven-id="com.googlecode.ez-vcard:ez-vcard:0.10.5" />
-        <CLASSES>
-          <root url="jar://$MAVEN_REPOSITORY$/com/googlecode/ez-vcard/ez-vcard/0.10.5/ez-vcard-0.10.5.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/com/github/mangstadt/vinnie/2.0.2/vinnie-2.0.2.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/jsoup/jsoup/1.11.3/jsoup-1.11.3.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/org/freemarker/freemarker/2.3.28/freemarker-2.3.28.jar!/" />
-          <root url="jar://$MAVEN_REPOSITORY$/com/fasterxml/jackson/core/jackson-core/2.9.8/jackson-core-2.9.8.jar!/" />
-        </CLASSES>
-        <JAVADOC />
-        <SOURCES />
-      </library>
-    </orderEntry>
+    <orderEntry type="library" name="net.sf.biweekly:biweekly:0.6.3" level="project" />
+    <orderEntry type="library" name="com.googlecode.ez-vcard:ez-vcard:0.10.5" level="project" />
     <orderEntry type="library" name="org.apache.jena:jena-tdb2:3.14.0" level="application" />
     <orderEntry type="library" name="org.apache.jena:jena-querybuilder:3.14.0" level="application" />
-    <orderEntry type="library" name="com.sun.mail:javax.mail:1.5.6" level="project" />
+    <orderEntry type="library" name="com.sun.mail:javax.mail:1.5.6" level="application" />
+    <orderEntry type="library" name="com.github.lookfirst:sardine:5.10" level="application" />
   </component>
 </module>

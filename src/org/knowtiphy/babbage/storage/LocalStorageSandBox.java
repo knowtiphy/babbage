@@ -3,7 +3,6 @@ package org.knowtiphy.babbage.storage;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
-import org.apache.jena.query.QueryFactory;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
@@ -36,14 +35,11 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import static org.knowtiphy.utils.JenaUtils.R;
 
 /**
  * A local storage layer for storing mail messages in a local RDF database (so in the file system of
@@ -77,22 +73,21 @@ public class LocalStorageSandBox implements IStorage
 					+ "		filter(?type != <" + Vocabulary.OPERATION + ">)"
 					+ "      }";
 
-	// map from accountType -> class for the relevant adapter
-	private static final Map<String, Class<?>> m_Class = new HashMap<>();
+	// map from account type vocabulary to class for the relevant adapter
+	private static final Map<String, Class<?>> adapterClasses = new HashMap<>();
 
 	static
 	{
-		m_Class.put(Vocabulary.IMAP_ACCOUNT, IMAPAdapter.class);
-		m_Class.put(Vocabulary.CALDAV_ACCOUNT, CALDAVAdapter.class);
-		m_Class.put(Vocabulary.CARDDAV_ACCOUNT, CARDDAVAdapter.class);
+		adapterClasses.put(Vocabulary.IMAP_ACCOUNT, IMAPAdapter.class);
+		adapterClasses.put(Vocabulary.CALDAV_ACCOUNT, CALDAVAdapter.class);
+		adapterClasses.put(Vocabulary.CARDDAV_ACCOUNT, CARDDAVAdapter.class);
 	}
 
 	public static NameSource nameSource = new NameSource(Vocabulary.NBASE);
 
-	private final Dataset messageDatabase;
+	private final Dataset cache;
 
-	private final OldListenerManager listenerManager = new OldListenerManager();
-	private final ListenerManager newListenerManager = new ListenerManager();
+	private final ListenerManager listenerManager = new ListenerManager();
 	private final Map<String, IAdapter> adapters = new HashMap<>(100);
 
 	private final BlockingDeque<Runnable> notificationQ = new LinkedBlockingDeque<>();
@@ -106,7 +101,7 @@ public class LocalStorageSandBox implements IStorage
 		Path databaseLocation = Paths.get(OS.getDataDir(Babbage.class).toString(), CACHE);
 		Files.createDirectories(databaseLocation);
 
-		messageDatabase = TDB2Factory.connectDataset(databaseLocation.toString());
+		cache = TDB2Factory.connectDataset(databaseLocation.toString());
 
 		//  read accounts -- TODO: this information should all be in a database not a file
 
@@ -122,8 +117,7 @@ public class LocalStorageSandBox implements IStorage
 
 		//	start all the adapters
 
-		var query = QueryFactory.create(ACCOUNT_TYPE);
-		try (QueryExecution qexec = QueryExecutionFactory.create(query, accountsModel))
+		try (QueryExecution qexec = QueryExecutionFactory.create(ACCOUNT_TYPE, accountsModel))
 		{
 			ResultSet result = qexec.execSelect();
 			while (result.hasNext())
@@ -135,13 +129,13 @@ public class LocalStorageSandBox implements IStorage
 						new String[]{LocalStorageSandBox.class.getName(), name, type});
 
 				@SuppressWarnings("unchecked")
-				Class<IAdapter> cls = (Class<IAdapter>) m_Class.get(type);
-				IAdapter adapter = cls.getConstructor(String.class, String.class, Dataset.class,
-						OldListenerManager.class, ListenerManager.class, BlockingDeque.class, Model.class)
-						.newInstance(name, type, messageDatabase,
-								listenerManager, newListenerManager, notificationQ, accountsModel);
-				adapter.initialize(delta);
+				Class<IAdapter> cls = (Class<IAdapter>) adapterClasses.get(type);
+				IAdapter adapter = cls.getConstructor(String.class, String.class,
+						Dataset.class, ListenerManager.class,
+						BlockingDeque.class, Model.class)
+						.newInstance(name, type, cache, listenerManager, notificationQ, accountsModel);
 
+				adapter.initialize(delta);
 				adapters.put(adapter.getId(), adapter);
 			}
 		}
@@ -178,11 +172,11 @@ public class LocalStorageSandBox implements IStorage
 		}).start();
 
 		//	add subclassing triples to the message cache to support RDFS reasoning over the cache
-
 		Vocabulary.allSubClasses.forEach((sub, sup) -> delta.bothOP(sub, RDFS.subClassOf.toString(), sup));
 
 		//	add all the new triples
-		BaseAdapter.apply(messageDatabase, delta);
+		//System.out.println(delta);
+		BaseAdapter.apply(cache, delta);
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "()");
 	}
@@ -202,7 +196,7 @@ public class LocalStorageSandBox implements IStorage
 		//JenaUtils.printModel(model, "SAVE");
 
 		notificationQ.add(POISON_PILL);
-		messageDatabase.close();
+		cache.close();
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "close");//"::()");
 	}
@@ -215,16 +209,6 @@ public class LocalStorageSandBox implements IStorage
 			throw new NoSuchAccountException(accountId);
 		}
 		return adapter;
-	}
-
-	@Override
-	public Model getAccounts()
-	{
-		//	TODO -- do this by querying the database?
-		Model accounts = JenaUtils.createRDFSModel(Vocabulary.accountSubClasses);
-		adapters.values().forEach(account ->
-				accounts.add(R(accounts, account.getId()), RDF.type, R(accounts, account.getType())));
-		return accounts;
 	}
 
 	@Override
@@ -259,58 +243,21 @@ public class LocalStorageSandBox implements IStorage
 	}
 
 	@Override
-	public ResultSet query(String id, String query) throws NoSuchAccountException
+	public ResultSet query(String query) throws StorageException
 	{
-		return A(id).query(query);
+		return BaseAdapter.query(cache, query);
 	}
 
 	@Override
 	public ReadContext getReadContext()
 	{
-		return new ReadContext(messageDatabase);
+		return new ReadContext(cache);
 	}
 
-	public Future<?> ensureMessageContentLoaded(String accountId, String folderId, String messageId) throws NoSuchAccountException
-	{
-		return A(accountId).ensureMessageContentLoaded(folderId, messageId);
-	}
-
-	@Override
-	public Future<?> loadAhead(String accountId, String folderId, Collection<String> messageIds) throws NoSuchAccountException
-	{
-		return A(accountId).loadAhead(folderId, messageIds);
-	}
-
-	// Will call an addListener method in each adapter
-	@Override
-	public Map<String, Future<?>> addOldListener(IOldStorageListener listener)
-	{
-		listenerManager.addListener(listener);
-
-		for (IAdapter adapter : adapters.values())
-		{
-			// Add relevant triples to the model
-			adapter.addListener();
-		}
-
-		// Start the synching of the IMAP org.knowtiphy.pinkpigmail.server, adds its work to the front of the Queue
-		// but need to put these account of the Queue
-		//		for (IAdapter adapter : adapters.values())
-//		{
-//			FutureTask<?> futureTask = new FutureTask<>(() ->adapter.sync());
-//			accountToFuture.put(adapter.getId(), futureTask);
-//			// For each account, spin up a thread that does a sync for it
-//			new Thread(futureTask).start();
-//		}
-
-		return new ConcurrentHashMap<>(100);
-	}
-
-	// TODO --- Will call an addListener method in each adapter
 	@Override
 	public void addListener(IStorageListener listener)
 	{
-		newListenerManager.addListener(listener);
+		listenerManager.addListener(listener);
 	}
 
 	@Override
@@ -397,24 +344,24 @@ public class LocalStorageSandBox implements IStorage
 	}
 
 	//	creates a model for the accounts from the incoming model by adding sub-class information
-
 	private Model createAccountsModel(Model model)
 	{
-		Model dModel = ModelFactory.createRDFSModel(model);
-		JenaUtils.addSubClasses(dModel, Vocabulary.accountSubClasses);
-		return dModel;
+		return JenaUtils.addSubClasses(ModelFactory.createRDFSModel(model), Vocabulary.accountSubClasses);
 	}
 
 	//	extract the account id from a model
 	private String getAccountId(Model model) throws NoAccountSpecifiedException
 	{
-		ResultSet result = QueryExecutionFactory.create(ACCOUNT_TYPE, createAccountsModel(model)).execSelect();
-		if (!result.hasNext())
+		try (QueryExecution qexec = QueryExecutionFactory.create(ACCOUNT_TYPE, createAccountsModel(model)))
 		{
-			throw new NoAccountSpecifiedException();
-		}
+			ResultSet result = qexec.execSelect();
+			if (!result.hasNext())
+			{
+				throw new NoAccountSpecifiedException();
+			}
 
-		return result.next().getResource("id").toString();
+			return result.next().getResource("id").toString();
+		}
 	}
 }
 
@@ -429,18 +376,6 @@ public class LocalStorageSandBox implements IStorage
 //	{
 //		return null; //getAccount(accountId).appendMessages(folderId, org.knowtiphy.pinkpigmail.messages);
 //	}
-
-// Below two methods copy pasted from Account.java, using as testing and for reference
-//	private static Resource R(Model model, String name)
-//	{
-//		return model.createResource(name);
-//	}
-//
-//	private static Property P(ModelCon model, String name)
-//	{
-//		return model.createProperty(name);
-//	}
-
 
 //	//@Override
 //	public void saveToDrafts(String accountId, String messageId, String draftId) //throws StorageException
