@@ -6,6 +6,7 @@ import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.utils.JenaUtils;
 
 import java.io.StringWriter;
+import java.util.Collection;
 
 /**
  * @author graham
@@ -98,5 +99,16 @@ public class Delta
 		JenaUtils.printModel(adds, "+", sw);
 		JenaUtils.printModel(deletes, "-", sw);
 		return sw.toString();
+	}
+
+	public static Delta merge(Collection<Delta> deltas)
+	{
+		var merged = new Delta();
+		deltas.forEach(d -> {
+			merged.adds.add(d.adds);
+			merged.deletes.add(d.deletes);
+		});
+
+		return merged;
 	}
 }

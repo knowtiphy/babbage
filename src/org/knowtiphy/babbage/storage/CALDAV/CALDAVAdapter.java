@@ -11,7 +11,7 @@ import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.vocabulary.RDF;
-import org.knowtiphy.babbage.storage.DavAdapter;
+import org.knowtiphy.babbage.storage.BaseDavAdapter;
 import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.EventSetBuilder;
 import org.knowtiphy.babbage.storage.ListenerManager;
@@ -44,7 +44,7 @@ import static org.knowtiphy.babbage.storage.CALDAV.DStore.addEvent;
 import static org.knowtiphy.babbage.storage.CALDAV.Encode.encode;
 import static org.knowtiphy.utils.JenaUtils.L;
 
-public class CALDAVAdapter extends DavAdapter
+public class CALDAVAdapter extends BaseDavAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(CALDAVAdapter.class.getName());
 

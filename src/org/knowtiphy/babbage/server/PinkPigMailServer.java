@@ -9,7 +9,6 @@ import org.knowtiphy.babbage.storage.StorageFactory;
 public class PinkPigMailServer
 {
 	@SuppressWarnings("HardcodedFileSeparator")
-	private static final String MESSAGE_STORAGE = "org/knowtiphy/pinkpigmail/messages";
 	private static final String ACCOUNTS_FILE = "accounts.ttl";
 
 

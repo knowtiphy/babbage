@@ -23,9 +23,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public abstract class DavAdapter extends BaseAdapter
+public abstract class BaseDavAdapter extends BaseAdapter
 {
-	private static final Logger LOGGER = Logger.getLogger(DavAdapter.class.getName());
+	private static final Logger LOGGER = Logger.getLogger(BaseDavAdapter.class.getName());
 
 	private static final Runnable POISON_PILL = () -> {
 	};
@@ -44,8 +44,8 @@ public abstract class DavAdapter extends BaseAdapter
 	protected String nickName;
 	private final Thread doWork;
 
-	public DavAdapter(String name, String type, Dataset messageDatabase, ListenerManager listenerManager,
-					  BlockingDeque<Runnable> notificationQ, Model model)
+	public BaseDavAdapter(String name, String type, Dataset messageDatabase, ListenerManager listenerManager,
+						  BlockingDeque<Runnable> notificationQ, Model model)
 	{
 		super(type, messageDatabase, listenerManager, notificationQ);
 

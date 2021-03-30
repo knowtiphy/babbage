@@ -23,10 +23,6 @@ public interface Constants
 
 	//	TODO -- could make this shorter?
 	long PING_FREQUENCY = 2L;
-	long FREQUENCY = 60000L;
 	String JUNK_FLAG = "Junk";
 	int NUM_ATTEMPTS = 1;//5;
-
-	int SYNCH_PRIORITY = Integer.MAX_VALUE;
-	int REDO_TASK = 10;
 }

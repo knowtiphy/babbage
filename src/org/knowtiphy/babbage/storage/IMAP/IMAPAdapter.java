@@ -13,7 +13,7 @@ import org.knowtiphy.babbage.storage.Delta;
 import org.knowtiphy.babbage.storage.EventSetBuilder;
 import org.knowtiphy.babbage.storage.IAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
-import org.knowtiphy.babbage.storage.LocalStorageSandBox;
+import org.knowtiphy.babbage.storage.LocalStorage;
 import org.knowtiphy.babbage.storage.Vocabulary;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
 import org.knowtiphy.utils.IProcedure;
@@ -106,7 +106,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		super(type, messageDatabase, listenerManager, notificationQ);
 
-		JenaUtils.printModel(model, "Accounts Model");
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_SERVER_NAME);
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_EMAIL_ADDRESS);
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_PASSWORD);
@@ -216,7 +215,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private void save(Model model)
 	{
-		String name = LocalStorageSandBox.nameSource.get();
+		String name = LocalStorage.nameSource.get();
 		JenaUtils.addType(model, name, Vocabulary.IMAP_ACCOUNT);
 		JenaUtils.addDP(model, name, Vocabulary.HAS_SERVER_NAME, serverName);
 		JenaUtils.addDP(model, name, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
@@ -387,7 +386,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var mid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_MESSAGE).toString();
-		System.out.println("syncOp = " + mid);
+		//System.out.println("syncOp = " + mid);
 
 		return contentService.submit(new MessageWork(() -> load(fid, List.of(mid))));
 	}
@@ -396,7 +395,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var mids = getMessageIDs(oid, operation);
-		System.out.println("syncOp = " + mids);
+		//System.out.println("syncOp = " + mids);
 
 		return loadAheadService.submit(() -> load(fid, mids));
 	}
@@ -488,7 +487,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				if (!needToFetch.isEmpty())
 				{
-					System.out.println("NEED TO FETCH = " + needToFetch);
+					//System.out.println("NEED TO FETCH = " + needToFetch);
 					long t = System.currentTimeMillis();
 					//assert m_folder.containsKey(folderId);
 					Folder folder = F(folderId);
@@ -502,14 +501,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 					folder.fetch(msgs, fp);
 
 					//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-					System.out.println("FETCHED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
+					//System.out.println("FETCHED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
 					t = System.currentTimeMillis();
 					List<MessageContent> contents = new LinkedList<>();
 					for (Message message : msgs)
 					{
 						contents.add(new MessageContent(message, this, true).process());
 					}
-					System.out.println("CONTENT LOADED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
+					//System.out.println("CONTENT LOADED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
 
 					var delta = new Delta();
 					contents.forEach(content -> DStore.addMessageContent(delta, content));
@@ -799,8 +798,8 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- if event work fails we need to tell the client and let them resync
 		return addWork(() -> {
 			var t = operation.call();
-			rewatch(t.fst());
-			applyAndNotify(t.snd(), t.thd());
+			rewatch(t.getFirst());
+			applyAndNotify(t.getSecond(), t.getThird());
 			return t;
 		});
 	}

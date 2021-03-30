@@ -10,11 +10,6 @@ public class EventSetBuilder
 	public Model model = ModelFactory.createDefaultModel();
 	private long ids;
 
-	public EventSetBuilder()
-	{
-		JenaUtils.addSubClasses(model, Vocabulary.eventSubClasses);
-	}
-
 	public String newEvent(String type, String aid)
 	{
 		var eid = Vocabulary.E(type, ids + "");

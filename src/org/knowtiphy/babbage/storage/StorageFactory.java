@@ -7,7 +7,7 @@ public class StorageFactory
 {
 	public static IStorage getLocal() throws Exception
 	{
-		return new LocalStorageSandBox();
+		return new LocalStorage();
 	}
 
 //	public static IStorage getRemote() throws IOException

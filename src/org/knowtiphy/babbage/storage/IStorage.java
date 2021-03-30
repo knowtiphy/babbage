@@ -3,13 +3,11 @@ package org.knowtiphy.babbage.storage;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
 import org.knowtiphy.babbage.storage.IMAP.MessageModel;
-import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
 
 import javax.mail.MessagingException;
 import java.util.Collection;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 /**
@@ -17,20 +15,20 @@ import java.util.concurrent.Future;
  */
 public interface IStorage extends AutoCloseable
 {
-	Future<?> doOperation(Model operation) throws NoSuchAccountException, NoOperationSpecifiedException;
-
-	ResultSet query(String query) throws StorageException;
-
-	void addListener(IStorageListener listener) throws InterruptedException, StorageException, MessagingException;
+	void addListener(IStorageListener listener) throws StorageException;
 
 	void close();
 
-	// For time being, stick all extra methods in here
-	//	should be in doOp
-	Model sync(String id) throws ExecutionException, InterruptedException, NoSuchAccountException;
+	Future<?> doOperation(Model operation) throws StorageException;
 
-	//	should be in doOp
-	Future<?> sync(String id, String fid) throws ExecutionException, InterruptedException, NoSuchAccountException;
+	ResultSet query(String query) throws StorageException;
+
+	//	For time being, stick all extra methods in here
+	//	Most should be done via doOp
+
+	Model sync(String id) throws StorageException;
+
+	Future<?> sync(String id, String fid) throws StorageException;
 
 	IReadContext getReadContext();
 

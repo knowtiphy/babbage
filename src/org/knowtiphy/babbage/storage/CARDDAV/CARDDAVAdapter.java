@@ -2,12 +2,12 @@ package org.knowtiphy.babbage.storage.CARDDAV;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Model;
-import org.knowtiphy.babbage.storage.DavAdapter;
+import org.knowtiphy.babbage.storage.BaseDavAdapter;
 import org.knowtiphy.babbage.storage.ListenerManager;
 
 import java.util.concurrent.BlockingDeque;
 
-public abstract class CARDDAVAdapter extends DavAdapter
+public abstract class CARDDAVAdapter extends BaseDavAdapter
 {
 	public CARDDAVAdapter(String name, String type, Dataset messageDatabase,
 						  ListenerManager listenerManager, BlockingDeque<Runnable> notificationQ, Model model)
