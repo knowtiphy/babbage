@@ -8,7 +8,6 @@ import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.ResultSetFactory;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
-import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
 import org.knowtiphy.utils.IProcedure;
@@ -136,7 +135,9 @@ public abstract class BaseAdapter implements IAdapter
 		dataset.begin(ReadWrite.READ);
 		try
 		{
-			//	TODO -- longer term we need a better solution than this
+			//	TODO -- This code runs the query, copies the result into an in memory result set,
+			//	and then closes the original query execution context to free server resources
+			//	longer term we need a better solution than the copy part
 			try (QueryExecution qexec = QueryExecutionFactory.create(query, infModel))
 			{
 				ResultSet results = qexec.execSelect();
@@ -178,10 +179,15 @@ public abstract class BaseAdapter implements IAdapter
 
 	//	run a query inside a read transaction on the database
 
-	protected <E> void query(IProcedure query)
+	protected void query(IProcedure query)
 	{
 		query(wrap(query));
 	}
+
+	//protected <T> void query(Callable<T> query)
+//	{
+//		query(wrap(query));
+//	}
 
 
 	@Override
@@ -212,18 +218,6 @@ public abstract class BaseAdapter implements IAdapter
 
 	@Override
 	public Future<?> appendMessages(String folderId, Message[] messages)
-	{
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public Message createMessage(MessageModel model)
-	{
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public Future<?> send(Model model)
 	{
 		throw new UnsupportedOperationException();
 	}

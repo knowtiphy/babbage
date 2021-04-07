@@ -5,10 +5,7 @@ import ezvcard.VCard;
 import ezvcard.property.Email;
 import ezvcard.property.RawProperty;
 import ezvcard.property.Telephone;
-import org.apache.jena.rdf.model.Literal;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelCon;
-import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.Statement;
@@ -22,23 +19,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.function.Function;
 
+import static org.knowtiphy.utils.JenaUtils.L;
+import static org.knowtiphy.utils.JenaUtils.P;
+import static org.knowtiphy.utils.JenaUtils.R;
+
 public interface DStore
 {
-	static Resource R(Model model, String name)
-	{
-		return model.createResource(name);
-	}
-
-	static Property P(ModelCon model, String name)
-	{
-		return model.createProperty(name);
-	}
-
-	static <T> Literal L(ModelCon model, T value)
-	{
-		return model.createTypedLiteral(value);
-	}
-
 	static <S, T> void addAttribute(Delta delta, String subject, String predicate, S value, Function<S, T> fn)
 	{
 		if (value != null)

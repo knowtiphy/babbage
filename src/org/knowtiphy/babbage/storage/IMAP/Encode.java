@@ -67,7 +67,12 @@ public class Encode
 			//	assert m_PerFolderMessage.get(folder).get(message) != null;
 			try
 			{
-				messages.add(Encode.decode(folder, message));//getMm_PerFolderMessage.get(folder).get(message);
+				Message m = Encode.decode(folder, message);
+				//	not sure how it can be null -- already deleted at a guess
+				if (m != null)
+				{
+					messages.add(m);//getMm_PerFolderMessage.get(folder).get(message);
+				}
 			}
 			catch (MessagingException e)
 			{

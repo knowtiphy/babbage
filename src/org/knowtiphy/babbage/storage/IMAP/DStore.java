@@ -60,7 +60,7 @@ public interface DStore
 				.addOP(account.getId(), Vocabulary.CONTAINS, folderId)
 				.addDP(folderId, Vocabulary.HAS_UID_VALIDITY, ((UIDFolder) folder).getUIDValidity())
 				.addDP(folderId, Vocabulary.HAS_NAME, folder.getName());
-				//	remember that two calls to getFolder(X) can return different folder objects for the same folder
+		//	remember that two calls to getFolder(X) can return different folder objects for the same folder
 //				.addL(folderId, Vocabulary.IS_ARCHIVE_FOLDER, account.archive != null && folder.getName().equals(account.archive))
 //				.addL(folderId, Vocabulary.IS_DRAFTS_FOLDER, account.drafts != null && folder.getName().equals(account.drafts))
 //				.addL(folderId, Vocabulary.IS_INBOX, account.inbox != null && folder.getURLName().toString().equals(account.inbox))
@@ -81,16 +81,18 @@ public interface DStore
 				.addOP(folderId, Vocabulary.CONTAINS, messageId);
 	}
 
-	static void addMessageContent(Delta delta, MessageContent content)
+	static void addMessageContent(Delta delta, Message message, String mid) throws Exception
 	{
+		var content = new MessageContent(message, mid,true).process();
+
 		//System.out.println("addMessageContent -- BODY : " + content.id);
-		delta.addDP(content.id, Vocabulary.HAS_CONTENT, content.content)
-				.addDP(content.id, Vocabulary.HAS_MIME_TYPE, content.mimeType);
+		delta.addDP(content.mid, Vocabulary.HAS_CONTENT, content.content)
+				.addDP(content.mid, Vocabulary.HAS_MIME_TYPE, content.mimeType);
 		//System.out.println("addMessageContent --- CIDs");
 		for (InlineAttachment attachment : content.inlineAttachments)
 		{
 			//  Note: the local CID is a string, not a URI -- it is unique within a message, but not across messages
-			delta.addOP(content.id, Vocabulary.HAS_CID_PART, attachment.id)
+			delta.addOP(content.mid, Vocabulary.HAS_CID_PART, attachment.id)
 					.addDP(attachment.id, Vocabulary.HAS_CONTENT, attachment.content)
 					.addDP(attachment.id, Vocabulary.HAS_MIME_TYPE, attachment.mimeType)
 					.addDP(attachment.id, Vocabulary.HAS_LOCAL_CID, attachment.localName);
@@ -103,7 +105,7 @@ public interface DStore
 			//  TODO -- what do we do if we have no filename?
 			if (attachment.fileName != null)
 			{
-				delta.addOP(content.id, Vocabulary.HAS_ATTACHMENT, attachment.id)
+				delta.addOP(content.mid, Vocabulary.HAS_ATTACHMENT, attachment.id)
 						.addDP(attachment.id, Vocabulary.HAS_CONTENT, attachment.content)
 						.addDP(attachment.id, Vocabulary.HAS_MIME_TYPE, attachment.mimeType)
 						.addDP(attachment.id, Vocabulary.HAS_FILE_NAME, attachment.fileName);

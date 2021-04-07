@@ -20,20 +20,19 @@ public class MessageContent
 {
 	private final Message message;
 	private final boolean allowHTML;
-	private final IMAPAdapter adapter;
 	private int count = 0;
-	String id;
+	String mid;
 	String content;
 	String mimeType;
 	Collection<InlineAttachment> inlineAttachments = new LinkedList<>();
 	Collection<RegularAttachment> regularAttachments = new LinkedList<>();
 
-	public MessageContent(Message message, IMAPAdapter adapter, boolean allowHTML)
+	public MessageContent(Message message, String mid, boolean allowHTML)
 	{
 		assert message != null;
+		this.mid = mid;
 		this.message = message;
 		this.allowHTML = allowHTML;
-		this.adapter = adapter;
 	}
 
 	private static boolean isAttachment(Part part) throws MessagingException
@@ -250,7 +249,6 @@ public class MessageContent
 
 	protected MessageContent process() throws Exception
 	{
-		id = Encode.encode(message);
 		Part part = getText(message);
 		if (part != null)
 		{

@@ -20,6 +20,7 @@ import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.LoggerUtils;
 import org.knowtiphy.utils.PriorityExecutor;
+import org.knowtiphy.utils.TriConsumer;
 import org.knowtiphy.utils.Triple;
 
 import javax.mail.FetchProfile;
@@ -32,6 +33,7 @@ import javax.mail.MessagingException;
 import javax.mail.Session;
 import javax.mail.Store;
 import javax.mail.StoreClosedException;
+import javax.mail.Transport;
 import javax.mail.UIDFolder;
 import javax.mail.URLName;
 import javax.mail.event.MessageChangedEvent;
@@ -61,6 +63,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -75,9 +78,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(IMAPAdapter.class.getName());
 
-	private final String serverName;
-	private final String emailAddress;
-	private final String password;
+	protected final String imapServer;
+	protected final String smtpServer;
+	protected final String emailAddress;
+	protected final String password;
+
 	//	these seem kina of pointless since all we do with trust senders and providers
 	//	is store them in the database
 	private final Collection<String> trustedSenders, trustedContentProviders;
@@ -99,18 +104,21 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	private Store store;
 	private IdleManager idleManager;
-	private Properties incomingProperties;
+	protected Properties props;
+	private AtomicBoolean closing = new AtomicBoolean(false);
 
 	public IMAPAdapter(String name, String type, Dataset messageDatabase,
 					   ListenerManager listenerManager, BlockingDeque<Runnable> notificationQ, Model model)
 	{
 		super(type, messageDatabase, listenerManager, notificationQ);
 
-		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_SERVER_NAME);
+		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_IMAP_SERVER);
+		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_SMTP_SERVER);
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_EMAIL_ADDRESS);
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_PASSWORD);
 
-		serverName = JenaUtils.getS(model, name, Vocabulary.HAS_SERVER_NAME);
+		imapServer = JenaUtils.getS(model, name, Vocabulary.HAS_IMAP_SERVER);
+		smtpServer = JenaUtils.getS(model, name, Vocabulary.HAS_SMTP_SERVER);
 		emailAddress = JenaUtils.getS(model, name, Vocabulary.HAS_EMAIL_ADDRESS);
 		password = JenaUtils.getS(model, name, Vocabulary.HAS_PASSWORD);
 		id = Vocabulary.E(Vocabulary.IMAP_ACCOUNT, emailAddress);
@@ -134,10 +142,13 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		loadAheadService = Executors.newFixedThreadPool(4);
 		pingService = Executors.newSingleThreadScheduledExecutor();
 
-		operations.put(Vocabulary.SYNC, this::syncOp);
+		operations.put(Vocabulary.SYNC, this::syncFolder);
 		operations.put(Vocabulary.SYNC_AHEAD, this::syncAhead);
 		operations.put(Vocabulary.MARK_READ, this::markMessagesAsRead);
 		operations.put(Vocabulary.DELETE_MESSAGE, this::deleteMessages);
+		operations.put(Vocabulary.MARK_JUNK, this::markMessagesAsJunk);
+		operations.put(Vocabulary.MARK_ANSWERED, this::markMessagesAsAnswered);
+		operations.put(Vocabulary.SEND_MESSAGE, this::sendMessage);
 		operations.put(Vocabulary.TRUST_SENDER, this::trustSender);
 		operations.put(Vocabulary.TRUST_PROVIDER, this::trustProvider);
 	}
@@ -146,18 +157,17 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "initialize");
 		var eventService = Executors.newCachedThreadPool();
-		establishIncomingProperties(eventService);
-		var session = Session.getInstance(incomingProperties, null);
+		establistProperties(eventService);
+		var session = Session.getInstance(props, null);
 		//session.setDebug(true);
 		store = session.getStore("imaps");
-		store.connect(serverName, emailAddress, password);
+		store.connect(imapServer, emailAddress, password);
 		//	TODO -- one idle manager for all accounts ..
 		//	TODO -- check if the provider has IDLE capabilities
 		idleManager = new IdleManager(session, eventService);
 
 		initializeFolders();
 		addInitialTriples(delta);
-
 		startPinger();
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "initialize");
@@ -180,16 +190,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 		delta.bothDPN(getId(), Vocabulary.HAS_NICK_NAME, nickName);
 		delta.bothDP(getId(), Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
-		delta.bothDP(getId(), Vocabulary.HAS_SERVER_NAME, serverName);
+		delta.bothDP(getId(), Vocabulary.HAS_SERVER_NAME, imapServer);
 
 		trustedSenders.forEach(s -> delta.bothDP(getId(), Vocabulary.HAS_TRUSTED_SENDER, s));
 		trustedContentProviders.forEach(s -> delta.bothDP(getId(), Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, s));
 	}
 
-
 	@SuppressWarnings("ResultOfMethodCallIgnored")
 	public void close(Model model)
 	{
+		closing.set(true);
 		LOGGER.entering(this.getClass().getCanonicalName(), "close");
 
 		LOGGER.log(Level.INFO, "Saving account information");
@@ -217,7 +227,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		String name = LocalStorage.nameSource.get();
 		JenaUtils.addType(model, name, Vocabulary.IMAP_ACCOUNT);
-		JenaUtils.addDP(model, name, Vocabulary.HAS_SERVER_NAME, serverName);
+		JenaUtils.addDP(model, name, Vocabulary.HAS_SERVER_NAME, imapServer);
 		JenaUtils.addDP(model, name, Vocabulary.HAS_EMAIL_ADDRESS, emailAddress);
 		JenaUtils.addDP(model, name, Vocabulary.HAS_PASSWORD, password);
 		trustedContentProviders.forEach(cp ->
@@ -254,16 +264,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		});
 	}
 
-	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
-	{
-		return addWork(new MessageWork(() -> {
-			Message[] messages = Encode.U(F(folderId), messageIds);
-			mark(messages, new Flags(Flags.Flag.ANSWERED), flag);
-			return List.of(messages[0].getFolder());
-		}));
-	}
-
-	private Future<?> markMessagesAsRead(String oid, Model operation)
+	private Future<?> markMessages(String oid, Model operation, TriConsumer<Folder, Message[], Boolean> doIt)
 	{
 		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var flag = JenaUtils.getB(operation, oid, Vocabulary.HAS_FLAG);
@@ -272,19 +273,31 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return addWork(new MessageWork(() -> {
 			Folder folder = F(fid);
 			Message[] messages = Encode.U(folder, mids);
-			mark(messages, new Flags(Flags.Flag.SEEN), flag);
+			System.out.println(operation);
+			System.out.println(folder);
+			System.out.println(Arrays.toString(messages));
+			System.out.println(flag);
+			doIt.accept(folder, messages, flag);
 			return List.of(folder);
 		}));
 	}
 
-	//	AUDIT -- I think this one is ok
-	public Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag)
+	public Future<?> markMessagesAsAnswered(String oid, Model operation)
 	{
-		return addWork(new MessageWork(() -> {
-			Message[] messages = Encode.U(F(folderId), messageIds);
-			mark(messages, new Flags(Constants.JUNK_FLAG), flag);
-			return List.of(messages[0].getFolder());
-		}));
+		return markMessages(oid, operation,
+				(folder, msgs, flag) -> mark(msgs, new Flags(Flags.Flag.ANSWERED), flag));
+	}
+
+	private Future<?> markMessagesAsRead(String oid, Model operation)
+	{
+		return markMessages(oid, operation,
+				(folder, msgs, flag) -> mark(msgs, new Flags(Flags.Flag.SEEN), flag));
+	}
+
+	public Future<?> markMessagesAsJunk(String oid, Model operation)
+	{
+		return markMessages(oid, operation,
+				(folder, msgs, flag) -> mark(msgs, new Flags(Constants.JUNK_FLAG), flag));
 	}
 
 	//  TOOD -- got to go since its just a composition of mark junk and copy org.knowtiphy.pinkpigmail.messages -- merge with move
@@ -314,9 +327,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		Folder source = F(sourceFolderId);
 		Folder target = F(targetFolderId);
 
+		System.out.println("COPY MESSAGES");
+		System.out.println(messageIds);
+
 		return addWork(new MessageWork(() -> {
 			//  TODO -- this is wrong, since can have both source and target close/fail
 			Message[] messages = Encode.U(F(sourceFolderId), messageIds);
+			System.out.println("COPY MESSAGES MESSAGES");
+			System.out.println(Arrays.toString(messages));
 			source.copyMessages(messages, target);
 			//  is this even necessary, or is the semantics of copy already a delete in the original folder?
 			if (delete)
@@ -328,14 +346,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}));
 	}
 
-	//	AUDIT -- I DONT think this is correct -- we can mark a message deleted as many times as we
-	//	like, and if the expunge fails, we can therefore just retry?
-	//  TODO -- mark vs expunge
-
 	private Future<?> deleteMessages(String oid, Model operation)
 	{
+		System.out.println("IN SERVER DELETE");
 		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var mids = getMessageIDs(oid, operation);
+		System.out.println("DONE SERVER DELETE");
 
 		return addWork(new MessageWork(() -> {
 			var folder = F(fid);
@@ -345,6 +361,24 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.expunge();
 			return List.of(folder);
 		}));
+
+
+	}
+
+	private Future<?> sendMessage(String oid, Model operation)
+	{
+		try
+		{
+			var msg = CreateMessage.createMessage(this, oid, operation);
+			System.out.println(msg);
+			Transport.send(msg);
+		}
+		catch (MessagingException | IOException e)
+		{
+			e.printStackTrace();
+		}
+
+		return new FutureTask<>(() -> true);
 	}
 
 	private Future<?> trustSender(String oid, Model operation)
@@ -382,7 +416,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}));
 	}
 
-	private Future<?> syncOp(String oid, Model operation)
+	private Future<?> syncFolder(String oid, Model operation)
 	{
 		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
 		var mid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_MESSAGE).toString();
@@ -412,31 +446,40 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 	//	private methods start here
 
-	private void establishIncomingProperties(ExecutorService eventService)
+	private void establistProperties(ExecutorService eventService)
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), "establishIncomingProperties");
-		incomingProperties = new Properties();
-		incomingProperties.put("mail.store.protocol", "imaps");
-		incomingProperties.put("mail.imaps.host", serverName);
-		incomingProperties.put("mail.imaps.usesocketchannels", "true");
-		incomingProperties.put("mail.imaps.peek", "true");
+		LOGGER.entering(this.getClass().getCanonicalName(), "establistProperties");
+
+		props = new Properties();
+
 		//	TODO -- all these need to be in RDF
+		props.put("mail.store.protocol", "imaps");
+		props.put("mail.imaps.host", imapServer);
+		props.put("mail.imaps.usesocketchannels", "true");
+		props.put("mail.imaps.peek", "true");
 		//	this should be set to true/false depending on whether the store has the
 		//	COMPRESS capability, but we have to create the session with properties
 		//	before we get a store!?
 		//incomingProperties.put("mail.imaps.compress.enable", "true");
-		incomingProperties.put("mail.imaps.connectionpoolsize", "20");
+		props.put("mail.imaps.connectionpoolsize", "20");
 		//	TODO -- what is a sane number for this?
-		incomingProperties.put("mail.imaps.fetchsize", "3000000");
-		incomingProperties.setProperty("mail.imaps.connectiontimeout", "2000");
-		incomingProperties.setProperty("mail.imaps.timeout", "2000");
+		props.put("mail.imaps.fetchsize", "3000000");
+		props.setProperty("mail.imaps.connectiontimeout", "2000");
+		props.setProperty("mail.imaps.timeout", "2000");
 		// incoming.setProperty("mail.imaps.port", "993");
 
-		incomingProperties.put("mail.event.scope", "session"); // or "application"
-		incomingProperties.put("mail.event.executor", eventService);
+		props.put("mail.transport.protocol", "smtp");
+		props.put("mail.smtp.host", smtpServer);
+		props.put("mail.smtp.ssl.enable", "true");
+		//	props.put("mail.smtp.port", "465");
+		//	do I need this?
+		props.put("mail.smtp.auth", "true");
+
+		props.put("mail.event.scope", "session"); // or "application"
+		props.put("mail.event.executor", eventService);
 
 		//	we need system properties to pick up command line flags
-		incomingProperties.putAll(System.getProperties());
+		props.putAll(System.getProperties());
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "establishIncomingProperties");
 	}
@@ -461,6 +504,20 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Folder[] getFolders() throws MessagingException
 	{
 		return store.getDefaultFolder().list();
+	}
+
+	private void fetchMessages(Folder folder, Message[] msgs) throws MessagingException
+	{
+		//	TODO -- this possibly needs to be tuned a bit
+		FetchProfile fp = new FetchProfile();
+		fp.add(FetchProfile.Item.CONTENT_INFO);
+		fp.add(FetchProfile.Item.ENVELOPE);
+		fp.add(FetchProfile.Item.FLAGS);
+		fp.add(IMAPFolder.FetchProfileItem.MESSAGE);
+		fp.add(UIDFolder.FetchProfileItem.UID);
+		fp.add(IMAPFolder.FetchProfileItem.HEADERS);
+
+		folder.fetch(msgs, fp);
 	}
 
 	private List<Folder> load(String folderId, Collection<String> messageIds)
@@ -488,30 +545,23 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				if (!needToFetch.isEmpty())
 				{
 					//System.out.println("NEED TO FETCH = " + needToFetch);
-					long t = System.currentTimeMillis();
-					//assert m_folder.containsKey(folderId);
 					Folder folder = F(folderId);
 					Message[] msgs = Encode.U(folder, needToFetch);
-
-					///how do we set a profile for the actual content?
-					FetchProfile fp = new FetchProfile();
-					fp.add(IMAPFolder.FetchProfileItem.MESSAGE);
-					fp.add(FetchProfile.Item.CONTENT_INFO);
-					fp.add(FetchProfile.Item.ENVELOPE);
-					folder.fetch(msgs, fp);
+					fetchMessages(folder, msgs);
 
 					//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
 					//System.out.println("FETCHED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
-					t = System.currentTimeMillis();
-					List<MessageContent> contents = new LinkedList<>();
+					var delta = new Delta();
+					//List<MessageContent> contents = new LinkedList<>();
 					for (Message message : msgs)
 					{
-						contents.add(new MessageContent(message, this, true).process());
+						var mid = Encode.encode(message);
+						DStore.addMessageContent(delta, message, mid);
 					}
 					//System.out.println("CONTENT LOADED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
 
-					var delta = new Delta();
-					contents.forEach(content -> DStore.addMessageContent(delta, content));
+//					var delta = new Delta();
+//					contents.forEach(content -> DStore.addMessageContent(delta, content));
 					apply(delta);
 
 					//System.out.println("load WORKER DONE : " + needToFetch);
@@ -609,6 +659,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- two maps, or even any maps, IS A BUT CLUMSY
 		specialType2ID.forEach((type, id) -> specialId2Type.put(id, type));
 
+		//	TODO -- use the new diff command in QueryHelper
 		var storedFIDs = query(() -> DFetch.folderIDs(cache, getId()));
 		var imapFIDS = new HashSet<String>();
 		for (Folder folder : getFolders())
@@ -744,10 +795,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		{
 			Message[] msgs = Encode.U(folder, addUID);
 			FetchProfile fp = new FetchProfile();
-			//fp.add(FetchProfile.Item.ENVELOPE);
 			//	TODO: headers vs envelope?
-			fp.add(IMAPFolder.FetchProfileItem.HEADERS);
+			fp.add(FetchProfile.Item.ENVELOPE);
 			fp.add(FetchProfile.Item.FLAGS);
+			fp.add(IMAPFolder.FetchProfileItem.HEADERS);
+			fp.add(UIDFolder.FetchProfileItem.UID);
 			folder.fetch(msgs, fp);
 
 			for (Message msg : msgs)
@@ -770,8 +822,14 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	//	TODO --- ?? Note: setFlags does not fail if one of the org.knowtiphy.pinkpigmail.messages is deleted
 	private static void mark(Message[] messages, Flags flags, boolean value) throws MessagingException
 	{
-		assert messages.length > 0;
-		messages[0].getFolder().setFlags(messages, flags, value);
+		//	can be 0 if all the messages were previously deleted
+		if (messages.length > 0)
+		{
+			System.out.println("mark");
+			System.out.println(Arrays.toString(messages));
+			System.out.println(flags);
+			messages[0].getFolder().setFlags(messages, flags, value);
+		}
 	}
 
 	//	work stuff
@@ -1033,10 +1091,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				for (Message message : e.getMessages())
 				{
+					fetchMessages(folder, new Message[]{message});
 					var mid = Encode.encode(message);
 					DStore.addMessage(delta, fid, mid);
 					DStore.addMessageFlags(delta, message, mid);
 					DStore.addMessageHeaders(delta, message, mid);
+					DStore.addMessageContent(delta, message, mid);
 					event.addOP(eid, Vocabulary.HAS_MESSAGE, mid);
 				}
 

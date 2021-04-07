@@ -15,8 +15,6 @@ import org.knowtiphy.babbage.Babbage;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
 import org.knowtiphy.babbage.storage.CARDDAV.CARDDAVAdapter;
 import org.knowtiphy.babbage.storage.IMAP.IMAPAdapter;
-import org.knowtiphy.babbage.storage.IMAP.MessageModel;
-import org.knowtiphy.babbage.storage.exceptions.NoAccountSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
@@ -25,10 +23,7 @@ import org.knowtiphy.utils.JenaUtils;
 import org.knowtiphy.utils.NameSource;
 import org.knowtiphy.utils.OS;
 
-import javax.mail.Message;
 import javax.mail.MessagingException;
-import javax.mail.Transport;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -37,7 +32,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -125,8 +119,6 @@ public class LocalStorage implements IStorage
 		try (QueryExecution qexec = QueryExecutionFactory.create(ACCOUNT_TYPE, accountsModel))
 		{
 			ResultSet result = qexec.execSelect();
-
-
 			while (result.hasNext())
 			{
 				var soln = result.next();
@@ -135,14 +127,16 @@ public class LocalStorage implements IStorage
 				LOGGER.log(Level.CONFIG, "{0} {1} {2}",
 						new String[]{LocalStorage.class.getName(), name, type});
 
+				System.out.println(type);
 				@SuppressWarnings("unchecked")
+
 				Class<IAdapter> cls = (Class<IAdapter>) adapterClasses.get(type);
 				IAdapter adapter = cls.getConstructor(String.class, String.class,
 						Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
 						.newInstance(name, type, cache, listenerManager, notificationQ, accountsModel);
 				adapters.put(adapter.getId(), adapter);
 
-				futures.add(workers.submit((Callable<Delta>) () -> {
+				futures.add(workers.submit(() -> {
 					var delta = new Delta();
 					adapter.initialize(delta);
 					return delta;
@@ -158,7 +152,7 @@ public class LocalStorage implements IStorage
 
 		//	thread which notifies listeners of changes
 		//noinspection CallToThreadStartDuringObjectConstruction
-		new Thread(() -> {
+		Thread doWork  = new Thread(() -> {
 			while (true)
 			{
 				try
@@ -185,7 +179,9 @@ public class LocalStorage implements IStorage
 					return;
 				}
 			}
-		}).start();
+		});
+		doWork.setDaemon(true);
+		doWork.start();
 
 		//	add new triples to the cache
 		System.out.println(triples);
@@ -229,6 +225,7 @@ public class LocalStorage implements IStorage
 	{
 		var op = JenaUtils.createRDFSModel(operation, Vocabulary.operationsubClasses);
 
+		//	TODO -- doesnt close query context but is in mem so ....
 		var rs = QueryExecutionFactory.create(OPERATION_QUERY, op).execSelect();
 		//	the operation model didn't contain something recognizable as an operation
 		if (!rs.hasNext())
@@ -276,12 +273,6 @@ public class LocalStorage implements IStorage
 	}
 
 	@Override
-	public ReadContext getReadContext()
-	{
-		return new ReadContext(cache);
-	}
-
-	@Override
 	public void addListener(IStorageListener listener)
 	{
 		listenerManager.addListener(listener);
@@ -301,94 +292,10 @@ public class LocalStorage implements IStorage
 		return A(accountId).copyMessages(sourceFolderId, messageIds, targetFolderId, delete);
 	}
 
-	@Override
-	public Future<?> markMessagesAsAnswered(String accountId, String folderId, Collection<String> messageIds,
-											boolean flag) throws NoSuchAccountException
-	{
-		return A(accountId).markMessagesAsAnswered(messageIds, folderId, flag);
-	}
-
-	@Override
-	public Future<?> markMessagesAsJunk(String accountId, String folderId, Collection<String> messageIds,
-										boolean flag) throws NoSuchAccountException
-	{
-		return A(accountId).markMessagesAsJunk(messageIds, folderId, flag);
-	}
-
-	@Override
-	public Future<?> send(Model model) throws StorageException
-	{
-		try
-		{
-			return adapters.get(getAccountId(model)).send(model);
-		}
-		catch (Exception ex)
-		{
-			throw new StorageException(ex);
-		}
-	}
-
-	@Override
-	public void send(MessageModel model) throws StorageException
-	{
-		try
-		{
-			Message message = adapters.get(model.getAccountId()).createMessage(model);
-			Transport.send(message);
-			if (model.getCopyToId() != null)
-			{
-				adapters.get(model.getAccountId()).appendMessages(model.getCopyToId(), new Message[]{message});
-			}
-		}
-		catch (MessagingException | IOException ex)
-		{
-			throw new StorageException(ex);
-		}
-		//		try
-		//		{
-		//			Message message = createMessage(accountId, messageId, false);
-		//			Transport.send(message);
-		//			if (sendId != null)
-		//			{
-		//				appendMessages(new Message[]{message}, sendId);
-		//			}
-		//
-		//			WriteContext contextw = getWriteContext();
-		//			contextw.startTransaction();
-		//			try
-		//			{
-		//				//  TODO -- this is wrong, since I don't think unstore unstores everything it needs to
-		//				DStore.unstoreDraft(contextw.getModel(), messageId);
-		//				contextw.commit();
-		//			} finally
-		//			{
-		//				contextw.endTransaction();
-		//			}
-		//		} catch (MessagingException ex)
-		//		{
-		//			throw new StorageException(ex);
-		//		}
-	}
-
 	//	creates a model for the accounts from the incoming model by adding sub-class information
 	private Model createAccountsModel(Model model)
 	{
 		return JenaUtils.addSubClasses(ModelFactory.createRDFSModel(model), Vocabulary.accountSubClasses);
-	}
-
-	//	extract the account id from a model
-	private String getAccountId(Model model) throws NoAccountSpecifiedException
-	{
-		try (QueryExecution qexec = QueryExecutionFactory.create(ACCOUNT_TYPE, createAccountsModel(model)))
-		{
-			ResultSet result = qexec.execSelect();
-			if (!result.hasNext())
-			{
-				throw new NoAccountSpecifiedException();
-			}
-
-			return result.next().getResource("id").toString();
-		}
 	}
 }
 
@@ -425,3 +332,44 @@ public class LocalStorage implements IStorage
 		modelTest.read(reader, null, "RDF/JSON");
 
 		JenaUtils.printModel(modelTest, "TEST FROM JSON");*/
+//@Override
+//public void send(MessageModel model) throws StorageException
+//{
+//	try
+//	{
+//		Message message = adapters.get(model.getAccountId()).createMessage(model);
+//		Transport.send(message);
+//		if (model.getCopyToId() != null)
+//		{
+//			adapters.get(model.getAccountId()).appendMessages(model.getCopyToId(), new Message[]{message});
+//		}
+//	}
+//	catch (MessagingException | IOException ex)
+//	{
+//		throw new StorageException(ex);
+//	}
+	//		try
+	//		{
+	//			Message message = createMessage(accountId, messageId, false);
+	//			Transport.send(message);
+	//			if (sendId != null)
+	//			{
+	//				appendMessages(new Message[]{message}, sendId);
+	//			}
+	//
+	//			WriteContext contextw = getWriteContext();
+	//			contextw.startTransaction();
+	//			try
+	//			{
+	//				//  TODO -- this is wrong, since I don't think unstore unstores everything it needs to
+	//				DStore.unstoreDraft(contextw.getModel(), messageId);
+	//				contextw.commit();
+	//			} finally
+	//			{
+	//				contextw.endTransaction();
+	//			}
+	//		} catch (MessagingException ex)
+	//		{
+	//			throw new StorageException(ex);
+	//		}
+//}

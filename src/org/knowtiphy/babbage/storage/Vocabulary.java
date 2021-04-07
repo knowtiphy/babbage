@@ -30,6 +30,8 @@ public class Vocabulary
 	public final static String DRAFT_MESSAGE = TBASE + "DraftMessage";
 
 	//	IMAP vocabulary
+	public final static String HAS_IMAP_SERVER = TBASE + "hasIMAPServer";
+	public final static String HAS_SMTP_SERVER = TBASE + "hasSMTPServer";
 	public final static String IMAP_ACCOUNT = TBASE + "IMAPAccount";
 	public final static String IMAP_FOLDER = TBASE + "IMAPFolder";
 	public final static String INBOX_FOLDER = TBASE + "InboxFolder";
@@ -125,7 +127,10 @@ public class Vocabulary
 	public final static String SYNC = TBASE + "Sync";
 	public final static String SYNC_AHEAD = TBASE + "SyncAhead";
 	public final static String MARK_READ = TBASE + "MarkReadOperation";
+	public final static String MARK_JUNK = TBASE + "MarkJunkOperation";
+	public final static String MARK_ANSWERED = TBASE + "MarkAnsweredOperation";
 	public final static String DELETE_MESSAGE = TBASE + "DeleteMessageOperation";
+	public final static String SEND_MESSAGE = TBASE + "SendMessageOperation";
 	public final static String TRUST_SENDER = TBASE + "TrustSender";
 	public final static String TRUST_PROVIDER = TBASE + "TrustProvider";
 
@@ -169,8 +174,11 @@ public class Vocabulary
 	{
 		operationsubClasses.put(SYNC, OPERATION);
 		operationsubClasses.put(SYNC_AHEAD, OPERATION);
-		operationsubClasses.put(MARK_READ, OPERATION);
 		operationsubClasses.put(DELETE_MESSAGE, OPERATION);
+		operationsubClasses.put(MARK_READ, OPERATION);
+		operationsubClasses.put(MARK_JUNK, OPERATION);
+		operationsubClasses.put(MARK_ANSWERED, OPERATION);
+		operationsubClasses.put(SEND_MESSAGE, OPERATION);
 		operationsubClasses.put(TRUST_SENDER, OPERATION);
 		operationsubClasses.put(TRUST_PROVIDER, OPERATION);
 	}

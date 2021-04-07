@@ -6,12 +6,10 @@
 package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.rdf.model.Model;
-import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 
 import javax.mail.Message;
 import javax.mail.MessagingException;
-import java.io.IOException;
 import java.util.Collection;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -48,8 +46,4 @@ public interface IAdapter
 	Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId, boolean delete) throws MessagingException;
 
 	Future<?> appendMessages(String folderId, Message[] messages);
-
-	Message createMessage(MessageModel model) throws MessagingException, IOException;
-
-	Future<?> send(Model model);
 }

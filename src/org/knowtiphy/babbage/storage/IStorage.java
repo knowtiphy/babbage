@@ -2,7 +2,6 @@ package org.knowtiphy.babbage.storage;
 
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
-import org.knowtiphy.babbage.storage.IMAP.MessageModel;
 import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
 
@@ -21,6 +20,8 @@ public interface IStorage extends AutoCloseable
 
 	Future<?> doOperation(Model operation) throws StorageException;
 
+	//	note -- this method on the server closes the result set from running the query and
+	//	returns a copy of that result set -- presamably its in mem? does the copy require closing?
 	ResultSet query(String query) throws StorageException;
 
 	//	For time being, stick all extra methods in here
@@ -30,19 +31,9 @@ public interface IStorage extends AutoCloseable
 
 	Future<?> sync(String id, String fid) throws StorageException;
 
-	IReadContext getReadContext();
-
-	void send(MessageModel model) throws StorageException;
-
 	Future<?> moveMessagesToJunk(String accountId, String sourceFolderId, Collection<String> messageIds,
 								 String targetFolderId, boolean delete) throws NoSuchAccountException;
 
 	Future<?> copyMessages(String accountId, String sourceFolderId, Collection<String> messageIds,
 						   String targetFolderId, boolean delete) throws MessagingException, NoSuchAccountException;
-
-	Future<?> markMessagesAsAnswered(String accountId, String folderId, Collection<String> messageIds, boolean flag) throws NoSuchAccountException;
-
-	Future<?> markMessagesAsJunk(String accountId, String folderId, Collection<String> messageIds, boolean flag) throws NoSuchAccountException;
-
-	Future<?> send(Model model) throws StorageException;
 }

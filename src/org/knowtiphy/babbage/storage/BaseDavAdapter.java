@@ -3,9 +3,11 @@ package org.knowtiphy.babbage.storage;
 import com.github.sardine.Sardine;
 import com.github.sardine.SardineFactory;
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
 import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.JenaUtils;
 
@@ -23,6 +25,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static org.knowtiphy.utils.JenaUtils.P;
+import static org.knowtiphy.utils.JenaUtils.R;
+
 public abstract class BaseDavAdapter extends BaseAdapter
 {
 	private static final Logger LOGGER = Logger.getLogger(BaseDavAdapter.class.getName());
@@ -30,7 +35,7 @@ public abstract class BaseDavAdapter extends BaseAdapter
 	private static final Runnable POISON_PILL = () -> {
 	};
 
-	private static final long FREQUENCY = 30L;
+	private static final long FREQUENCY = 60L;
 
 	protected final ScheduledExecutorService pingService = Executors.newSingleThreadScheduledExecutor();
 	protected final BlockingQueue<Runnable> workQ = new LinkedBlockingQueue<>();
@@ -70,6 +75,7 @@ public abstract class BaseDavAdapter extends BaseAdapter
 
 		sardine = SardineFactory.begin(emailAddress, password);
 		doWork = new Thread(new Worker());
+		doWork.setDaemon(true);
 		doWork.start();
 
 		//	set the id for the calendar adapter
@@ -119,65 +125,69 @@ public abstract class BaseDavAdapter extends BaseAdapter
 		LOGGER.exiting(this.getClass().getCanonicalName(), "startPinger");
 	}
 
-	//	TODO this needs to close the result set -- and they need to be in DFetch at a guess
 	protected String getStoredTag(String query, String resType)
 	{
 		return query(() -> {
-			ResultSet resultSet = QueryExecutionFactory.create(query, cache.getDefaultModel()).execSelect();
-			return JenaUtils.single(resultSet, soln -> soln.get(resType).toString());
+			try (QueryExecution qexec = QueryExecutionFactory.create(query, cache.getDefaultModel()))
+			{
+				ResultSet resultSet = qexec.execSelect();
+				return JenaUtils.single(resultSet, soln -> soln.get(resType).toString());
+			}
 		});
 	}
 
-	//	TODO this needs to close the result set -- and they need to be in DFetch at a guess
 	protected Set<String> getStored(String query, String type)
 	{
 		Set<String> stored = new HashSet<>(1000);
 		query(() -> {
-			ResultSet resultSet = QueryExecutionFactory.create(query, cache.getDefaultModel()).execSelect();
-			resultSet.forEachRemaining(soln -> stored.add(soln.get(type).asResource().toString()));
+			try (QueryExecution qexec = QueryExecutionFactory.create(query, cache.getDefaultModel()))
+			{
+				ResultSet resultSet = qexec.execSelect();
+				resultSet.forEachRemaining(soln -> stored.add(soln.get(type).asResource().toString()));
+			}
 		});
 
 		return stored;
 	}
 
-	public void updateTriple(Model messageDB, Object delta, String resURI, String hasProp, Object updated)
+	public void updateTriple(Model cache, Delta delta, String resURI, String hasProp, Object updated)
 	{
-//		delta.delete(messageDB.listStatements(R(messageDB, resURI), P(messageDB, hasProp), (RDFNode) null));
-//		delta.addDP(resURI, hasProp, updated);
-	}
+		delta.delete(cache.listStatements(R(cache, resURI), P(cache, hasProp), (RDFNode) null));
+		delta.addDP(resURI,hasProp,updated);
+}
 
-	private class Worker implements Runnable
+private class Worker implements Runnable
+{
+	@Override
+	public void run()
 	{
-		@Override
-		public void run()
+		while (true)
 		{
-			while (true)
+			try
 			{
-				try
-				{
-					Runnable task = workQ.take();
+				Runnable task = workQ.take();
 
-					if (task == POISON_PILL)
-					{
-						return;
-					}
-					else
-					{
-						try
-						{
-							task.run();
-						}
-						catch (Exception ex)
-						{
-							LOGGER.warning(ex.getLocalizedMessage());
-						}
-					}
-				}
-				catch (InterruptedException e)
+				if (task == POISON_PILL)
 				{
 					return;
 				}
+				else
+				{
+					try
+					{
+						task.run();
+					}
+					catch (Exception ex)
+					{
+						LOGGER.warning(ex.getLocalizedMessage());
+					}
+				}
+			}
+			catch (InterruptedException e)
+			{
+				return;
 			}
 		}
 	}
+}
 }

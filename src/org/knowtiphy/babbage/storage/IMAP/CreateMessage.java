@@ -1,10 +1,9 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
-import org.knowtiphy.utils.FileUtils;
+import org.apache.jena.rdf.model.Model;
+import org.knowtiphy.babbage.storage.Vocabulary;
+import org.knowtiphy.utils.JenaUtils;
 
-import javax.activation.DataHandler;
-import javax.activation.DataSource;
-import javax.activation.FileDataSource;
 import javax.mail.Address;
 import javax.mail.Authenticator;
 import javax.mail.Message;
@@ -18,59 +17,18 @@ import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
 import java.io.IOException;
-import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedList;
-import java.util.List;
-import java.util.Properties;
 
 public class CreateMessage
 {
-
-	static List<Address> toList(String raw) throws AddressException
+	private static MimeMessage createMessage(IMAPAdapter adapter) throws MessagingException
 	{
-		if (raw == null)
-		{
-			return new LinkedList<>();
-		}
-
-		String trim = raw.trim();
-		if (trim.isEmpty())
-		{
-			return new LinkedList<>();
-		}
-
-		String[] tos = trim.split(",");
-		List<Address> result = new ArrayList<>(10);
-		for (String to : tos)
-		{
-			result.add(new InternetAddress(to.trim()));
-		}
-
-		return result;
-	}
-
-
-	private MimeMessage createMessage(String emailAddress, String password) throws MessagingException
-	{
-		//	we need system properties to pick up command line flags
-		Properties outGoing = System.getProperties();
-		//  TODO -- need to get this from the database and per account
-		outGoing.setProperty("mail.transport.protocol", "smtp");
-		outGoing.setProperty("mail.smtp.host", "chimail.midphase.com");
-		outGoing.setProperty("mail.smtp.ssl.enable", "true");
-		outGoing.setProperty("mail.smtp.port", "465");
-		//	do I need this?
-		outGoing.setProperty("mail.smtp.auth", "true");
-		//	TODO -- can do this another way?
-		Properties props = System.getProperties();
-		props.putAll(outGoing);
-		Session session = Session.getInstance(props, new Authenticator()
+		Session session = Session.getInstance(adapter.props, new Authenticator()
 		{
 			@Override
 			protected PasswordAuthentication getPasswordAuthentication()
 			{
-				return new PasswordAuthentication(emailAddress, password);
+				return new PasswordAuthentication(adapter.emailAddress, adapter.password);
 			}
 		});
 
@@ -79,80 +37,108 @@ public class CreateMessage
 		MimeBodyPart body = new MimeBodyPart();
 		multipart.addBodyPart(body);
 		message.setContent(multipart);
+
 		return message;
 	}
 
-	public Message createMessage(String emailAddress, String passWord, MessageModel model) throws MessagingException, IOException
+	public static Message createMessage(IMAPAdapter adapter, String oid, Model operation) throws MessagingException, IOException
 	{
-		Message message = createMessage(emailAddress, passWord);
+		var mid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_MESSAGE).toString();
 
-		//			ReadContext context = getReadContext();
-		//			context.start();
-		//			try
-		//			{
-		//				ResultSet resultSet = QueryExecutionFactory
-		//						.create(DFetch.outboxMessage(accountId, messageId), context.getModel()).execSelect();
-		//				QuerySolution s = resultSet.next();
-		//				recipients = s.get(Vars.VAR_TO) == null ? null : s.get(Vars.VAR_TO).asLiteral().getString();
-		//				ccs = s.get("cc") == null ? null : s.get("cc").asLiteral().getString();
-		//				subject = s.get(Vars.VAR_SUBJECT) == null ? null : s.get(Vars.VAR_SUBJECT).asLiteral().getString();
-		//				content = s.get(Vars.VAR_CONTENT) == null ? null : s.get(Vars.VAR_CONTENT).asLiteral().getString();
-		//			} finally
-		//			{
-		//				context.end();
-		//			}
+		var recipients = JenaUtils.apply(operation, mid, Vocabulary.TO, to -> to.asLiteral().getString(), new LinkedList<>());
+		var ccs = JenaUtils.apply(operation, mid, Vocabulary.HAS_CC, to -> to.asLiteral().getString(), new LinkedList<>());
+		var subject = JenaUtils.getS(operation, mid, Vocabulary.HAS_SUBJECT);
+		var content = JenaUtils.getS(operation, mid, Vocabulary.HAS_CONTENT);
+		var mimeType = JenaUtils.getS(operation, mid, Vocabulary.HAS_MIME_TYPE);
 
-		message.setFrom(new InternetAddress(emailAddress));
-		message.setReplyTo(new Address[]{new InternetAddress(emailAddress)});
+		System.out.println(recipients);
+		System.out.println(ccs);
+		System.out.println(subject);
+		System.out.println(content);
+		System.out.println(mimeType);
+
+		var message = createMessage(adapter);
+		message.setFrom(new InternetAddress(adapter.emailAddress));
+		message.setReplyTo(new Address[]{new InternetAddress(adapter.emailAddress)});
+
 		//  TODO -- get rid of the toList stuff
-		if (model.getTo() != null)
+		for (var to : recipients)
 		{
-			for (Address address : CreateMessage.toList(model.getTo()))
+			try
 			{
-				try
-				{
-					message.addRecipient(Message.RecipientType.TO, address);
-				}
-				catch (AddressException ex)
-				{
-					//  ignore
-				}
+				message.addRecipient(Message.RecipientType.TO, new InternetAddress(to));
+			}
+			catch (AddressException ex)
+			{
+				//  ignore
 			}
 		}
 
-		if (model.getCc() != null)
+		for (var cc : ccs)
 		{
-			for (Address address : CreateMessage.toList(model.getCc()))
+			try
 			{
-				try
-				{
-					message.addRecipient(Message.RecipientType.CC, address);
-				}
-				catch (AddressException ex)
-				{
-					//  ignore
-				}
+				message.addRecipient(Message.RecipientType.CC, new InternetAddress(cc));
+			}
+			catch (AddressException ex)
+			{
+				//  ignore
 			}
 		}
 
-		if (model.getSubject() != null)
+		if (subject != null)
 		{
-			message.setSubject(model.getSubject());
+			message.setSubject(subject);
 		}
+
 		//  have to have non null content
-		((Multipart) message.getContent()).getBodyPart(0)
-				.setContent(model.getContent() == null ? "" : model.getContent(), model.getMimeType());
+		((Multipart) message.getContent()).getBodyPart(0).setContent(content == null ? "" : content, mimeType);
 
 		//	setup attachments
-		for (Path path : model.getAttachments())
-		{
-			MimeBodyPart messageBodyPart = new MimeBodyPart();
-			DataSource source = new FileDataSource(path.toFile());
-			messageBodyPart.setDataHandler(new DataHandler(source));
-			messageBodyPart.setFileName(FileUtils.baseName(path.toFile()));
-			((Multipart) message.getContent()).addBodyPart(messageBodyPart);
-		}
+//		for (Path path : model.getAttachments())
+//		{
+//			MimeBodyPart messageBodyPart = new MimeBodyPart();
+//			DataSource source = new FileDataSource(path.toFile());
+//			messageBodyPart.setDataHandler(new DataHandler(source));
+//			messageBodyPart.setFileName(FileUtils.baseName(path.toFile()));
+//			((Multipart) message.getContent()).addBodyPart(messageBodyPart);
+//		}
 
 		return message;
 	}
 }
+
+//	private static ParameterizedSparqlString GET_MESSAGE_INFO = new ParameterizedSparqlString(
+//			"SELECT ?subject ?content ?to ?cc ?bcc\n"
+//					+ "WHERE \n"
+//					+ "{\n"
+//					+ "      ?aid <" + Vocabulary.CONTAINS + "> ?mid.\n"
+//					+ "      OPTIONAL { ?mid <" + Vocabulary.HAS_SUBJECT + "> ?subject }\n"
+//					+ "      OPTIONAL { ?mid <" + Vocabulary.HAS_CONTENT + "> ?content } \n"
+//					+ "      OPTIONAL { ?mid <" + Vocabulary.TO + "> ?to } \n"
+//					+ "      OPTIONAL { ?mid <" + Vocabulary.HAS_CC + "> ?cc } \n"
+//					+ "      OPTIONAL { ?mid <" + Vocabulary.HAS_BCC + "> ?bcc } \n"
+//					+ "}");
+//
+//	static List<Address> toList(String raw) throws AddressException
+//	{
+//		if (raw == null)
+//		{
+//			return new LinkedList<>();
+//		}
+//
+//		String trim = raw.trim();
+//		if (trim.isEmpty())
+//		{
+//			return new LinkedList<>();
+//		}
+//
+//		String[] tos = trim.split(",");
+//		List<Address> result = new ArrayList<>(10);
+//		for (String to : tos)
+//		{
+//			result.add(new InternetAddress(to.trim()));
+//		}
+//
+//		return result;
+//	}

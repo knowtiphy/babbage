@@ -97,7 +97,7 @@ public abstract class CARDDAVAdapter extends BaseDavAdapter
 //		});
 //
 //		applyAndNotify(delta -> {
-//			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).execSelect();
+//			ResultSet rs = QueryExecutionFactory.create(addressBookProperties(addressBookUri), messageDB).exeSelect();
 //			while (rs.hasNext())
 //			{
 //				QuerySolution soln = rs.next();
@@ -142,7 +142,7 @@ public abstract class CARDDAVAdapter extends BaseDavAdapter
 //
 //			applyAndNotify(delta -> {
 //
-//				ResultSet rs = QueryExecutionFactory.create(groupProperties(resourceURI), messageDB).execSelect();
+//				ResultSet rs = QueryExecutionFactory.create(groupProperties(resourceURI), messageDB).exeSelect();
 //				while (rs.hasNext())
 //				{
 //					QuerySolution soln = rs.next();
