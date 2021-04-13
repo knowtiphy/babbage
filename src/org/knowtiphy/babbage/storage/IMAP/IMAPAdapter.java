@@ -56,7 +56,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -64,6 +63,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -105,12 +105,12 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	private Store store;
 	private IdleManager idleManager;
 	protected Properties props;
-	private AtomicBoolean closing = new AtomicBoolean(false);
+	private final AtomicBoolean closing = new AtomicBoolean(false);
 
-	public IMAPAdapter(String name, String type, Dataset messageDatabase,
-					   ListenerManager listenerManager, BlockingDeque<Runnable> notificationQ, Model model)
+	public IMAPAdapter(String name, String type, Dataset cache, ListenerManager listenerManager,
+					   BlockingDeque<Runnable> notificationQ, Model model)
 	{
-		super(type, messageDatabase, listenerManager, notificationQ);
+		super(type, cache, listenerManager, notificationQ);
 
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_IMAP_SERVER);
 		assert JenaUtils.hasUnique(model, name, Vocabulary.HAS_SMTP_SERVER);
@@ -142,7 +142,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		loadAheadService = Executors.newFixedThreadPool(4);
 		pingService = Executors.newSingleThreadScheduledExecutor();
 
-		operations.put(Vocabulary.SYNC, this::syncFolder);
 		operations.put(Vocabulary.SYNC_AHEAD, this::syncAhead);
 		operations.put(Vocabulary.MARK_READ, this::markMessagesAsRead);
 		operations.put(Vocabulary.DELETE_MESSAGE, this::deleteMessages);
@@ -153,7 +152,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		operations.put(Vocabulary.TRUST_PROVIDER, this::trustProvider);
 	}
 
-	public void initialize(Delta delta) throws MessagingException, IOException
+	public void initialize(Map<String, Function<String, Future<?>>> syncs, Delta delta) throws MessagingException, IOException
 	{
 		LOGGER.entering(this.getClass().getCanonicalName(), "initialize");
 		var eventService = Executors.newCachedThreadPool();
@@ -165,6 +164,10 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	TODO -- one idle manager for all accounts ..
 		//	TODO -- check if the provider has IDLE capabilities
 		idleManager = new IdleManager(session, eventService);
+
+		syncs.put(Vocabulary.IMAP_ACCOUNT, this::syncAccount);
+		syncs.put(Vocabulary.IMAP_FOLDER, this::syncFolder);
+		syncs.put(Vocabulary.IMAP_MESSAGE, this::syncMessage);
 
 		initializeFolders();
 		addInitialTriples(delta);
@@ -237,31 +240,38 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		JenaUtils.printModel(model, "Saved Model");
 	}
 
-	//	TODO -- this needs to call initialize since initialize is really just the initial sync
-	@Override
-	public void sync()
+	private Future<?> syncAccount(String aid)
 	{
+		System.out.println("syncAccount " + aid);
+		return new FutureTask<>(() -> true);
 	}
 
-	public Future<?> sync(String fid) throws ExecutionException, InterruptedException
+	private Future<?> syncFolder(String fid)
 	{
-		LOGGER.entering(this.getClass().getCanonicalName(), "sync");
+		LOGGER.entering(this.getClass().getCanonicalName(), "syncFolder");
 
 		return addEventWork(() -> {
 			Folder folder = F(fid);
 			watch(folder);
 
-			var delta = new Delta();
+			var delta = getDelta();
 			synchronizeFolder(folder, delta);
 
 			var event = new EventSetBuilder();
 			var eid = event.newEvent(Vocabulary.FOLDER_SYNCED);
-			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id).
-					addOP(eid, Vocabulary.HAS_FOLDER, fid);
+			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id).addOP(eid, Vocabulary.HAS_FOLDER, fid);
 
-			LOGGER.exiting(this.getClass().getCanonicalName(), "sync");
 			return new Triple<>(folder, delta, event);
 		});
+	}
+
+	public Future<?> syncMessage(String mid)
+	{
+		var fid = query(() -> cache.getDefaultModel().
+				listSubjectsWithProperty(P(cache.getDefaultModel(), Vocabulary.CONTAINS),
+						R(cache.getDefaultModel(), mid)).next().toString());
+
+		return contentService.submit(new MessageWork(() -> load(fid, List.of(mid))));
 	}
 
 	private Future<?> markMessages(String oid, Model operation, TriConsumer<Folder, Message[], Boolean> doIt)
@@ -273,10 +283,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		return addWork(new MessageWork(() -> {
 			Folder folder = F(fid);
 			Message[] messages = Encode.U(folder, mids);
-			System.out.println(operation);
-			System.out.println(folder);
-			System.out.println(Arrays.toString(messages));
-			System.out.println(flag);
 			doIt.accept(folder, messages, flag);
 			return List.of(folder);
 		}));
@@ -322,16 +328,16 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	}
 
 	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-								  boolean delete) throws MessagingException
+								  boolean delete)
 	{
-		Folder source = F(sourceFolderId);
-		Folder target = F(targetFolderId);
-
 		System.out.println("COPY MESSAGES");
 		System.out.println(messageIds);
 
 		return addWork(new MessageWork(() -> {
 			//  TODO -- this is wrong, since can have both source and target close/fail
+			Folder source = F(sourceFolderId);
+			Folder target = F(targetFolderId);
+
 			Message[] messages = Encode.U(F(sourceFolderId), messageIds);
 			System.out.println("COPY MESSAGES MESSAGES");
 			System.out.println(Arrays.toString(messages));
@@ -385,11 +391,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		System.out.println("TRUST SENDER ");
 		JenaUtils.printModel(operation);
-		Delta delta = new Delta();
+		Delta delta = getDelta();
 		JenaUtils.apply(operation, oid, Vocabulary.HAS_TRUSTED_SENDER,
 				s -> delta.addDP(id, Vocabulary.HAS_TRUSTED_SENDER, s.toString()));
 		System.out.println(delta);
-		apply(delta);
+		delta.apply();
 		//	TODO -- fire off an event
 		return new FutureTask<>(() -> true);
 	}
@@ -398,11 +404,11 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 	{
 		System.out.println("TRUST PROVIDER ");
 		JenaUtils.printModel(operation);
-		Delta delta = new Delta();
+		Delta delta = getDelta();
 		JenaUtils.apply(operation, oid, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER,
 				s -> delta.addDP(id, Vocabulary.HAS_TRUSTED_CONTENT_PROVIDER, s.toString()));
 		System.out.println(delta);
-		apply(delta);
+		delta.apply();
 		//	TODO -- fire off an event
 		return new FutureTask<>(() -> true);
 	}
@@ -414,15 +420,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			folder.appendMessages(messages);
 			return List.of(folder);
 		}));
-	}
-
-	private Future<?> syncFolder(String oid, Model operation)
-	{
-		var fid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_FOLDER).toString();
-		var mid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_MESSAGE).toString();
-		//System.out.println("syncOp = " + mid);
-
-		return contentService.submit(new MessageWork(() -> load(fid, List.of(mid))));
 	}
 
 	private Future<?> syncAhead(String oid, Model operation)
@@ -544,27 +541,19 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 
 				if (!needToFetch.isEmpty())
 				{
-					//System.out.println("NEED TO FETCH = " + needToFetch);
 					Folder folder = F(folderId);
 					Message[] msgs = Encode.U(folder, needToFetch);
 					fetchMessages(folder, msgs);
 
 					//	get all the data first since we don't want to hold a write lock if the IMAP fetching stalls
-					//System.out.println("FETCHED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
-					var delta = new Delta();
-					//List<MessageContent> contents = new LinkedList<>();
+					var delta = getDelta();
 					for (Message message : msgs)
 					{
 						var mid = Encode.encode(message);
 						DStore.addMessageContent(delta, message, mid);
 					}
-					//System.out.println("CONTENT LOADED " + (System.currentTimeMillis() - t) + " = " + needToFetch);
 
-//					var delta = new Delta();
-//					contents.forEach(content -> DStore.addMessageContent(delta, content));
-					apply(delta);
-
-					//System.out.println("load WORKER DONE : " + needToFetch);
+					delta.apply();
 					return List.of(folder);
 				}
 			}
@@ -686,7 +675,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			}
 		});
 
-		Delta delta = new Delta();
+		Delta delta = getDelta();
 
 		for (Folder folder : getFolders())
 		{
@@ -702,7 +691,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		}
 
 		//	update the database
-		apply(delta);
+		delta.apply();
 
 		LOGGER.log(Level.CONFIG, "{0} :: Special Folders :: {1}", new String[]{emailAddress, specialType2ID.toString()});
 
@@ -811,6 +800,9 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 				}
 				DStore.addMessageFlags(delta, msg, mid);
 				DStore.addMessageHeaders(delta, msg, mid);
+				//	TODO -- this is gonna be slow -- next to collect them all together and do one fetch
+				//	need to do something smarter than this
+				//DStore.addMessageContent(delta, msg, mid);
 			}
 		}
 
@@ -825,9 +817,6 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 		//	can be 0 if all the messages were previously deleted
 		if (messages.length > 0)
 		{
-			System.out.println("mark");
-			System.out.println(Arrays.toString(messages));
-			System.out.println(flags);
 			messages[0].getFolder().setFlags(messages, flags, value);
 		}
 	}
@@ -982,7 +971,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			var folder = (Folder) messageChangedEvent.getSource();
 			var message = messageChangedEvent.getMessage();
 
-			var delta = new Delta();
+			var delta = getDelta();
 			var event = new EventSetBuilder();
 			var eid = event.newEvent(Vocabulary.MESSAGE_FLAGS_CHANGED);
 			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id);
@@ -1029,7 +1018,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			//	TODO-- ASSUMING this folder is the same for all messages?
 			var folder = (Folder) e.getSource();
 
-			var delta = new Delta();
+			var delta = getDelta();
 			var event = new EventSetBuilder();
 
 			var eid = event.newEvent(Vocabulary.MESSAGE_DELETED);
@@ -1076,7 +1065,7 @@ public class IMAPAdapter extends BaseAdapter implements IAdapter
 			//	TODO-- ASSUMING this  is the same for all messages?
 			var folder = (Folder) e.getSource();
 
-			var delta = new Delta();
+			var delta = getDelta();
 			var event = new EventSetBuilder();
 			var eid = event.newEvent(Vocabulary.MESSAGE_ARRIVED);
 			event.addOP(eid, Vocabulary.HAS_ACCOUNT, id);

@@ -253,6 +253,7 @@ public class MessageContent
 		if (part != null)
 		{
 			mimeType = mimeType(part);
+			//	UGH - store as byte array? What about searching
 			content = part.getContent().toString();
 			parseAttachments();
 		}

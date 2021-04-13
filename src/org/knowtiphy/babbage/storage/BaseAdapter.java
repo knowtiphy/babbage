@@ -12,21 +12,17 @@ import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
 import org.knowtiphy.utils.IProcedure;
 import org.knowtiphy.utils.LoggerUtils;
+import org.knowtiphy.utils.Wrap;
 
 import javax.mail.Message;
-import javax.mail.MessagingException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
-
-import static org.knowtiphy.utils.IProcedure.wrap;
 
 //	base class for account adapters
 
@@ -38,16 +34,16 @@ public abstract class BaseAdapter implements IAdapter
 	protected final String type;
 	protected final Dataset cache;
 
-	protected final Map<String, BiFunction<String, Model, Future<?>>> operations = new HashMap<>();
-
 	private final ListenerManager listenerManager;
 	private final BlockingDeque<Runnable> notificationQ;
 
-	public BaseAdapter(String type, Dataset messageDatabase,
-					   ListenerManager newListenerManager, BlockingDeque<Runnable> notificationQ)
+	protected final Map<String, BiFunction<String, Model, Future<?>>> operations = new HashMap<>();
+
+	public BaseAdapter(String type, Dataset cache, ListenerManager newListenerManager,
+					   BlockingDeque<Runnable> notificationQ)
 	{
 		this.type = type;
-		this.cache = messageDatabase;
+		this.cache = cache;
 		this.listenerManager = newListenerManager;
 		this.notificationQ = notificationQ;
 	}
@@ -76,53 +72,19 @@ public abstract class BaseAdapter implements IAdapter
 		return op.apply(oid, operation);
 	}
 
-	public abstract void sync() throws UnsupportedOperationException;
-
-	@Override
-	public Future<?> sync(String fid) throws ExecutionException, InterruptedException
-	{
-		return new FutureTask<>(() -> 1);
-	}
-
 	protected void notifyListeners(Model change)
 	{
 		notificationQ.add(() -> listenerManager.notifyListeners(change));
 	}
 
-	//	apply a change to the database represented by a delta (a collection of adds and deletes)
-
-	protected static Delta apply(Dataset dbase, Delta delta)
+	protected Delta getDelta()
 	{
-		dbase.begin(ReadWrite.WRITE);
-		try
-		{
-			//	do deletes before adds in case adds are replacing things that are being deleted
-			dbase.getDefaultModel().remove(delta.getDeletes());
-			dbase.getDefaultModel().add(delta.getAdds());
-			dbase.commit();
-		}
-		catch (Exception ex)
-		{
-			//	if this happens were are in deep shit with no real way of recovering
-			LOGGER.severe(LoggerUtils.exceptionMessage(ex));
-			dbase.abort();
-		}
-		finally
-		{
-			dbase.end();
-		}
-
-		return delta;
-	}
-
-	protected Delta apply(Delta delta)
-	{
-		return apply(cache, delta);
+		return new Delta(cache);
 	}
 
 	protected void applyAndNotify(Delta delta, EventSetBuilder builder)
 	{
-		apply(delta);
+		delta.apply();
 		notifyListeners(builder.model);
 	}
 
@@ -181,7 +143,7 @@ public abstract class BaseAdapter implements IAdapter
 
 	protected void query(IProcedure query)
 	{
-		query(wrap(query));
+		query(Wrap.wrap(query));
 	}
 
 	//protected <T> void query(Callable<T> query)
@@ -189,18 +151,6 @@ public abstract class BaseAdapter implements IAdapter
 //		query(wrap(query));
 //	}
 
-
-	@Override
-	public Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag)
-	{
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag)
-	{
-		throw new UnsupportedOperationException();
-	}
 
 	@Override
 	public Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
@@ -211,7 +161,7 @@ public abstract class BaseAdapter implements IAdapter
 
 	@Override
 	public Future<?> copyMessages(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
-								  boolean delete) throws MessagingException
+								  boolean delete)
 	{
 		throw new UnsupportedOperationException();
 	}

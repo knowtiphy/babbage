@@ -14,14 +14,17 @@ import org.knowtiphy.utils.JenaUtils;
 import javax.mail.MessagingException;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -87,7 +90,7 @@ public abstract class BaseDavAdapter extends BaseAdapter
 	protected abstract Runnable getSyncTask();
 
 	@Override
-	public void initialize(Delta delta) throws MessagingException, IOException
+	public void initialize(Map<String, Function<String, Future<?>>> syncs, Delta delta) throws MessagingException, IOException
 	{
 		addInitialTriples(delta);
 		startPinger();
@@ -112,11 +115,11 @@ public abstract class BaseDavAdapter extends BaseAdapter
 		IProcedure.doAndIgnore(() -> pingService.awaitTermination(10, TimeUnit.SECONDS));
 	}
 
-	@Override
-	public void sync()
-	{
-		workQ.add(getSyncTask());
-	}
+//	@Override
+//	public void sync()
+//	{
+//		workQ.add(getSyncTask());
+//	}
 
 	private void startPinger()
 	{
@@ -153,41 +156,41 @@ public abstract class BaseDavAdapter extends BaseAdapter
 	public void updateTriple(Model cache, Delta delta, String resURI, String hasProp, Object updated)
 	{
 		delta.delete(cache.listStatements(R(cache, resURI), P(cache, hasProp), (RDFNode) null));
-		delta.addDP(resURI,hasProp,updated);
-}
+		delta.addDP(resURI, hasProp, updated);
+	}
 
-private class Worker implements Runnable
-{
-	@Override
-	public void run()
+	private class Worker implements Runnable
 	{
-		while (true)
+		@Override
+		public void run()
 		{
-			try
+			while (true)
 			{
-				Runnable task = workQ.take();
+				try
+				{
+					Runnable task = workQ.take();
 
-				if (task == POISON_PILL)
+					if (task == POISON_PILL)
+					{
+						return;
+					}
+					else
+					{
+						try
+						{
+							task.run();
+						}
+						catch (Exception ex)
+						{
+							LOGGER.warning(ex.getLocalizedMessage());
+						}
+					}
+				}
+				catch (InterruptedException e)
 				{
 					return;
 				}
-				else
-				{
-					try
-					{
-						task.run();
-					}
-					catch (Exception ex)
-					{
-						LOGGER.warning(ex.getLocalizedMessage());
-					}
-				}
-			}
-			catch (InterruptedException e)
-			{
-				return;
 			}
 		}
 	}
-}
 }

@@ -11,8 +11,9 @@ import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 import javax.mail.Message;
 import javax.mail.MessagingException;
 import java.util.Collection;
-import java.util.concurrent.ExecutionException;
+import java.util.Map;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 
 /**
  * @author graham
@@ -24,7 +25,7 @@ public interface IAdapter
 
 	String getType();
 
-	void initialize(Delta delta) throws Exception;
+	void initialize(Map<String, Function<String, Future<?>>> syncs, Delta delta) throws Exception;
 
 	void close(Model model);
 
@@ -32,13 +33,7 @@ public interface IAdapter
 
 	//	all this code has to go away
 
-	void sync() throws ExecutionException, InterruptedException;
-
-	Future<?> sync(String fid) throws ExecutionException, InterruptedException;
-
-	Future<?> markMessagesAsAnswered(Collection<String> messageIds, String folderId, boolean flag);
-
-	Future<?> markMessagesAsJunk(Collection<String> messageIds, String folderId, boolean flag);
+	//Future<?> sync(String fid) throws ExecutionException, InterruptedException;
 
 	Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
 								 boolean delete);

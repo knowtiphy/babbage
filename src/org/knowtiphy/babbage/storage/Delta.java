@@ -1,22 +1,35 @@
 package org.knowtiphy.babbage.storage;
 
+import org.apache.jena.query.Dataset;
+import org.apache.jena.query.ReadWrite;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.StmtIterator;
 import org.knowtiphy.utils.JenaUtils;
+import org.knowtiphy.utils.LoggerUtils;
 
 import java.io.StringWriter;
 import java.util.Collection;
+import java.util.logging.Logger;
 
 /**
  * @author graham
  */
 public class Delta
 {
+	private static final Logger LOGGER = Logger.getLogger(Delta.class.getName());
+
+	private final Dataset dataSet;
+
 	//	the added and deleted triples for the delta
 
 	private final Model adds = ModelFactory.createDefaultModel();
 	private final Model deletes = ModelFactory.createDefaultModel();
+
+	public Delta(Dataset dataSet)
+	{
+		this.dataSet = dataSet;
+	}
 
 	public Model getAdds()
 	{
@@ -101,14 +114,38 @@ public class Delta
 		return sw.toString();
 	}
 
-	public static Delta merge(Collection<Delta> deltas)
+	public static Delta merge(Dataset dSet, Collection<Delta> deltas)
 	{
-		var merged = new Delta();
+		var merged = new Delta(dSet);
 		deltas.forEach(d -> {
 			merged.adds.add(d.adds);
 			merged.deletes.add(d.deletes);
 		});
 
 		return merged;
+	}
+
+	//	apply the change represented by the delta
+
+	public void apply()
+	{
+		dataSet.begin(ReadWrite.WRITE);
+		try
+		{
+			//	do deletes before adds in case adds are replacing things that are being deleted
+			dataSet.getDefaultModel().remove(getDeletes());
+			dataSet.getDefaultModel().add(getAdds());
+			dataSet.commit();
+		}
+		catch (Exception ex)
+		{
+			//	if this happens were are in deep shit with no real way of recovering
+			LOGGER.severe(LoggerUtils.exceptionMessage(ex));
+			dataSet.abort();
+		}
+		finally
+		{
+			dataSet.end();
+		}
 	}
 }

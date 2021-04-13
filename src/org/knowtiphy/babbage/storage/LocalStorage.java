@@ -15,6 +15,8 @@ import org.knowtiphy.babbage.Babbage;
 import org.knowtiphy.babbage.storage.CALDAV.CALDAVAdapter;
 import org.knowtiphy.babbage.storage.CARDDAV.CARDDAVAdapter;
 import org.knowtiphy.babbage.storage.IMAP.IMAPAdapter;
+import org.knowtiphy.babbage.storage.exceptions.MalformedOperationSpecifiedException;
+import org.knowtiphy.babbage.storage.exceptions.MoreThanOneOperationSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.NoOperationSpecifiedException;
 import org.knowtiphy.babbage.storage.exceptions.NoSuchAccountException;
 import org.knowtiphy.babbage.storage.exceptions.StorageException;
@@ -32,10 +34,12 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -67,9 +71,10 @@ public class LocalStorage implements IStorage
 
 	private static final String OPERATION_QUERY =
 			"SELECT *"
-					+ " WHERE {?id <" + RDF.type + "> ?type \n."
-					+ "		?type <" + RDFS.subClassOf + "> <" + Vocabulary.OPERATION + ">\n."
-					+ "		?id <" + Vocabulary.HAS_ACCOUNT + "> ?aid \n."
+					+ " WHERE {?oid <" + RDF.type + "> ?type \n."
+					+ "		?type <" + RDFS.subClassOf + "> <" + Vocabulary.OPERATION + ">\n"
+					+ "		optional{ ?oid <" + Vocabulary.HAS_ACCOUNT + "> ?aid }\n"
+					+ "		optional{ ?oid <" + Vocabulary.HAS_RESOURCE + "> ?rid }\n"
 					+ "		filter(?type != <" + Vocabulary.OPERATION + ">)"
 					+ "      }";
 
@@ -82,6 +87,9 @@ public class LocalStorage implements IStorage
 		adapterClasses.put(Vocabulary.CALDAV_ACCOUNT, CALDAVAdapter.class);
 		adapterClasses.put(Vocabulary.CARDDAV_ACCOUNT, CARDDAVAdapter.class);
 	}
+
+	// map from type vocabulary to a sync method
+	private static final Map<String, Function<String, Future<?>>> syncs = new ConcurrentHashMap<>();
 
 	public static NameSource nameSource = new NameSource(Vocabulary.NBASE);
 
@@ -127,9 +135,7 @@ public class LocalStorage implements IStorage
 				LOGGER.log(Level.CONFIG, "{0} {1} {2}",
 						new String[]{LocalStorage.class.getName(), name, type});
 
-				System.out.println(type);
 				@SuppressWarnings("unchecked")
-
 				Class<IAdapter> cls = (Class<IAdapter>) adapterClasses.get(type);
 				IAdapter adapter = cls.getConstructor(String.class, String.class,
 						Dataset.class, ListenerManager.class, BlockingDeque.class, Model.class)
@@ -137,22 +143,22 @@ public class LocalStorage implements IStorage
 				adapters.put(adapter.getId(), adapter);
 
 				futures.add(workers.submit(() -> {
-					var delta = new Delta();
-					adapter.initialize(delta);
+					var delta = new Delta(cache);
+					adapter.initialize(syncs, delta);
 					return delta;
 				}));
 			}
 		}
 
 		//	merge the adapter triples into one big delta
-		var triples = Delta.merge(Concurrency.wait(futures));
+		var triples = Delta.merge(cache, Concurrency.wait(futures));
 
 		//	add subclassing triples to the message cache to support RDFS reasoning over the cache
 		Vocabulary.allSubClasses.forEach((sub, sup) -> triples.bothOP(sub, RDFS.subClassOf.toString(), sup));
 
 		//	thread which notifies listeners of changes
 		//noinspection CallToThreadStartDuringObjectConstruction
-		Thread doWork  = new Thread(() -> {
+		Thread doWork = new Thread(() -> {
 			while (true)
 			{
 				try
@@ -185,7 +191,7 @@ public class LocalStorage implements IStorage
 
 		//	add new triples to the cache
 		System.out.println(triples);
-		BaseAdapter.apply(cache, triples);
+		triples.apply();
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "()");
 	}
@@ -221,44 +227,60 @@ public class LocalStorage implements IStorage
 	}
 
 	@Override
-	public Future<?> doOperation(Model operation) throws NoSuchAccountException, NoOperationSpecifiedException
+	public Future<?> doOperation(Model operation) throws StorageException
 	{
 		var op = JenaUtils.createRDFSModel(operation, Vocabulary.operationsubClasses);
 
-		//	TODO -- doesnt close query context but is in mem so ....
-		var rs = QueryExecutionFactory.create(OPERATION_QUERY, op).execSelect();
+		//	no need to close the result set since its in memory
+		var opRS = QueryExecutionFactory.create(OPERATION_QUERY, op).execSelect();
+
 		//	the operation model didn't contain something recognizable as an operation
-		if (!rs.hasNext())
+		if (!opRS.hasNext())
 		{
 			throw new NoOperationSpecifiedException();
 		}
 
-		var sol = rs.next();
-		return A(sol.getResource("aid").toString()).doOperation(
-				sol.getResource("id").toString(), sol.getResource("type").toString(), op);
-	}
+		var opSol = opRS.next();
 
-	//	TODO -- have to work out sync vs initialize
-	@Override
-	public Model sync(String id) throws StorageException
-	{
+		//	the operation contains more than operation -- may support in the future but for now it
+		//	complicates the returning of a single future
+		if (opRS.hasNext())
+		{
+			throw new MoreThanOneOperationSpecifiedException();
+		}
+
+		var aid = opSol.getResource("aid");
+		var rid = opSol.getResource("rid");
+		//	if both aid and rid are null, or both are non null then the operation makes no sense
+		if ((aid == null && rid == null) || (aid != null && rid != null))
+		{
+			throw new MalformedOperationSpecifiedException();
+		}
+
+		var opType = opSol.getResource("type").toString();
+
 		try
 		{
-			A(id).sync();
-			return ModelFactory.createDefaultModel();
-		}
-		catch (Exception ex)
-		{
-			throw new StorageException(ex);
-		}
-	}
+			if (rid != null)
+			{
+				assert opType.equals(Vocabulary.SYNC);
+				System.out.println("ITS A SYNCH " + rid);
 
-	@Override
-	public Future<?> sync(String id, String fid) throws StorageException
-	{
-		try
-		{
-			return A(id).sync(fid);
+				var typeRS = query("select * where { <" + rid + "> a ?type }");
+				while (typeRS.hasNext())
+				{
+					var typeSol = typeRS.next();
+					var foo = syncs.get(typeSol.get("type").toString());
+					if (foo != null)
+					{
+						return foo.apply(rid.toString());
+					}
+				}
+			}
+
+			//	fall back to the old ops that used the accouint id
+			assert aid != null;
+			return A(aid.toString()).doOperation(opSol.getResource("oid").toString(), opType, op);
 		}
 		catch (Exception ex)
 		{
@@ -348,28 +370,66 @@ public class LocalStorage implements IStorage
 //	{
 //		throw new StorageException(ex);
 //	}
-	//		try
-	//		{
-	//			Message message = createMessage(accountId, messageId, false);
-	//			Transport.send(message);
-	//			if (sendId != null)
-	//			{
-	//				appendMessages(new Message[]{message}, sendId);
-	//			}
-	//
-	//			WriteContext contextw = getWriteContext();
-	//			contextw.startTransaction();
-	//			try
-	//			{
-	//				//  TODO -- this is wrong, since I don't think unstore unstores everything it needs to
-	//				DStore.unstoreDraft(contextw.getModel(), messageId);
-	//				contextw.commit();
-	//			} finally
-	//			{
-	//				contextw.endTransaction();
-	//			}
-	//		} catch (MessagingException ex)
-	//		{
-	//			throw new StorageException(ex);
-	//		}
+//		try
+//		{
+//			Message message = createMessage(accountId, messageId, false);
+//			Transport.send(message);
+//			if (sendId != null)
+//			{
+//				appendMessages(new Message[]{message}, sendId);
+//			}
+//
+//			WriteContext contextw = getWriteContext();
+//			contextw.startTransaction();
+//			try
+//			{
+//				//  TODO -- this is wrong, since I don't think unstore unstores everything it needs to
+//				DStore.unstoreDraft(contextw.getModel(), messageId);
+//				contextw.commit();
+//			} finally
+//			{
+//				contextw.endTransaction();
+//			}
+//		} catch (MessagingException ex)
+//		{
+//			throw new StorageException(ex);
+//		}
 //}
+//	//	TODO -- have to work out sync vs initialize
+//	@Override
+//	public Model sync(String id) throws StorageException
+//	{
+//		try
+//		{
+//			var rs = query("select * where { <" + id + "> a ?type }");
+//			while (rs.hasNext())
+//			{
+//				var soln = rs.next();
+//				var foo = syncs.get(soln.get("type").toString());
+//				if (foo != null)
+//				{
+//					foo.apply(id);
+//				}
+//			}
+//
+//			A(id).sync();
+//			return ModelFactory.createDefaultModel();
+//		}
+//		catch (Exception ex)
+//		{
+//			throw new StorageException(ex);
+//		}
+//	}
+//
+//	@Override
+//	public Future<?> sync(String id, String fid) throws StorageException
+//	{
+//		try
+//		{
+//			return A(id).sync(fid);
+//		}
+//		catch (Exception ex)
+//		{
+//			throw new StorageException(ex);
+//		}
+//	}

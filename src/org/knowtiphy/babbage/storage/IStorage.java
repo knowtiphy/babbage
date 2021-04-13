@@ -18,7 +18,7 @@ public interface IStorage extends AutoCloseable
 
 	void close();
 
-	Future<?> doOperation(Model operation) throws StorageException;
+	Future<?> doOperation(Model operation) throws Exception;
 
 	//	note -- this method on the server closes the result set from running the query and
 	//	returns a copy of that result set -- presamably its in mem? does the copy require closing?
@@ -26,10 +26,6 @@ public interface IStorage extends AutoCloseable
 
 	//	For time being, stick all extra methods in here
 	//	Most should be done via doOp
-
-	Model sync(String id) throws StorageException;
-
-	Future<?> sync(String id, String fid) throws StorageException;
 
 	Future<?> moveMessagesToJunk(String accountId, String sourceFolderId, Collection<String> messageIds,
 								 String targetFolderId, boolean delete) throws NoSuchAccountException;

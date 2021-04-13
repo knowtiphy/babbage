@@ -18,6 +18,7 @@ import org.knowtiphy.babbage.storage.EventSetBuilder;
 import org.knowtiphy.babbage.storage.ListenerManager;
 import org.knowtiphy.babbage.storage.Vocabulary;
 
+import javax.mail.MessagingException;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.ZoneId;
@@ -31,6 +32,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.function.Function;
 import java.util.logging.Logger;
 
 import static org.knowtiphy.babbage.storage.CALDAV.DFetch.CALRES;
@@ -83,6 +87,15 @@ public class CALDAVAdapter extends BaseDavAdapter
 	//	add account triples to the message cache
 	//	note: it's a cache -- so we can't simply store these triples in the cache permnantly, as
 	//	the cache is designed to be deleteable at any point in time.
+
+	@Override
+	public void initialize(Map<String, Function<String, Future<?>>> syncs, Delta delta) throws MessagingException, IOException
+	{
+		super.initialize(syncs, delta);
+		syncs.put(Vocabulary.CALDAV_ACCOUNT, (x) -> new FutureTask<>(() -> true));
+		syncs.put(Vocabulary.CALDAV_CALENDAR, (x) -> new FutureTask<>(() -> true));
+		syncs.put(Vocabulary.CALDAV_EVENT, (x) -> new FutureTask<>(() -> true));
+	}
 
 	@Override
 	protected void addInitialTriples(Delta delta)
@@ -216,7 +229,7 @@ public class CALDAVAdapter extends BaseDavAdapter
 				System.out.println(":::::::::::::::::::::::::: IN SYNCH THREAD ::::::::::::::::::::::::::::::::: ");
 
 				Set<String> storedCalendars = getStored(DFetch.calendarURIs(getId()), CALRES);
-				var delta = new Delta();
+				var delta = getDelta();
 				Iterator<DavResource> calDavResources = sardine.list(serverName).iterator();
 				// 1st iteration is not a calendar, just the enclosing directory
 				calDavResources.next();
