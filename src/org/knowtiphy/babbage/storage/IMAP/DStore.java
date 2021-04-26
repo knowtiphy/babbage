@@ -1,6 +1,5 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
-import org.apache.jena.datatypes.xsd.XSDDateTime;
 import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
@@ -140,9 +139,9 @@ public interface DStore
 		//System.out.println("addMessageHeaders " + messageId + " " + message.getSubject());
 		addAttribute(delta, messageId, Vocabulary.HAS_SUBJECT, message.getSubject(), x -> x);
 		addAttribute(delta, messageId, Vocabulary.RECEIVED_ON, message.getReceivedDate(),
-				x -> new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault()))));
+				x -> JenaUtils.fromZDT(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())));
 		addAttribute(delta, messageId, Vocabulary.SENT_ON, message.getSentDate(),
-				x -> new XSDDateTime(JenaUtils.fromDate(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault()))));
+				x -> JenaUtils.fromZDT(ZonedDateTime.ofInstant(x.toInstant(), ZoneId.systemDefault())));
 		addAddresses(delta, messageId, Vocabulary.FROM, message.getFrom());
 		addAddresses(delta, messageId, Vocabulary.TO, message.getRecipients(Message.RecipientType.TO));
 		addAddresses(delta, messageId, Vocabulary.HAS_CC, message.getRecipients(Message.RecipientType.CC));

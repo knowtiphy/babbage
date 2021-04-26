@@ -45,8 +45,8 @@ public class CreateMessage
 	{
 		var mid = JenaUtils.getOR(operation, oid, Vocabulary.HAS_MESSAGE).toString();
 
-		var recipients = JenaUtils.apply(operation, mid, Vocabulary.TO, to -> to.asLiteral().getString(), new LinkedList<>());
-		var ccs = JenaUtils.apply(operation, mid, Vocabulary.HAS_CC, to -> to.asLiteral().getString(), new LinkedList<>());
+		var recipients = JenaUtils.collect(operation, mid, Vocabulary.TO, to -> to.asLiteral().getString(), new LinkedList<>());
+		var ccs = JenaUtils.collect(operation, mid, Vocabulary.HAS_CC, to -> to.asLiteral().getString(), new LinkedList<>());
 		var subject = JenaUtils.getS(operation, mid, Vocabulary.HAS_SUBJECT);
 		var content = JenaUtils.getS(operation, mid, Vocabulary.HAS_CONTENT);
 		var mimeType = JenaUtils.getS(operation, mid, Vocabulary.HAS_MIME_TYPE);

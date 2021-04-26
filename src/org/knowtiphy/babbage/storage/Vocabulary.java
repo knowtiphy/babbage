@@ -21,6 +21,7 @@ public class Vocabulary
 	public final static String HAS_SERVER_NAME = TBASE + "hasServerName";
 	public final static String HAS_EMAIL_ADDRESS = TBASE + "hasEmailAddress";
 	public final static String HAS_PASSWORD = TBASE + "hasPassword";
+	public final static String HAS_LAST_SEARCH_DATE = TBASE + "hasLastSearchDate";
 	public final static String HAS_SERVER_HEADER = TBASE + "hasServerHeader";
 	public final static String HAS_NICK_NAME = TBASE + "hasNickName";
 
@@ -83,10 +84,12 @@ public class Vocabulary
 	public final static String CALDAV_CALENDAR = TBASE + "CALDAVCalendar";
 	public final static String CALDAV_EVENT = TBASE + "CALDAVEvent";
 	public final static String HAS_CTAG = TBASE + "hasCTag";
+	public final static String HAS_EVENT = TBASE + "hasEvent";
 
 	public final static String HAS_DATE_START = TBASE + "startsAt";
 	public final static String HAS_DATE_END = TBASE + "endsAt";
 	public final static String HAS_SUMMARY = TBASE + "hasSummary";
+	public final static String HAS_LOCATION = TBASE + "hasLocation";
 	public final static String HAS_DESCRIPTION = TBASE + "hasDescription";
 	public final static String HAS_PRIORITY = TBASE + "hasPriority";
 	public final static String HAS_ETAG = TBASE + "hasETag";
@@ -116,7 +119,7 @@ public class Vocabulary
 	public final static String MESSAGE_ARRIVED = TBASE + "MessageArrived";
 	public final static String MESSAGE_DELETED = TBASE + "MessageDeleted";
 	public final static String HAS_ACCOUNT = TBASE + "hasAcount";
-	public final static String HAS_OPERATION = TBASE + "hasOperation";
+	public final static String HAS_CALENDAR = TBASE + "hasCalendar";
 	public final static String HAS_FOLDER = TBASE + "hasFolder";
 	public final static String HAS_MESSAGE = TBASE + "hasMessage";
 	public final static String HAS_FLAG = TBASE + "hasFlag";
@@ -134,6 +137,8 @@ public class Vocabulary
 	public final static String TRUST_SENDER = TBASE + "TrustSender";
 	public final static String TRUST_PROVIDER = TBASE + "TrustProvider";
 	public final static String HAS_RESOURCE = TBASE + "hasResource";
+
+	public final static String ADD_CALDAV_EVENT = TBASE + "addCalDavEvent";
 
 	//	sub-classing structure
 
@@ -182,6 +187,7 @@ public class Vocabulary
 		operationsubClasses.put(SEND_MESSAGE, OPERATION);
 		operationsubClasses.put(TRUST_SENDER, OPERATION);
 		operationsubClasses.put(TRUST_PROVIDER, OPERATION);
+		operationsubClasses.put(ADD_CALDAV_EVENT, OPERATION);
 	}
 
 	public final static Map<String, String> allSubClasses = new HashMap<>();

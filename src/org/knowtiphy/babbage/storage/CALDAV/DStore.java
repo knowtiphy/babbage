@@ -32,6 +32,11 @@ public interface DStore
 		}
 	}
 
+	static <S> void addAttribute(Delta delta, String s, String p, S value)
+	{
+		addAttribute(delta, s, p, value, x -> x);
+	}
+
 	static void addCalendar(Delta delta, String aid, String cid, DavResource calendar)
 	{
 		delta.addType(cid, Vocabulary.CALDAV_CALENDAR)
@@ -46,9 +51,10 @@ public interface DStore
 		delta.addOP(eid, RDF.type.toString(), Vocabulary.CALDAV_EVENT)
 				.addOP(cid, Vocabulary.CONTAINS, eid);
 
-		addAttribute(delta, eid, Vocabulary.HAS_ETAG, event.getEtag(), x -> x);
+		addAttribute(delta, eid, Vocabulary.HAS_ETAG, event.getEtag());
 
-		addAttribute(delta, eid, Vocabulary.HAS_SUMMARY, vEvent.getSummary().getValue(), x -> x);
+		//	Todo -- the summary could be null
+		addAttribute(delta, eid, Vocabulary.HAS_SUMMARY, vEvent.getSummary(), x -> x.getValue());
 
 		addAttribute(delta, eid, Vocabulary.HAS_DATE_START,
 				CALDAVAdapter.fromDate(vEvent.getDateStart().getValue()),
@@ -61,11 +67,10 @@ public interface DStore
 				x -> new XSDDateTime(GregorianCalendar.from(x)));
 
 		addAttribute(delta, eid, Vocabulary.HAS_DESCRIPTION,
-				vEvent.getDescription() != null ? vEvent.getDescription().getValue() : null, x -> x);
+				vEvent.getDescription() != null ? vEvent.getDescription().getValue() : null);
 
 		addAttribute(delta, eid, Vocabulary.HAS_PRIORITY,
 				vEvent.getPriority() != null ? vEvent.getPriority().getValue() : null, x -> x);
-
 	}
 
 	//  TODO -- have to delete the CIDS, content, etc

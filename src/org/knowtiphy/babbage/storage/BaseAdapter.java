@@ -146,12 +146,6 @@ public abstract class BaseAdapter implements IAdapter
 		query(Wrap.wrap(query));
 	}
 
-	//protected <T> void query(Callable<T> query)
-//	{
-//		query(wrap(query));
-//	}
-
-
 	@Override
 	public Future<?> moveMessagesToJunk(String sourceFolderId, Collection<String> messageIds, String targetFolderId,
 										boolean delete)

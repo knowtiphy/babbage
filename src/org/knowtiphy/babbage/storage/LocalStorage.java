@@ -190,7 +190,6 @@ public class LocalStorage implements IStorage
 		doWork.start();
 
 		//	add new triples to the cache
-		System.out.println(triples);
 		triples.apply();
 
 		LOGGER.exiting(this.getClass().getCanonicalName(), "()");
@@ -229,6 +228,7 @@ public class LocalStorage implements IStorage
 	@Override
 	public Future<?> doOperation(Model operation) throws StorageException
 	{
+		//System.out.println(JenaUtils.toString(operation));
 		var op = JenaUtils.createRDFSModel(operation, Vocabulary.operationsubClasses);
 
 		//	no need to close the result set since its in memory

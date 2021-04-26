@@ -1,6 +1,7 @@
 package org.knowtiphy.babbage.storage.IMAP;
 
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.ParameterizedSparqlString;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.ResultSet;
@@ -20,68 +21,69 @@ import static org.knowtiphy.utils.JenaUtils.R;
  */
 public interface DFetch
 {
+	ParameterizedSparqlString GET_MESSAGE_UIDS = new ParameterizedSparqlString(
+			"select ?mid "
+					+ "where {"
+					+ "      ?mid <" + RDF.type + "> <" + Vocabulary.IMAP_MESSAGE + ">.\n"
+					+ "      ?fid <" + Vocabulary.CONTAINS + "> ?mid.\n"
+					+ "      }");
+
+	ParameterizedSparqlString GET_MESSAGE_UIDS_WITH_HEADERS = new ParameterizedSparqlString(
+			"select ?mid\n"
+					+ "where \n"
+					+ "{\n"
+					+ "      ?mid <" + RDF.type + "> <" + Vocabulary.IMAP_MESSAGE + ">.\n"
+					+ "      ?fid <" + Vocabulary.CONTAINS + "> ?mid.\n"
+					+ "      ?aid <" + Vocabulary.CONTAINS + "> ?fid.\n"
+					//  if a message has an IS_READ then we have headers for it
+					+ "      ?mid <" + Vocabulary.IS_READ + "> ?isRead.\n"
+					+ "}");
+
+	ParameterizedSparqlString GET_FOLDER_IDS = new ParameterizedSparqlString(
+			"select ?fid "
+					+ "where {"
+					+ "      ?aid <" + Vocabulary.CONTAINS + "> ?fid.\n"
+					+ "      ?fid <" + RDF.type + "> <" + Vocabulary.IMAP_FOLDER + ">.\n"
+//	+ "      ?type <" + RDFS.subClassOf + "> <"+ Vocabulary.IMAP_FOLDER +">.\n"
+					//+ "      filter(?type = <" + Vocabulary.IMAP_FOLDER + ">).\n"
+					+ "      }");
+
 	static boolean hasFolder(Model model, String folderId)
 	{
 		return model.listStatements(R(model, folderId),
 				P(model, RDF.type.toString()), R(model, Vocabulary.IMAP_FOLDER)).hasNext();
 	}
 
-	static Collection<String> folderIDs(Dataset dbase, String aid)
-	{
-		String query = "SELECT ?fid "
-				+ "WHERE {"
-				+ "      <" + aid + "> <" + Vocabulary.CONTAINS + "> ?fid.\n"
-				+ "      ?fid <" + RDF.type + "> <" + Vocabulary.IMAP_FOLDER + ">.\n"
-//	+ "      ?type <" + RDFS.subClassOf + "> <"+ Vocabulary.IMAP_FOLDER +">.\n"
-				//+ "      filter(?type = <" + Vocabulary.IMAP_FOLDER + ">).\n"
-				+ "      }";
-
-		Model mod = dbase.getDefaultModel();//, Vocabulary.folderSubClasses);
-		Set<String> fids = new HashSet<>(1000);
-		try (QueryExecution qexec = QueryExecutionFactory.create(query, dbase.getDefaultModel()))
-		{
-			ResultSet results = qexec.execSelect();
-			results.forEachRemaining(soln -> fids.add(soln.get("fid").asResource().toString()));
-		}
-
-		return fids;
-	}
-
-	//	TODO -- use a SelectionBuilder
-	static String messageUIDs(String fid)
-	{
-		return "SELECT ?mid "
-				+ "WHERE {"
-				+ "      ?mid <" + RDF.type.toString() + "> <" + Vocabulary.IMAP_MESSAGE + ">.\n"
-				+ "      <" + fid + "> <" + Vocabulary.CONTAINS + "> ?mid.\n"
-				+ "      }";
-	}
-
-	//	TODO -- use a SelectionBuilder
-	static String messageUIDsWithHeaders(String aid, String fid)
-	{
-		return "SELECT ?mid\n"
-				+ "WHERE \n"
-				+ "{\n"
-				+ "      ?mid <" + RDF.type.toString() + "> <" + Vocabulary.IMAP_MESSAGE + ">.\n"
-				+ "      <" + fid + "> <" + Vocabulary.CONTAINS + "> ?mid.\n"
-				+ "      <" + aid + "> <" + Vocabulary.CONTAINS + "> <" + fid + ">.\n"
-				//  if a message has an IS_READ then we have headers for it
-				+ "      ?mid <" + Vocabulary.IS_READ + "> ?isRead.\n"
-				+ "}";
-	}
-
 	//  get the ids of messages stored in the database that match the query
-	static Set<String> messageIds(Dataset dbase, String query)
+	private static Set<String> getIDs(Dataset dbase, String query, String proj)
 	{
 		Set<String> stored = new HashSet<>(1000);
 		try (QueryExecution qexec = QueryExecutionFactory.create(query, dbase.getDefaultModel()))
 		{
 			ResultSet results = qexec.execSelect();
-			results.forEachRemaining(soln -> stored.add(soln.get("mid").asResource().toString()));
+			results.forEachRemaining(soln -> stored.add(soln.get(proj).asResource().toString()));
 		}
 
 		return stored;
+	}
+
+	static Set<String> getStoredMessageIDs(Dataset cache, String fid)
+	{
+		GET_MESSAGE_UIDS.setIri("fid", fid);
+		return getIDs(cache, GET_MESSAGE_UIDS.toString(), "mid");
+	}
+
+	static Set<String> getStoredMessagesWithHeadersIDs(Dataset cache, String aid, String fid)
+	{
+		GET_MESSAGE_UIDS_WITH_HEADERS.setIri("aid", aid);
+		GET_MESSAGE_UIDS_WITH_HEADERS.setIri("fid", fid);
+		return getIDs(cache, GET_MESSAGE_UIDS_WITH_HEADERS.toString(), "mid");
+	}
+
+	static Collection<String> getFolderIDs(Dataset cache, String aid)
+	{
+		GET_FOLDER_IDS.setIri(aid, aid);
+		return getIDs(cache, GET_FOLDER_IDS.toString(), "fid");
 	}
 }
 
